@@ -1,0 +1,60 @@
+# Linear Claude Agent
+
+A JavaScript application that integrates Linear with Claude to automate issue processing.
+
+## Features
+
+- Automatically processes Linear issues assigned to a specific user
+- Creates separate Git worktrees for each issue
+- Runs Claude in each worktree to handle issues
+- Posts Claude's responses back to Linear as comments
+- Listens for new comments via Linear's webhook API and forwards them to Claude
+- Maintains isolated environments for each issue
+- Cleans up worktrees on shutdown
+
+## Setup
+
+1. Clone this repository
+2. Create a `.env` file based on `.env.example`
+3. Fill in your Linear API token, user ID, and webhook secret
+4. Install dependencies with `npm install`
+5. Start the agent with `npm start`
+
+## Environment Variables
+
+- `LINEAR_API_TOKEN`: Your Linear API token
+- `LINEAR_USER_ID`: Your Linear user ID
+- `LINEAR_WEBHOOK_SECRET`: Secret for verifying webhook requests
+- `WEBHOOK_PORT`: Port for the webhook server
+- `CLAUDE_PATH`: Path to the Claude executable
+- `WORKSPACE_BASE_DIR`: Directory where issue workspaces will be created
+
+## Webhook Setup
+
+1. In your Linear workspace, go to Settings > API
+2. Create a new webhook with the following settings:
+   - URL: `https://your-server.com/webhook`
+   - Resource types: Issues, Comments
+   - Actions: Create, Update
+   - Secret: Your webhook secret (same as in `.env`)
+
+## How It Works
+
+1. When started, the agent fetches all issues assigned to the specified user
+2. For each issue, it creates a workspace and starts a Claude session
+3. Initial responses from Claude are posted back to Linear as comments
+4. When users comment on issues, the webhook receives the event
+5. The comment is forwarded to the corresponding Claude session
+6. Claude's responses are posted back to Linear
+
+## Development
+
+- `npm start`: Start the application
+- `npm run dev`: Start with nodemon for development (auto-restart on file changes)
+
+## Troubleshooting
+
+- Check the logs for error messages
+- Ensure your Linear API token and user ID are correct
+- Verify that the Claude executable path is correct
+- Make sure your webhook URL is publicly accessible
