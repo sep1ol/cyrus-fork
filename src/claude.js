@@ -43,8 +43,8 @@ async function startClaudeSession(issue, workspacePath) {
         fs.writeFileSync(historyPath, ''); // Empty file to start
       }
 
-      // Set up Claude args
-      let claudeArgs = ['--output-format', 'stream-json'];
+      // Set up Claude args. DO NOT remove --print, as it is required for the stream-json output format.
+      let claudeArgs = ['--print', '--output-format', 'stream-json'];
 
       console.log(`Spawning Claude with command: ${process.env.CLAUDE_PATH} ${claudeArgs.join(' ')}`);
       console.log(`Using spawn options: ${JSON.stringify({
@@ -81,7 +81,6 @@ async function startClaudeSession(issue, workspacePath) {
       }
 
       // Set up buffers to capture output
-      let stdout = '';
       let stderr = '';
       let lastLine = '';
       let lastLineTimestamp = Date.now();
@@ -96,8 +95,9 @@ async function startClaudeSession(issue, workspacePath) {
         }
       }, 30000); // Log status every 30 seconds
 
-      // Flag to track if we've received the full response JSON
-      let receivedCompleteResponse = false;
+      // Variables to store the latest response and track posting
+      let lastAssistantResponseText = '';
+      let responsePosted = false; // Flag to prevent duplicate posts
 
       // Set up JSON stream handlers
       console.log(`=== Setting up JSON stream handlers for Claude process ${claudeProcess.pid} ===`);
@@ -113,7 +113,7 @@ async function startClaudeSession(issue, workspacePath) {
         if (!output.startsWith('{') || !output.endsWith('}')) {
           // Log lines that are skipped if they are not empty
           if (output.length > 0) {
-            console.log(`[CLAUDE JSON - ${issue.identifier}] Skipped non-JSON line: ${output.substring(0, 100)}...`);
+            console.log(`[CLAUDE RAW - ${issue.identifier}] Skipped non-JSON line: ${output.substring(0, 100)}...`);
           }
           return;
         }
@@ -129,47 +129,47 @@ async function startClaudeSession(issue, workspacePath) {
             console.error(`Failed to update conversation history (${historyPath}): ${err.message}`);
           }
 
-          // If this is the assistant message response (not the system cost message)
-          if (jsonResponse.role === 'assistant' && jsonResponse.content && !receivedCompleteResponse) {
-            console.log(`Received complete assistant response from Claude`);
-
-            // Extract the text content from the response
-            let responseText = '';
+          // If this is an assistant message, store its content
+          if (jsonResponse.role === 'assistant' && jsonResponse.content) {
+            console.log(`Received assistant content chunk from Claude`);
+            let currentResponseText = '';
             if (Array.isArray(jsonResponse.content)) {
               for (const content of jsonResponse.content) {
                 if (content.type === 'text') {
-                  responseText += content.text;
+                  currentResponseText += content.text;
                 }
               }
             } else if (typeof jsonResponse.content === 'string') {
-              responseText = jsonResponse.content;
+              currentResponseText = jsonResponse.content;
             }
-
-            // If we have a valid response, post it to Linear
-            if (responseText && responseText.trim().length > 0) {
-              console.log(`Extracted response text (${responseText.length} chars)`);
-
-              // Mark as posted to avoid duplicates
-              receivedCompleteResponse = true;
-              claudeProcess.responsePosted = true;
-
-              // Post to Linear
-              postResponseToLinear(issue.id, responseText)
-                .then(() => {
-                  console.log(`Successfully posted response to Linear for issue ${issue.id}`);
-                })
-                .catch(err => console.error(`Failed to post response: ${err.message}`));
+            // Update the latest complete response text
+            if (currentResponseText.trim().length > 0) {
+              lastAssistantResponseText = currentResponseText;
+              console.log(`Updated lastAssistantResponseText (${lastAssistantResponseText.length} chars)`);
             }
           }
 
-          // If this is the final cost message, log it
+          // If this is the final cost message, the stream succeeded. Post the last response.
           if (jsonResponse.role === 'system' && jsonResponse.cost_usd) {
             console.log(`Claude response completed - Cost: $${jsonResponse.cost_usd.toFixed(4)}, Duration: ${jsonResponse.duration_ms}ms`);
+            if (lastAssistantResponseText && !responsePosted) {
+              console.log(`Posting final assistant response to Linear (triggered by cost message)...`);
+              postResponseToLinear(issue.id, lastAssistantResponseText)
+                .then(() => {
+                  console.log(`Successfully posted final response to Linear for issue ${issue.id}`);
+                  responsePosted = true; // Mark as posted
+                })
+                .catch(err => console.error(`Failed to post final response: ${err.message}`));
+            } else if (responsePosted) {
+              console.log(`Final response already posted.`);
+            } else {
+              console.log(`No final assistant response text found to post.`);
+            }
           }
         } catch (err) {
-           // Log parsing errors more clearly
-           console.error(`[CLAUDE JSON - ${issue.identifier}] Error parsing JSON line: ${err.message}`);
-           console.error(`[CLAUDE JSON - ${issue.identifier}] Offending line: ${output}`);
+          // Log parsing errors more clearly
+          console.error(`[CLAUDE JSON - ${issue.identifier}] Error parsing JSON line: ${err.message}`);
+          console.error(`[CLAUDE JSON - ${issue.identifier}] Offending line: ${output}`);
         }
       });
 
@@ -191,11 +191,28 @@ async function startClaudeSession(issue, workspacePath) {
         // Clear the status timer
         clearInterval(statusTimer);
 
-        if (code !== 0) {
-          // If Claude exits with error, post the error to Linear
-          await postResponseToLinear(issue.id, `Claude exited with error:\n\n\`\`\`\n${stderr}\n\`\`\``);
+        if (code === 0) {
+          // Process exited successfully. Post the last response if it wasn't already posted.
+          if (lastAssistantResponseText && !responsePosted) {
+            console.log(`Posting final assistant response to Linear (triggered by process close)...`);
+            await postResponseToLinear(issue.id, lastAssistantResponseText);
+            responsePosted = true; // Mark as posted
+          } else if (responsePosted) {
+            console.log(`Final response already posted before close.`);
+          } else {
+            console.log(`Process closed successfully, but no final assistant response text found to post.`);
+          }
+        } else {
+          // Process exited with an error. Post the stderr content.
+          console.error(`Claude process exited with error code ${code}. Posting stderr to Linear.`);
+          if (!responsePosted) { // Avoid posting error if a response was already successfully posted
+            await postResponseToLinear(issue.id, `Claude exited with error code ${code}:\n\n\`\`\`\n${stderr || 'No stderr output captured.'}\n\`\`\``);
+            responsePosted = true; // Mark error as posted
+          } else {
+            console.log(`Error occurred, but a response was already posted.`);
+          }
           reject(new Error(`Claude process exited with code ${code}`));
-          return;
+          return; // Ensure rejection happens
         }
 
         resolve(claudeProcess);
@@ -330,10 +347,8 @@ async function postResponseToLinear(issueId, response) {
     console.log(`First 100 chars: ${response.substring(0, 100)}...`);
     console.log(`================================================\n`);
     
-    const formattedResponse = `Claude Agent Response:\n\n${response}`;
-    
     console.log(`Posting Claude's response to Linear issue ${issueId}...`);
-    const success = await createComment(issueId, formattedResponse);
+    const success = await createComment(issueId, response);
     
     if (success) {
       console.log(`✅ Successfully posted Claude's response to Linear issue ${issueId}`);
