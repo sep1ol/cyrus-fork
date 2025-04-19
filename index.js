@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 require('dotenv').config();
 const { startLinearAgent } = require('./src/linearAgent');
 const { startWebhookServer } = require('./src/webhookServer');

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Integration between Linear and Claude for automated issue processing",
   "main": "index.js",
+  "bin": {
+    "linear-claude-agent": "./index.js"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
