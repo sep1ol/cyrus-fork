@@ -2,6 +2,17 @@ const { spawn } = require('child_process');
 const fs = require('fs-extra');
 const path = require('path');
 
+// Ensure --print is included for non-interactive mode with stream-json
+/*
+Bash \
+Edit \
+Replace \
+FileWriteTool \
+FileEditTool
+*/
+const CLAUDE_ARGS = ['--print', '--output-format', 'stream-json', '--allowedTools', 'Bash', 'Edit', 'Replace', 'FileWriteTool', 'FileEditTool'];
+
+
 /**
  * Helper to format comments for the prompt
  */
@@ -84,15 +95,12 @@ async function startClaudeSession(issue, workspacePath) {
         fs.writeFileSync(historyPath, '');
       }
 
-      // Ensure --print is included for non-interactive mode with stream-json
-      let claudeArgs = ['--print', '--output-format', 'stream-json'];
-
-      console.log(`Spawning Claude with command: ${process.env.CLAUDE_PATH} ${claudeArgs.join(' ')}`);
+      console.log(`Spawning Claude with command: ${process.env.CLAUDE_PATH} ${CLAUDE_ARGS.join(' ')}`);
       console.log(`Using spawn options: ${JSON.stringify({
         cwd: workspacePath,
         stdio: ['pipe', 'pipe', 'pipe']
       })}`);
-      const claudeProcess = spawn(process.env.CLAUDE_PATH, claudeArgs, {
+      const claudeProcess = spawn(process.env.CLAUDE_PATH, CLAUDE_ARGS, {
         cwd: workspacePath,
         stdio: ['pipe', 'pipe', 'pipe']
       });
@@ -383,9 +391,8 @@ If the task is complete and approved, use the 'gh' tool to manage the pull reque
 
       // Start a new Claude process with the new prompt via stdin
       console.log(`Starting new Claude process with updated prompt via stdin...`);
-      // Ensure --print is included
-      const claudeArgs = ['--print', '--output-format', 'stream-json'];
-      const newClaudeProcess = spawn(process.env.CLAUDE_PATH, claudeArgs, {
+
+      const newClaudeProcess = spawn(process.env.CLAUDE_PATH, CLAUDE_ARGS, {
         cwd: workspacePath,
         stdio: ['pipe', 'pipe', 'pipe']
       });
