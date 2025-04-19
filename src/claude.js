@@ -3,25 +3,70 @@ const fs = require('fs-extra');
 const path = require('path');
 
 /**
- * Build the initial prompt for Claude
+ * Helper to format comments for the prompt
+ */
+function formatLinearComments(comments) {
+  if (!comments || !comments.nodes || comments.nodes.length === 0) {
+    return '<linear_comments>No comments yet.</linear_comments>';
+  }
+  let commentString = '<linear_comments>\n';
+  comments.nodes.forEach(comment => {
+    // Basic XML escaping for comment body
+    const escapedBody = comment.body
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+    commentString += `  <comment author="${comment.user?.name || 'Unknown'}">\n`;
+    commentString += `    <body>${escapedBody}</body>\n`; // Use escaped body
+    commentString += `  </comment>\n`;
+  });
+  commentString += '</linear_comments>';
+  return commentString;
+}
+
+/**
+ * Build the initial prompt for Claude using XML structure
  */
 function buildInitialPrompt(issue) {
-  // Updated prompt content
-  return `You are an AI assistant assigned to work on Linear issue ${issue.identifier}: ${issue.title}
+  // Basic XML escaping for text content
+  const escapeXml = (unsafe) => unsafe
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
 
-Description: ${issue.description || 'No description provided'}
-Status: ${issue.state?.name || 'Unknown'}
-Priority: ${issue.priority}
-URL: ${issue.url}
+  const issueDetails = `
+<issue_details>
+  <identifier>${escapeXml(issue.identifier)}</identifier>
+  <title>${escapeXml(issue.title)}</title>
+  <description>${escapeXml(issue.description || 'No description provided')}</description>
+  <status>${escapeXml(issue.state?.name || 'Unknown')}</status>
+  <priority>${issue.priority}</priority> <!-- Assuming priority is safe or numerical -->
+  <url>${escapeXml(issue.url)}</url>
+</issue_details>
+`;
 
-Your task is to implement the feature or fix described in the issue. Analyze the requirements and propose a plan or start implementing the necessary code changes.
+  // Fetch/format comments - Assuming issue object might have comments attached
+  // Ensure the caller of startClaudeSession provides an issue object with comments if needed.
+  const linearComments = formatLinearComments(issue.comments);
+
+  const instructions = `
+<instructions>
+You are an AI assistant assigned to work on the Linear issue detailed above.
+Analyze the issue details and any existing comments.
+Your first task is to formulate and provide your initial analysis and plan as if you were writing your *first comment* on the Linear issue. Structure your response clearly.
 
 IMPORTANT:
-- When creating branches, pull requests, or interacting with git, always use EXACTLY this branch name: "${issue.identifier.toLowerCase()}". Do not use any prefixes or other modifications.
-- If you need clarification or encounter issues, state them clearly.
-- Once the code changes are ready and have been approved by the user, you may use the 'gh' command-line tool to create a new pull request or update an existing one for the branch "${issue.identifier.toLowerCase()}".
+- When creating branches, pull requests, or interacting with git, always use EXACTLY this branch name: "${escapeXml(issue.identifier.toLowerCase())}". Do not use any prefixes or other modifications.
+- If you need clarification or encounter issues, state them clearly in your response.
+- Once the code changes are ready and have been approved by the user, you may use the 'gh' command-line tool to create a new pull request or update an existing one for the branch "${escapeXml(issue.identifier.toLowerCase())}".
+</instructions>
+`;
 
-Begin by analyzing the issue and outlining the steps needed.`;
+  return `<prompt>${issueDetails}${linearComments}${instructions}</prompt>`;
 }
 
 /**
@@ -32,34 +77,25 @@ async function startClaudeSession(issue, workspacePath) {
     try {
       console.log(`Starting Claude session for issue ${issue.identifier}...`);
 
-      // Prepare initial prompt
+      // Prepare initial prompt using XML structure
       const initialPrompt = buildInitialPrompt(issue);
-
-      // Set up history file path
       const historyPath = path.join(workspacePath, 'conversation-history.jsonl');
-
-      // Create history file if it doesn't exist
       if (!fs.existsSync(historyPath)) {
-        fs.writeFileSync(historyPath, ''); // Empty file to start
+        fs.writeFileSync(historyPath, '');
       }
 
-      // Set up Claude args. DO NOT remove --print, as it is required for the stream-json output format.
+      // Ensure --print is included for non-interactive mode with stream-json
       let claudeArgs = ['--print', '--output-format', 'stream-json'];
 
       console.log(`Spawning Claude with command: ${process.env.CLAUDE_PATH} ${claudeArgs.join(' ')}`);
       console.log(`Using spawn options: ${JSON.stringify({
         cwd: workspacePath,
-        stdio: ['pipe', 'pipe', 'pipe'] // Ensure stdin is pipe
+        stdio: ['pipe', 'pipe', 'pipe']
       })}`);
-
-      // Spawn the Claude process
-      console.log(`Running Claude in stream-json mode, sending prompt via stdin`);
       const claudeProcess = spawn(process.env.CLAUDE_PATH, claudeArgs, {
         cwd: workspacePath,
-        stdio: ['pipe', 'pipe', 'pipe'] // stdin, stdout, stderr
+        stdio: ['pipe', 'pipe', 'pipe']
       });
-
-      // Store references to file paths in the process object
       claudeProcess.historyPath = historyPath;
 
       // Handle process error (e.g., command not found)
@@ -97,7 +133,8 @@ async function startClaudeSession(issue, workspacePath) {
 
       // Variables to store the latest response and track posting
       let lastAssistantResponseText = '';
-      let responsePosted = false; // Flag to prevent duplicate posts
+      let firstResponsePosted = false; // Flag for first response
+      let lastResponsePosted = false; // Flag for final response
       let finalCost = null; // Variable to store cost
       let finalDuration = null; // Variable to store duration
 
@@ -126,7 +163,7 @@ async function startClaudeSession(issue, workspacePath) {
             console.error(`Failed to update conversation history (${historyPath}): ${err.message}`);
           }
 
-          // If this is an assistant message, store its content
+          // If this is an assistant message, store its content and post if it's the first one
           if (jsonResponse.role === 'assistant' && jsonResponse.content) {
             console.log(`Received assistant content chunk from Claude`);
             let currentResponseText = '';
@@ -139,10 +176,21 @@ async function startClaudeSession(issue, workspacePath) {
             } else if (typeof jsonResponse.content === 'string') {
               currentResponseText = jsonResponse.content;
             }
-            // Update the latest complete response text
+
             if (currentResponseText.trim().length > 0) {
-              lastAssistantResponseText = currentResponseText;
+              lastAssistantResponseText = currentResponseText; // Always update last response
               console.log(`Updated lastAssistantResponseText (${lastAssistantResponseText.length} chars)`);
+
+              // Post the FIRST complete response immediately
+              if (!firstResponsePosted) {
+                console.log(`Posting FIRST assistant response to Linear...`);
+                postResponseToLinear(issue.id, lastAssistantResponseText) // Post without cost info
+                  .then(() => {
+                    console.log(`Successfully posted FIRST response to Linear for issue ${issue.id}`);
+                    firstResponsePosted = true; // Mark first as posted
+                  })
+                  .catch(err => console.error(`Failed to post FIRST response: ${err.message}`));
+              }
             }
           }
 
@@ -177,13 +225,12 @@ async function startClaudeSession(issue, workspacePath) {
         clearInterval(statusTimer);
 
         if (code === 0) {
-          // Process exited successfully. Post the last response if it wasn't already posted.
-          if (lastAssistantResponseText && !responsePosted) {
-            console.log(`Posting final assistant response to Linear (triggered by process close)...`);
-            // Pass cost and duration to postResponseToLinear
-            await postResponseToLinear(issue.id, lastAssistantResponseText, finalCost, finalDuration);
-            responsePosted = true; // Mark as posted
-          } else if (responsePosted) {
+          // Process exited successfully. Post the LAST response if it exists and wasn't already posted.
+          if (lastAssistantResponseText && !lastResponsePosted) {
+            console.log(`Posting FINAL assistant response to Linear (triggered by process close)...`);
+            await postResponseToLinear(issue.id, lastAssistantResponseText, finalCost, finalDuration); // Post WITH cost info
+            lastResponsePosted = true; // Mark final as posted
+          } else if (lastResponsePosted) {
             console.log(`Final response already posted.`);
           } else {
             console.log(`Process closed successfully, but no final assistant response text found to post.`);
@@ -191,9 +238,9 @@ async function startClaudeSession(issue, workspacePath) {
         } else {
           // Process exited with an error. Post the stderr content.
           console.error(`Claude process exited with error code ${code}. Posting stderr to Linear.`);
-          if (!responsePosted) { // Avoid posting error if a response was already successfully posted
+          if (!firstResponsePosted && !lastResponsePosted) { // Avoid posting error if a response was already successfully posted
             await postResponseToLinear(issue.id, `Claude exited with error code ${code}:\n\n\`\`\`\n${stderr || 'No stderr output captured.'}\n\`\`\``);
-            responsePosted = true; // Mark error as posted
+            lastResponsePosted = true; // Mark error as posted
           } else {
             console.log(`Error occurred, but a response was already posted.`);
           }
@@ -237,72 +284,97 @@ async function sendToClaudeSession(claudeProcess, input) {
 
       const workspacePath = claudeProcess.issue.workspace;
       const historyPath = claudeProcess.historyPath;
+      const issue = claudeProcess.issue; // Get the issue object passed during startClaudeSession
 
-      // Build a new prompt that includes the conversation history
-      console.log(`Building updated prompt with conversation history...`);
+      // Build the prompt using XML structure
+      console.log(`Building updated prompt with conversation history and comments...`);
 
-      // Start with the initial prompt
-      const initialPrompt = buildInitialPrompt(claudeProcess.issue);
-      let fullPrompt = initialPrompt;
+      // Basic XML escaping function
+      const escapeXml = (unsafe) => unsafe
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&apos;');
+
+      // Re-create issue details and comments sections
+      const issueDetails = `
+<issue_details>
+  <identifier>${escapeXml(issue.identifier)}</identifier>
+  <title>${escapeXml(issue.title)}</title>
+  <description>${escapeXml(issue.description || 'No description provided')}</description>
+  <status>${escapeXml(issue.state?.name || 'Unknown')}</status>
+  <priority>${issue.priority}</priority>
+  <url>${escapeXml(issue.url)}</url>
+</issue_details>
+`;
+      // Fetch/format comments EVERY time for subsequent prompts
+      // Ensure issue object passed to startClaudeSession contains up-to-date comments
+      const linearComments = formatLinearComments(issue.comments);
 
       // Process and append cleaned history
+      let historySection = '<conversation_history>\n';
+      let historyTokens = 0;
       if (fs.existsSync(historyPath)) {
         try {
           const historyContent = fs.readFileSync(historyPath, 'utf8');
           const lines = historyContent.trim().split('\n');
-          let historyPromptSection = '\n\n# Conversation History\n';
 
           for (const line of lines) {
             const trimmedLine = line.trim();
-            // Skip input markers or empty lines
             if (!trimmedLine.startsWith('{') || !trimmedLine.endsWith('}')) {
-              continue;
+              continue; // Skip non-JSON lines (like input markers)
             }
-
             try {
               const jsonEntry = JSON.parse(trimmedLine);
-
-              // Create a cleaned copy, removing specified keys
+              // Clean the entry (remove metadata)
               const cleanedEntry = { ...jsonEntry };
               delete cleanedEntry.id;
               delete cleanedEntry.model;
               delete cleanedEntry.stop_reason;
               delete cleanedEntry.stop_sequence;
               delete cleanedEntry.usage;
-
-              // Remove usage from tool_result content if present
               if (cleanedEntry.role === 'user' && Array.isArray(cleanedEntry.content)) {
-                cleanedEntry.content = cleanedEntry.content.map(item => {
+                 cleanedEntry.content = cleanedEntry.content.map(item => {
                   if (item.type === 'tool_result') {
                     const cleanedItem = { ...item };
-                    // Assuming usage might be nested here, remove if found
-                    delete cleanedItem.usage;
+                    delete cleanedItem.usage; // Remove usage if nested
                     return cleanedItem;
                   }
                   return item;
                 });
               }
 
-              // Append the cleaned JSON string to the history section
               const cleanedLine = JSON.stringify(cleanedEntry);
-              historyPromptSection += cleanedLine + '\n';
+              historySection += cleanedLine + '\n';
+              historyTokens += Math.ceil(cleanedLine.length / 4);
             } catch (jsonErr) {
               console.warn(`Skipping invalid JSON line in history: ${jsonErr.message}`);
             }
           }
-          // Append the history section to the main prompt
-          fullPrompt += historyPromptSection;
-          console.log(`Appended cleaned history (${lines.length} entries`);
-
+          console.log(`Appended cleaned history (${lines.length} entries, estimated ${historyTokens} tokens)`);
         } catch (err) {
           console.error(`Failed to read or process conversation history: ${err.message}`);
         }
       }
+      historySection += '</conversation_history>\n';
 
-      // Append the new input
-      fullPrompt += `\n\n# New Input\n${input}`;
+      // New input section
+      const newInputSection = `<new_input>${escapeXml(input)}</new_input>\n`;
 
-      // Log new input to history file (as a simple marker, not JSON)
+      // Instructions section (can be simpler for subsequent turns)
+      const instructions = `
+<instructions>
+Continue working on the Linear issue based on the conversation history and the new input provided above.
+Use the provided tools and context. Remember the branch name convention: "${escapeXml(issue.identifier.toLowerCase())}".
+If the task is complete and approved, use the 'gh' tool to manage the pull request.
+</instructions>
+`;
+
+      // Combine all parts into the full prompt
+      const fullPrompt = `<prompt>${issueDetails}${linearComments}${historySection}${newInputSection}${instructions}</prompt>`;
+
+      // Log new input marker to history file
       try {
         fs.appendFileSync(historyPath, `\n[${new Date().toISOString()}] --- New Input Start --- \n${input}\n[${new Date().toISOString()}] --- New Input End --- \n`);
       } catch (err) {
@@ -311,20 +383,23 @@ async function sendToClaudeSession(claudeProcess, input) {
 
       // Start a new Claude process with the new prompt via stdin
       console.log(`Starting new Claude process with updated prompt via stdin...`);
-
-      const claudeArgs = ['--output-format', 'stream-json'];
+      // Ensure --print is included
+      const claudeArgs = ['--print', '--output-format', 'stream-json'];
       const newClaudeProcess = spawn(process.env.CLAUDE_PATH, claudeArgs, {
         cwd: workspacePath,
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
-      newClaudeProcess.issue = claudeProcess.issue;
+      // Set up basic info for the new process
+      newClaudeProcess.issue = issue; // Pass the full issue object
       newClaudeProcess.historyPath = historyPath;
+
       newClaudeProcess.on('error', (err) => {
         console.error(`\n[NEW CLAUDE SPAWN ERROR] ${err.message}`);
         reject(err);
       });
 
+      // Write the full prompt to the new process's stdin
       try {
         newClaudeProcess.stdin.write(fullPrompt);
         newClaudeProcess.stdin.end();
@@ -335,7 +410,10 @@ async function sendToClaudeSession(claudeProcess, input) {
         reject(stdinError);
         return;
       }
+
       console.log(`New Claude process started with PID: ${newClaudeProcess.pid}`);
+      // Resolve with the new process. Caller needs to handle its events.
+      // NOTE: Complex event handlers (first/last post, cost tracking) from startClaudeSession are NOT re-attached here.
       resolve(newClaudeProcess);
 
     } catch (error) {
@@ -348,35 +426,34 @@ async function sendToClaudeSession(claudeProcess, input) {
 /**
  * Post Claude's response to Linear
  */
-// Modify function signature to accept optional cost and duration
 async function postResponseToLinear(issueId, response, costUsd = null, durationMs = null) {
   try {
     const { createComment } = require('./linearAgent');
-    
+
     console.log(`\n===== CLAUDE RESPONSE for issue ${issueId} =====`);
     console.log(`Response length: ${response.length} characters`);
     console.log(`First 100 chars: ${response.substring(0, 100)}...`);
     console.log(`================================================\n`);
-    
+
     // Format the response for Linear
-    let formattedResponse = `Claude Agent Response:\n\n${response}`;
-    
+    let formattedResponse = response;
+
     // Append cost information if available
     if (costUsd !== null && durationMs !== null) {
       formattedResponse += `\n\n---`;
       formattedResponse += `\n*Cost: $${costUsd.toFixed(4)}, Duration: ${durationMs}ms*`;
     }
-    
+
     // Create a comment on the issue
     console.log(`Posting Claude's response to Linear issue ${issueId}...`);
     const success = await createComment(issueId, formattedResponse);
-    
+
     if (success) {
       console.log(`✅ Successfully posted Claude's response to Linear issue ${issueId}`);
     } else {
       console.error(`❌ Failed to post Claude's response to Linear issue ${issueId}`);
     }
-    
+
     return success;
   } catch (error) {
     console.error(`Failed to post response to Linear issue ${issueId}:`, error);
