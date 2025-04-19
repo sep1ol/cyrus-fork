@@ -36,18 +36,6 @@ async function processIssue(issue, activeSessions, linearClient) {
     });
     
     console.log(`Successfully set up session for issue ${issue.identifier}`);
-    
-    // Set up process exit handler
-    claudeProcess.on('exit', (code) => {
-      console.log(`Claude process for issue ${issue.identifier} exited with code ${code}`);
-      // Keep the session in the map but mark it as exited
-      const session = activeSessions.get(issue.id);
-      if (session) {
-        session.exited = true;
-        session.exitCode = code;
-        session.exitedAt = new Date();
-      }
-    });
   } catch (error) {
     console.error(`Error processing issue ${issue.identifier}:`, error);
     // Post error to Linear comment

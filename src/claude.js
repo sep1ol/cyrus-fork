@@ -143,7 +143,7 @@ async function startClaudeSession(issue, workspacePath) {
 
       claudeProcess.stdout.on('data', (data) => {
         const output = data.toString().trim();
-        lastLine = output;
+        lastLine = output; // Store the raw trimmed output as the last line seen
         lastLineTimestamp = Date.now();
 
         if (!output.startsWith('{') || !output.endsWith('}')) {
@@ -156,16 +156,17 @@ async function startClaudeSession(issue, workspacePath) {
         try {
           const jsonResponse = JSON.parse(output);
 
-          // Append valid JSON to history
+          // Append the stringified JSON object to history, ensuring a single newline at the end
           try {
-            fs.appendFileSync(historyPath, output + '\n');
+            const compactJsonString = JSON.stringify(jsonResponse);
+            fs.appendFileSync(historyPath, compactJsonString + '\n');
           } catch (err) {
             console.error(`Failed to update conversation history (${historyPath}): ${err.message}`);
           }
 
-          // If this is an assistant message, store its content and post if it's the first one
+          // --- Process the jsonResponse --- 
+          // (Existing logic for handling assistant/system messages)
           if (jsonResponse.role === 'assistant' && jsonResponse.content) {
-            console.log(`Received assistant content chunk from Claude`);
             let currentResponseText = '';
             if (Array.isArray(jsonResponse.content)) {
               for (const content of jsonResponse.content) {
@@ -179,7 +180,7 @@ async function startClaudeSession(issue, workspacePath) {
 
             if (currentResponseText.trim().length > 0) {
               lastAssistantResponseText = currentResponseText; // Always update last response
-              console.log(`Updated lastAssistantResponseText (${lastAssistantResponseText.length} chars)`);
+              claudeProcess.lastAssistantResponseText = lastAssistantResponseText; // Store on process object
 
               // Post the FIRST complete response immediately
               if (!firstResponsePosted) {
@@ -196,10 +197,14 @@ async function startClaudeSession(issue, workspacePath) {
 
           // If this is the final cost message, store cost and duration
           if (jsonResponse.role === 'system' && jsonResponse.cost_usd) {
-            console.log(`Claude response completed - Cost: $${jsonResponse.cost_usd.toFixed(4)}, Duration: ${jsonResponse.duration_ms}ms`);
-            finalCost = jsonResponse.cost_usd; // Store cost
-            finalDuration = jsonResponse.duration_ms; // Store duration
+            console.log(`Claude response completed - Cost: $${jsonResponse.cost_usd.toFixed(2)}, Duration: ${jsonResponse.duration_ms}ms`);
+            finalCost = jsonResponse.cost_usd; // Store cost locally for potential immediate use
+            finalDuration = jsonResponse.duration_ms; // Store duration locally
+            claudeProcess.finalCost = finalCost; // Store on process object
+            claudeProcess.finalDuration = finalDuration; // Store on process object
           }
+          // --- End of processing jsonResponse ---
+
         } catch (err) {
           console.error(`[CLAUDE JSON - ${issue.identifier}] Error parsing JSON line: ${err.message}`);
           console.error(`[CLAUDE JSON - ${issue.identifier}] Offending line: ${output}`);
@@ -224,31 +229,26 @@ async function startClaudeSession(issue, workspacePath) {
         // Clear the status timer
         clearInterval(statusTimer);
 
-        if (code === 0) {
-          // Process exited successfully. Post the LAST response if it exists and wasn't already posted.
-          if (lastAssistantResponseText && !lastResponsePosted) {
-            console.log(`Posting FINAL assistant response to Linear (triggered by process close)...`);
-            await postResponseToLinear(issue.id, lastAssistantResponseText, finalCost, finalDuration); // Post WITH cost info
-            lastResponsePosted = true; // Mark final as posted
-          } else if (lastResponsePosted) {
-            console.log(`Final response already posted.`);
-          } else {
-            console.log(`Process closed successfully, but no final assistant response text found to post.`);
-          }
+        // Store exit code on the process object for the linearAgent handler
+        claudeProcess.exitCode = code;
+
+        if (code !== 0) {
+          // Process exited with an error. Post the stderr content IF no response was ever posted.
+          console.error(`Claude process exited with error code ${code}. Stderr will be posted by linearAgent if needed.`);
+          claudeProcess.stderrContent = stderr; // Store stderr for potential posting by linearAgent
+          // We don't reject here anymore, let the exit handler in linearAgent decide
         } else {
-          // Process exited with an error. Post the stderr content.
-          console.error(`Claude process exited with error code ${code}. Posting stderr to Linear.`);
-          if (!firstResponsePosted && !lastResponsePosted) { // Avoid posting error if a response was already successfully posted
-            await postResponseToLinear(issue.id, `Claude exited with error code ${code}:\n\n\`\`\`\n${stderr || 'No stderr output captured.'}\n\`\`\``);
-            lastResponsePosted = true; // Mark error as posted
-          } else {
-            console.log(`Error occurred, but a response was already posted.`);
-          }
-          reject(new Error(`Claude process exited with code ${code}`));
-          return; // Ensure rejection happens
+          console.log(`Claude process exited successfully. Final comment will be posted by linearAgent.`);
         }
 
-        resolve(claudeProcess);
+        // REMOVED: Posting logic is moved to linearAgent.js exit handler
+        // if (code === 0) {
+        //   // ... removed posting logic ...
+        // } else {
+        //   // ... removed error posting logic ...
+        // }
+
+        // We don't resolve or reject here anymore. The 'exit' event in linearAgent handles the final state.
       });
 
       // Store issue information
@@ -426,11 +426,11 @@ If the task is complete and approved, use the 'gh' tool to manage the pull reque
 /**
  * Post Claude's response to Linear
  */
-async function postResponseToLinear(issueId, response, costUsd = null, durationMs = null) {
+async function postResponseToLinear(issueId, response, costUsd = null, durationMs = null) { // Removed historyPath parameter
   try {
-    const { createComment } = require('./linearAgent');
+    const { createComment } = require('./linearAgent'); // Keep require inside if it's for lazy loading/circular dependency avoidance
 
-    console.log(`\n===== CLAUDE RESPONSE for issue ${issueId} =====`);
+    console.log(`\n===== Posting Response to Linear for issue ${issueId} =====`);
     console.log(`Response length: ${response.length} characters`);
     console.log(`First 100 chars: ${response.substring(0, 100)}...`);
     console.log(`================================================\n`);
@@ -438,20 +438,21 @@ async function postResponseToLinear(issueId, response, costUsd = null, durationM
     // Format the response for Linear
     let formattedResponse = response;
 
-    // Append cost information if available
+    // Append cost information IF PROVIDED (for the specific run, not total)
     if (costUsd !== null && durationMs !== null) {
       formattedResponse += `\n\n---`;
-      formattedResponse += `\n*Cost: $${costUsd.toFixed(4)}, Duration: ${durationMs}ms*`;
+      formattedResponse += `\n*Last run cost: $${costUsd.toFixed(2)}, Duration: ${durationMs / 1000}s*`;
+      // Total cost is now handled ONLY in the exit handler of linearAgent.js
     }
 
     // Create a comment on the issue
-    console.log(`Posting Claude's response to Linear issue ${issueId}...`);
+    console.log(`Posting response to Linear issue ${issueId}...`);
     const success = await createComment(issueId, formattedResponse);
 
     if (success) {
-      console.log(`✅ Successfully posted Claude's response to Linear issue ${issueId}`);
+      console.log(`✅ Successfully posted response to Linear issue ${issueId}`);
     } else {
-      console.error(`❌ Failed to post Claude's response to Linear issue ${issueId}`);
+      console.error(`❌ Failed to post response to Linear issue ${issueId}`);
     }
 
     return success;
