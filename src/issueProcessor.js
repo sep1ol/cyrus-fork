@@ -97,59 +97,6 @@ function getSessionsStatus(activeSessions) {
     if (exited) {
       console.log(`Exit code: ${exitCode}`);
       console.log(`Exited at: ${exitedAt.toISOString()}`);
-    } else if (process) {
-      // Try to get the last message from the conversation history JSONL file
-      let lastMessage = 'No recent message found in history.';
-      // Use historyPath from the process object if available, otherwise construct it
-      const historyPath = process.historyPath || path.join(workspacePath, 'conversation-history.jsonl');
-      
-      try {
-        if (fs.existsSync(historyPath)) {
-          const historyContent = fs.readFileSync(historyPath, 'utf8');
-          const lines = historyContent.trim().split('\n');
-          
-          // Iterate backwards to find the last valid assistant message
-          for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i].trim();
-            // Skip lines that are not JSON or are input markers
-            if (!line.startsWith('{') || !line.endsWith('}')) {
-              continue;
-            }
-            try {
-              const jsonResponse = JSON.parse(line);
-              if (jsonResponse.role === 'assistant' && jsonResponse.content) {
-                let responseText = '';
-                if (Array.isArray(jsonResponse.content)) {
-                  for (const content of jsonResponse.content) {
-                    if (content.type === 'text') {
-                      responseText += content.text;
-                    }
-                  }
-                } else if (typeof jsonResponse.content === 'string') {
-                  responseText = jsonResponse.content;
-                }
-                
-                if (responseText.trim().length > 0) {
-                  lastMessage = responseText.trim().substring(0, 100) + (responseText.trim().length > 100 ? '...' : '');
-                  break; // Found the last message
-                }
-              }
-            } catch (parseErr) {
-              // Ignore lines that are not valid JSON
-            }
-          }
-        }
-      } catch (readErr) {
-        console.error(`Error reading history file for ${issue.identifier}: ${readErr.message}`);
-      }
-      
-      console.log(`Last Message Snippet: ${lastMessage}`);
-      
-      // Keep the last raw line output as a fallback or additional info
-      if (process.lastLine) {
-        const lastLineAge = Math.floor((now - (process.lastLineTimestamp || now)) / 1000);
-        console.log(`Last Raw Output (${lastLineAge}s ago): ${process.lastLine.trim().substring(0, 100)}${process.lastLine.length > 100 ? '...' : ''}`);
-      }
     }
   }
   
