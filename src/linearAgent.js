@@ -1,7 +1,8 @@
 const { LinearClient } = require('@linear/sdk');
 const fs = require('fs-extra'); // Ensure fs-extra is required
 const path = require('path'); // Ensure path is required
-const { createWorkspace, getWorkspaceForIssue } = require('./workspace');
+const os = require('os'); // Add os module requirement
+const { createWorkspace, getWorkspaceForIssue, getHistoryFilePath } = require('./workspace'); // Import getHistoryFilePath
 const { startClaudeSession, sendToClaudeSession } = require('./claude');
 
 // Store pending issues when the processor is not yet loaded
@@ -79,6 +80,7 @@ async function fetchAssignedIssues() {
  * Process an issue directly without relying on the issueProcessor module
  */
 async function processIssueDirectly(issue) {
+  let workspacePath; // Define workspacePath outside try block
   try {
     // Skip if we already have an active session for this issue
     if (activeSessions.has(issue.id)) {
@@ -89,10 +91,10 @@ async function processIssueDirectly(issue) {
     console.log(`Processing issue ${issue.identifier}: ${issue.title}`);
     
     // Get or create a workspace for this issue
-    let workspacePath = await getWorkspaceForIssue(issue);
+    workspacePath = await getWorkspaceForIssue(issue); // Assign value here
     if (!workspacePath) {
       console.log(`Creating new workspace for issue ${issue.identifier}`);
-      workspacePath = await createWorkspace(issue);
+      workspacePath = await createWorkspace(issue); // Assign value here
     }
     
     // Start a Claude session for this issue
@@ -128,7 +130,8 @@ async function processIssueDirectly(issue) {
 
         // Calculate total cost from history
         let totalCost = 0;
-        const historyFilePath = path.join(session.workspacePath, 'conversation-history.jsonl');
+        // Use the shared function to get the history path
+        const historyFilePath = getHistoryFilePath(session.workspacePath);
         let costCalculationMessage = '';
 
         try {
@@ -200,10 +203,10 @@ async function processIssueDirectly(issue) {
     try {
       await createComment(
         issue.id, 
-        `Claude agent encountered an error:\n\n\`\`\`\n${error.message}\n\`\`\``
+        `Claude agent encountered an error while processing issue ${issue.identifier}:\n\n\`\`\`\n${error.message}\n\`\`\``
       );
     } catch (commentError) {
-      console.error(`Failed to post error comment to Linear:`, commentError);
+      console.error(`Failed to post error comment to Linear for issue ${issue.identifier}:`, commentError);
     }
   }
 }

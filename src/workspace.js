@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const { spawn } = require('child_process');
+const os = require('os'); // Add os module requirement
 
 /**
  * Create workspace directory structure
@@ -411,10 +412,27 @@ async function cleanupAllWorktrees() {
   }
 }
 
+/**
+ * Get the absolute path to the conversation history file for a given workspace.
+ */
+function getHistoryFilePath(workspacePath) {
+  const homeDir = os.homedir();
+  const workspaceFolderName = path.basename(workspacePath);
+  const historyDir = path.join(
+    homeDir,
+    '.linearsecretagent',
+    workspaceFolderName
+  );
+  // Ensure the directory exists before returning the path
+  fs.ensureDirSync(historyDir);
+  return path.join(historyDir, 'conversation-history.jsonl');
+}
+
 module.exports = {
   setupWorkspaceBaseDir,
   createWorkspace,
   getWorkspaceForIssue,
   cleanupWorktree, // Keep exporting these for potential direct use or testing
-  cleanupAllWorktrees
+  cleanupAllWorktrees,
+  getHistoryFilePath, // Export the new function
 };

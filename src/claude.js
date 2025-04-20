@@ -3,6 +3,7 @@ const fs = require('fs-extra')
 const path = require('path')
 const readline = require('readline') // Import readline
 const os = require('os') // Import os module
+const { getHistoryFilePath } = require('./workspace'); // Import the shared function
 
 // Ensure --print is included for non-interactive mode with stream-json
 /*
@@ -280,16 +281,8 @@ async function startClaudeSession(issue, workspacePath) {
       // Prepare initial prompt using XML structure
       const initialPrompt = buildInitialPrompt(issue)
 
-      // Construct the history path in ~/.linearsecretagent/<workspace_folder_name>/
-      const homeDir = os.homedir()
-      const workspaceFolderName = path.basename(workspacePath)
-      const historyDir = path.join(
-        homeDir,
-        '.linearsecretagent',
-        workspaceFolderName
-      )
-      fs.ensureDirSync(historyDir) // Ensure the directory exists
-      const historyPath = path.join(historyDir, 'conversation-history.jsonl')
+      // Use the shared function to get the history path
+      const historyPath = getHistoryFilePath(workspacePath);
 
       console.log(`Conversation history will be stored at: ${historyPath}`) // Log the path
 
@@ -388,7 +381,8 @@ async function sendToClaudeSession(claudeProcess, newComment) {
       console.log(`Input length: ${newComment.length} characters`)
 
       const workspacePath = claudeProcess.issue.workspace
-      const historyPath = claudeProcess.historyPath // Use the path stored on the process object
+      // Use the shared function to get the history path (it should already be on claudeProcess, but recalculating is safer)
+      const historyPath = getHistoryFilePath(workspacePath);
       const issue = claudeProcess.issue // Get the issue object passed during startClaudeSession
 
       // Build the prompt using XML structure
