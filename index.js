@@ -37,13 +37,6 @@ async function main() {
     // Start Linear agent
     await startLinearAgent();
 
-    // Initialize status monitoring (after everything else is loaded)
-    setTimeout(() => {
-      const issueProcessor = require('./src/issueProcessor');
-      const linearAgent = require('./src/linearAgent');
-      issueProcessor.initStatusMonitoring(linearAgent);
-    }, 2000);
-
     console.log(`✅ Linear agent and webhook server started successfully.`);
     console.log(`Webhook server listening on port ${port}`);
   } catch (error) {
@@ -60,8 +53,8 @@ async function shutdown() {
   console.log('\nShutting down...');
   
   // Clean up worktrees
-  console.log('Cleaning up worktrees...');
-  await cleanupAllWorktrees();
+  // console.log('Cleaning up worktrees...');
+  // await cleanupAllWorktrees();
   
   // Close webhook server
   if (webhookServer) {

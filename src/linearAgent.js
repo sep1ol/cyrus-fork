@@ -22,7 +22,6 @@ async function createComment(issueId, body) {
       issueId: issueId,
       body: body
     });
-    console.log(`Comment created on issue ${issueId}`);
     return true;
   } catch (error) {
     console.error(`Failed to create comment on issue ${issueId}:`, error);
@@ -39,9 +38,6 @@ async function startLinearAgent() {
   try {
     // Initial fetch of assigned issues
     await fetchAssignedIssues();
-    
-    // Set up a regular polling interval
-    setInterval(fetchAssignedIssues, 5 * 60 * 1000); // Poll every 5 minutes
     
     console.log('Linear agent started successfully');
   } catch (error) {
@@ -66,7 +62,7 @@ async function fetchAssignedIssues() {
     });
     
     // Process each issue
-    const issueNodes = await issues.nodes;
+    const issueNodes = issues.nodes;
     console.log(`Found ${issueNodes.length} assigned issues`);
     
     // We'll directly use functions instead of trying to import the module
@@ -100,7 +96,6 @@ async function processIssueDirectly(issue) {
     }
     
     // Start a Claude session for this issue
-    console.log(`Starting Claude session for issue ${issue.identifier}`);
     const claudeProcess = await startClaudeSession(issue, workspacePath);
     
     // Store information about this session
@@ -179,7 +174,7 @@ async function processIssueDirectly(issue) {
             finalMessageBody += `**Error details (stderr):**\n\`\`\`\n${stderrContent.substring(0, 1500)} ${stderrContent.length > 1500 ? '... (truncated)' : ''}\n\`\`\`\n`;
           }
           if (lastRunCost !== null && lastRunDuration !== null) {
-            finalMessageBody += `\n*Last run cost (before error): $${lastRunCost.toFixed(2)}, Duration: ${lastRunDuration}ms*`;
+            finalMessageBody += `\n*Last run cost (before error): $${lastRunCost.toFixed(2)}, Duration: ${lastRunDuration / 1000}s*`;
           }
           finalMessageBody += costCalculationMessage; // Add total cost info
         }
@@ -195,11 +190,6 @@ async function processIssueDirectly(issue) {
         } catch (commentError) {
           console.error(`Failed to post final status comment to Linear for issue ${issue.identifier}:`, commentError);
         }
-
-        // Optionally remove the session from activeSessions after handling exit
-        // activeSessions.delete(issue.id);
-        // console.log(`Session for issue ${issue.identifier} removed after exit.`);
-
       } else {
          console.warn(`Could not find active session or process details for issue ${issue.id} upon exit.`);
       }
@@ -215,6 +205,93 @@ async function processIssueDirectly(issue) {
     } catch (commentError) {
       console.error(`Failed to post error comment to Linear:`, commentError);
     }
+  }
+}
+
+/**
+ * Handle issue creation events from the webhook
+ */
+async function handleIssueCreateEvent(issueData) {
+  try {
+    console.log(`===== WEBHOOK: Received issue creation event for ${issueData.identifier || issueData.id} =====`);
+    
+    // Check if the issue is assigned to our agent
+    if (issueData.assigneeId === process.env.LINEAR_USER_ID) {
+      console.log(`New issue ${issueData.identifier || issueData.id} is assigned to our agent, processing immediately`);
+      
+      // Fetch complete issue data
+      const issue = await linearClient.issue(issueData.id);
+      
+      // Process the issue right away
+      await processIssueDirectly(issue);
+      
+      console.log(`✅ Successfully initiated processing for new issue ${issue.identifier}`);
+    } else {
+      console.log(`New issue ${issueData.identifier || issueData.id} is not assigned to our agent, skipping`);
+    }
+  } catch (error) {
+    console.error('Error handling issue creation event:', error);
+  }
+}
+
+/**
+ * Handle issue update events from the webhook
+ */
+async function handleIssueUpdateEvent(issueData) {
+  try {
+    console.log(`===== WEBHOOK: Received issue update for ${issueData.identifier || issueData.id} =====`);
+    
+    // Check if the assignee was changed
+    if ('assigneeId' in issueData) {
+      const newAssigneeId = issueData.assigneeId;
+      
+      // Check if we have an active session for this issue
+      if (activeSessions.has(issueData.id)) {
+        const sessionInfo = activeSessions.get(issueData.id);
+        const previousAssigneeId = sessionInfo.issue.assigneeId;
+        
+        console.log(`Assignee change detected: ${previousAssigneeId} -> ${newAssigneeId}`);
+        
+        // If the issue was assigned to our agent but now isn't
+        if (previousAssigneeId === process.env.LINEAR_USER_ID && 
+            (newAssigneeId === null || newAssigneeId !== process.env.LINEAR_USER_ID)) {
+          console.log(`Issue ${sessionInfo.issue.identifier} has been unassigned from our agent, terminating Claude process`);
+          
+          // Kill the Claude process
+          if (sessionInfo.process && !sessionInfo.process.killed) {
+            try {
+              // Post a comment to Linear before killing the process
+              await createComment(
+                issueData.id,
+                `This issue has been unassigned from the agent. The Claude process is being terminated.`
+              );
+              
+              // Kill the process
+              sessionInfo.process.kill('SIGTERM');
+              console.log(`✅ Terminated Claude process for issue ${sessionInfo.issue.identifier}`);
+            } catch (killError) {
+              console.error(`Error terminating Claude process for issue ${sessionInfo.issue.identifier}:`, killError);
+            }
+          } else {
+            console.log(`No active Claude process to kill for issue ${sessionInfo.issue.identifier}`);
+          }
+        }
+      } 
+      // If the issue is newly assigned to our agent
+      else if (newAssigneeId === process.env.LINEAR_USER_ID) {
+        console.log(`Issue ${issueData.identifier || issueData.id} has been newly assigned to our agent, starting Claude process`);
+        
+        // Fetch complete issue data
+        const issue = await linearClient.issue(issueData.id);
+        
+        // Process the issue right away
+        await processIssueDirectly(issue);
+        
+        console.log(`✅ Successfully initiated processing for newly assigned issue ${issue.identifier}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error handling issue update event:', error);
   }
 }
 
@@ -256,41 +333,20 @@ async function handleCommentEvent(event) {
       return;
     }
     
-    // Format the comment for Claude
-    const commentPrompt = `
-A user has posted a new comment on the Linear issue we're working on:
-
-${body}
-
-Please consider this information as you continue working on the issue.
-`;
-    
-    // In interactive mode, we can send the comment directly to the running Claude process
-    console.log(`Sending comment directly to running Claude process...`);
-    
     // Send the comment to Claude via stdin
     try {
       // Check if the process is still alive
       if (!sessionInfo.process || sessionInfo.process.killed) {
-        console.log(`Claude process is not running, starting a new one...`);
-        
-        // Start a new process
-        const { startClaudeSession } = require('./claude');
-        const newProcess = await startClaudeSession(sessionInfo.issue, sessionInfo.workspacePath);
-        
-        // Update the session info
-        sessionInfo.process = newProcess;
-        console.log(`✅ New Claude process started for issue ${issueId}`);
-        
-        // Wait a moment for the process to initialize
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Send the comment to the new process
-        await sendToClaudeSession(sessionInfo.process, commentPrompt);
-      } else {
-        // Send to the existing process
-        await sendToClaudeSession(sessionInfo.process, commentPrompt);
+        console.log(`Claude process is not running. sendToClaudeSession will start a new one.`);
+        // No need to start a session here, sendToClaudeSession handles it.
       }
+      
+      // Send the comment prompt. sendToClaudeSession will handle
+      // killing any old process and starting a new one with the full context.
+      const newProcess = await sendToClaudeSession(sessionInfo.process, body);
+      
+      // Update the session info with the new process started by sendToClaudeSession
+      sessionInfo.process = newProcess;
       
       console.log(`✅ Comment successfully sent to Claude for issue ${issueId}`);
       console.log(`Claude is processing the comment and will post a response to Linear when ready.`);
@@ -305,6 +361,8 @@ Please consider this information as you continue working on the issue.
 module.exports = {
   startLinearAgent,
   handleCommentEvent,
+  handleIssueUpdateEvent,
+  handleIssueCreateEvent,
   activeSessions,
   linearClient,
   createComment

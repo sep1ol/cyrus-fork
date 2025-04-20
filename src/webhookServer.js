@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const { handleCommentEvent } = require('./linearAgent');
+const { handleCommentEvent, handleIssueUpdateEvent, handleIssueCreateEvent } = require('./linearAgent');
 
 /**
  * Verify Linear webhook signature
@@ -52,9 +52,13 @@ async function startWebhookServer(port) {
     }
 
     // Handle issue update events (for assignee changes, etc.)
-    if (type === 'Issue' && (action === 'update' || action === 'create')) {
-      // The Linear agent will pick this up on the next poll
-      console.log(`Issue ${data.id} ${action}d, will be processed on next poll`);
+    if (type === 'Issue' && action === 'update') {
+      handleIssueUpdateEvent(data);
+    }
+
+    // Handle issue creation events
+    if (type === 'Issue' && action === 'create') {
+      handleIssueCreateEvent(data);
     }
 
     res.status(200).send('Event received');
