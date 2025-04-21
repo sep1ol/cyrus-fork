@@ -152,7 +152,7 @@ function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
           }
 
           if (currentResponseText.trim().length > 0) {
-            lastAssistantResponseText += currentResponseText // Accumulate content
+            lastAssistantResponseText = currentResponseText
 
             // Post the first complete response immediately
             if (!firstResponsePosted) {
@@ -167,9 +167,9 @@ function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
         if (jsonResponse.stop_reason === 'end_turn') {
           if (lastAssistantResponseText.trim().length > 0) {
             console.log(
-              `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final accumulated response.`
+              `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
             )
-            // Post only the accumulated text
+            // Post the text
             postResponseToLinear(issue.id, lastAssistantResponseText)
             lastAssistantResponseText = '' // Reset for the next potential turn
           } else {
