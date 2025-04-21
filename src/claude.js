@@ -85,20 +85,19 @@ function buildInitialPrompt(issue) {
 <instructions>
 You are an AI assistant assigned to work on the Linear issue detailed above.
 Analyze the issue details and any existing comments.
-Your first task is to formulate and provide your initial analysis and plan as if you were writing your *first comment* on the Linear issue. Structure your response clearly.
 
 IMPORTANT:
 - When creating branches, pull requests, or interacting with git, always use EXACTLY this branch name: "${escapeXml(
     issue.identifier.toLowerCase()
   )}". Do not use any prefixes or other modifications.
 - If you need clarification or encounter issues, state them clearly in your response.
-- Once the code changes are ready and have been approved by the user, you may use the 'gh' command-line tool to create a new pull request or update an existing one for the branch "${escapeXml(
+- Once the code changes are ready you may use the 'gh' command-line tool to create a new pull request or update an existing one for the branch "${escapeXml(
     issue.identifier.toLowerCase()
   )}".
 </instructions>
 `
 
-  return `<prompt>${issueDetails}${linearComments}${instructions}</prompt>`
+  return `${issueDetails}\n${linearComments}\n${instructions}`
 }
 
 /**
@@ -108,10 +107,8 @@ IMPORTANT:
 function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
   // Set up buffers to capture output
   let stderr = ''
-  let lastAssistantResponseText = ''
-  let firstResponsePosted = false
-  let finalCost = null
-  let finalDuration = null
+  let lastAssistantResponseText = '' // Re-introduce to accumulate response
+  let firstResponsePosted = false // Track if the first response was posted
   let lineBuffer = '' // Buffer for incomplete lines
 
   // Set up JSON stream handlers
@@ -141,7 +138,7 @@ function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
           )
         }
 
-        // Process the jsonResponse (existing logic)
+        // Process the jsonResponse
         if (jsonResponse.role === 'assistant' && jsonResponse.content) {
           let currentResponseText = ''
           if (Array.isArray(jsonResponse.content)) {
@@ -155,29 +152,86 @@ function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
           }
 
           if (currentResponseText.trim().length > 0) {
-            lastAssistantResponseText = currentResponseText
-            claudeProcess.lastAssistantResponseText = lastAssistantResponseText
+            lastAssistantResponseText += currentResponseText // Accumulate content
 
-            // Post response to Linear
-            // For first runs, only post the first complete response
+            // Post the first complete response immediately
             if (!firstResponsePosted) {
-              firstResponsePosted = true
+              console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear.`);
               postResponseToLinear(issue.id, lastAssistantResponseText)
+              firstResponsePosted = true
             }
           }
         }
 
-        // If this is the final cost message, store cost and duration
+        // Post the final accumulated response to Linear when the turn ends (NO cost here)
+        if (jsonResponse.stop_reason === 'end_turn') {
+          if (lastAssistantResponseText.trim().length > 0) {
+            console.log(
+              `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final accumulated response.`
+            )
+            // Post only the accumulated text
+            postResponseToLinear(issue.id, lastAssistantResponseText)
+            lastAssistantResponseText = '' // Reset for the next potential turn
+          } else {
+            console.log(
+              `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but no accumulated assistant content to post.`
+            )
+          }
+        }
+
+        // If this is the final cost message, calculate TOTAL cost and post it separately
         if (jsonResponse.role === 'system' && jsonResponse.cost_usd) {
           console.log(
-            `Claude response completed - Cost: $${jsonResponse.cost_usd.toFixed(
+            `[CLAUDE JSON - ${issue.identifier}] Received final system cost message. Calculating total cost.`
+          )
+          // Log the cost of this specific chunk
+           console.log(
+            `Claude response chunk completed - Cost: $${jsonResponse.cost_usd.toFixed(
               2
             )}, Duration: ${jsonResponse.duration_ms / 1000}s`
           )
-          finalCost = jsonResponse.cost_usd
-          finalDuration = jsonResponse.duration_ms
-          claudeProcess.finalCost = finalCost
-          claudeProcess.finalDuration = finalDuration
+
+          // Calculate total cost from history
+          let totalCost = 0
+          let costCalculationMessage = ''
+          try {
+            if (fs.existsSync(historyPath)) {
+              const historyContent = fs.readFileSync(historyPath, 'utf-8')
+              const lines = historyContent.trim().split('\n')
+              lines.forEach((line) => {
+                try {
+                  const entry = JSON.parse(line)
+                  // Ensure we sum up ALL system cost messages in history
+                  if (
+                    entry.role === 'system' &&
+                    typeof entry.cost_usd === 'number'
+                  ) {
+                    totalCost += entry.cost_usd
+                  }
+                } catch (parseError) {
+                  // Ignore parse errors silently in final calculation
+                }
+              })
+              // Add the cost from the *current* message as well, as it's not yet in the file
+              totalCost += jsonResponse.cost_usd;
+              costCalculationMessage = `*Total estimated cost for this session: $${totalCost.toFixed(
+                2
+              )}*`
+            } else {
+              costCalculationMessage =
+                '*Conversation history file not found, cannot calculate total cost.*'
+            }
+          } catch (costError) {
+            console.error(
+              `Error calculating total cost for issue ${issue.identifier}:`,
+              costError
+            )
+            costCalculationMessage = '*Error calculating total session cost.*'
+          }
+
+          // Post the total cost message separately
+          console.log(`[CLAUDE JSON - ${issue.identifier}] Posting total cost message to Linear.`);
+          postResponseToLinear(issue.id, costCalculationMessage)
         }
       } catch (err) {
         console.error(
@@ -214,10 +268,6 @@ function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
               2
             )}, Duration: ${jsonResponse.duration_ms}ms`
           )
-          finalCost = jsonResponse.cost_usd
-          finalDuration = jsonResponse.duration_ms
-          claudeProcess.finalCost = finalCost
-          claudeProcess.finalDuration = finalDuration
         }
       } catch (err) {
         console.error(

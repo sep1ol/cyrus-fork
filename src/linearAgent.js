@@ -111,88 +111,37 @@ async function processIssueDirectly(issue) {
     console.log(`Successfully set up session for issue ${issue.identifier}`);
     
     // Set up process exit handler
-    claudeProcess.on('exit', async (code) => { // Make the handler async
+    claudeProcess.on('exit', async (code) => {
       console.log(`Claude process for issue ${issue.identifier} exited with code ${code}`);
       const session = activeSessions.get(issue.id);
-      if (session && session.process) { // Ensure session and process exist
+      if (session && session.process) {
         session.exited = true;
-        session.exitCode = code; // Code is passed directly
+        session.exitCode = code;
         session.exitedAt = new Date();
 
-        // Retrieve details stored on the process object by claude.js
-        const lastResponse = session.process.lastAssistantResponseText || '';
-        const lastRunCost = session.process.finalCost;
-        const lastRunDuration = session.process.finalDuration;
+        // Retrieve only stderr content, as other final messages are handled in claude.js
         const stderrContent = session.process.stderrContent || '';
 
-        // Add a small delay to allow file system to flush the last write
-        await new Promise(resolve => setTimeout(resolve, 200)); // 200ms delay
-
-        // Calculate total cost from history
-        let totalCost = 0;
-        // Use the shared function to get the history path
-        const historyFilePath = getHistoryFilePath(session.workspacePath);
-        let costCalculationMessage = '';
-
-        try {
-          if (await fs.pathExists(historyFilePath)) {
-            const historyContent = await fs.readFile(historyFilePath, 'utf-8');
-            const lines = historyContent.trim().split('\n');
-            lines.forEach(line => {
-              try {
-                const entry = JSON.parse(line);
-                if (entry.role === 'system' && typeof entry.cost_usd === 'number') {
-                  totalCost += entry.cost_usd;
-                }
-              } catch (parseError) {
-                // Ignore parse errors silently in final calculation
-              }
-            });
-            costCalculationMessage = `\n*Total estimated cost for this issue: $${totalCost.toFixed(2)}*`;
-          } else {
-            costCalculationMessage = '\n*Conversation history file not found, cannot calculate total cost.*'
-          }
-        } catch (costError) {
-          console.error(`Error calculating total cost for issue ${issue.identifier}:`, costError);
-          costCalculationMessage = '\n*Error calculating total session cost.*'
-        }
-
-        // Construct the final message
-        let finalMessageBody = '';
-        if (code === 0) {
-          // Successful exit
-          finalMessageBody = lastResponse; // Start with the last assistant response
-          if (lastRunCost !== null && lastRunDuration !== null) {
-            finalMessageBody += `\n\n---`;
-            finalMessageBody += `\n*Last run cost: $${lastRunCost.toFixed(2)}, Duration: ${lastRunDuration / 1000}s*`;
-          }
-          finalMessageBody += costCalculationMessage; // Add total cost info
-        } else {
-          // Error exit
-          finalMessageBody = `Claude process exited with error code ${code}.\n\n`;
-          if (lastResponse) {
-             finalMessageBody += `**Last valid response before error:**\n${lastResponse}\n\n---\n`;
-          }
+        // If the process exited with an error, post a notification to Linear
+        if (code !== 0) {
+          console.error(`Claude process for ${issue.identifier} exited abnormally (code ${code}).`);
+          let errorMessage = `Claude process for issue ${issue.identifier} exited unexpectedly with code ${code}.`;
           if (stderrContent) {
-            finalMessageBody += `**Error details (stderr):**\n\`\`\`\n${stderrContent.substring(0, 1500)} ${stderrContent.length > 1500 ? '... (truncated)' : ''}\n\`\`\`\n`;
+            errorMessage += `\n\n**Error details (stderr):**\n\`\`\`\n${stderrContent.substring(0, 1500)} ${stderrContent.length > 1500 ? '... (truncated)' : ''}\n\`\`\``;
           }
-          if (lastRunCost !== null && lastRunDuration !== null) {
-            finalMessageBody += `\n*Last run cost (before error): $${lastRunCost.toFixed(2)}, Duration: ${lastRunDuration / 1000}s*`;
+          try {
+            await createComment(issue.id, errorMessage);
+          } catch (commentError) {
+            console.error(`Failed to post error exit status comment to Linear for issue ${issue.identifier}:`, commentError);
           }
-          finalMessageBody += costCalculationMessage; // Add total cost info
+        } else {
+          console.log(`Claude process for ${issue.identifier} finished successfully. Final messages were posted during the run.`);
         }
 
-        // Post the single final comment to Linear
-        try {
-          // Ensure message is not empty
-          if (!finalMessageBody.trim()) {
-            finalMessageBody = `Claude session finished for ${issue.identifier} with exit code ${code}. No final message content generated.`;
-            finalMessageBody += costCalculationMessage;
-          }
-          await createComment(issue.id, finalMessageBody);
-        } catch (commentError) {
-          console.error(`Failed to post final status comment to Linear for issue ${issue.identifier}:`, commentError);
-        }
+        // Clean up the session info
+        // Consider removing the session from activeSessions map here or after a delay
+        // activeSessions.delete(issue.id);
+
       } else {
          console.warn(`Could not find active session or process details for issue ${issue.id} upon exit.`);
       }
