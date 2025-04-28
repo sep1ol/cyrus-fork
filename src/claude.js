@@ -21,8 +21,10 @@ const CLAUDE_ARGS = [
   'Bash',
   'Edit',
   'Replace',
+  'Write',
   'FileWriteTool',
   'FileEditTool',
+  'WebFetchTool'
 ]
 
 // --- Prompt Template Loading ---
