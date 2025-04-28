@@ -226,9 +226,8 @@ function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
                   // Ignore parse errors silently in final calculation
                 }
               })
-              // Add the cost from the *current* message as well, as it's not yet in the file
-              totalCost += jsonResponse.cost_usd;
-              costCalculationMessage = `*Cost for last run: $${jsonResponse.cost_usd.toFixed(2)}, Duration: ${jsonResponse.duration_ms / 1000}s*
+              costCalculationMessage = `*Cost for last run: $${jsonResponse.cost_usd.toFixed(2)}, Duration: ${jsonResponse.duration_ms / 1000}s*`
+                + `
 *Total estimated cost for this issue: $${totalCost.toFixed(2)}*`
             } else {
               costCalculationMessage =
