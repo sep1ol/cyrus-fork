@@ -30,6 +30,35 @@ async function createComment(issueId, body) {
   }
 }
 
+// Helper function to encapsulate sending comment to avoid repetition
+async function sendCommentToSession(sessionInfo, body) {
+  try {
+    // Check if the process is still alive
+    if (!sessionInfo.process || sessionInfo.process.killed) {
+      console.log(`Claude process is not running. sendToClaudeSession will start a new one.`);
+      // No need to start a session here, sendToClaudeSession handles it.
+    }
+
+    // Send the comment prompt. sendToClaudeSession will handle
+    // killing any old process and starting a new one with the full context.
+    const newProcess = await sendToClaudeSession(sessionInfo.process, body);
+
+    // Update the session info with the new process started by sendToClaudeSession
+    sessionInfo.process = newProcess;
+
+    console.log(`✅ Comment successfully sent to Claude for issue ${sessionInfo.issue.id}`);
+    console.log(`Claude is processing the comment and will post a response to Linear when ready.`);
+  } catch (err) {
+    console.error(`Failed to send comment to Claude: ${err.message}`);
+    // Optionally, post an error comment back to Linear
+    try {
+        await createComment(sessionInfo.issue.id, `Agent encountered an error trying to process your comment: ${err.message}`);
+    } catch (commentError) {
+        console.error(`Failed to post error comment to Linear for issue ${sessionInfo.issue.id}:`, commentError);
+    }
+  }
+}
+
 /**
  * Start the Linear agent to monitor assigned issues
  */
@@ -254,56 +283,61 @@ async function handleCommentEvent(event) {
   try {
     // Get the issue ID from the comment event
     const { issueId, body, user } = event;
-    
+
     // Skip comments created by our own user
     if (user.id === process.env.LINEAR_USER_ID) {
       console.log(`Skipping comment from our own user (${user.id})`);
       return;
     }
-    
+
     console.log(`===== WEBHOOK: Received comment on issue ${issueId} =====`);
     console.log(`From user: ${user.id}`);
     console.log(`Comment: ${body}`);
     console.log(`================================================`);
-    
+
     // Check if we have an active session for this issue
     if (!activeSessions.has(issueId)) {
-      console.log(`No active session for issue ${issueId}, creating one...`);
-      
+      console.log(`No active session for issue ${issueId}. Checking assignment before potentially creating one...`);
+
       // Get the issue details
       const issue = await linearClient.issue(issueId);
       console.log(`Retrieved issue details: ${issue.identifier} - ${issue.title}`);
-      
+
+      // *** Check if the issue is assigned to the agent ***
+      if (issue.assigneeId !== process.env.LINEAR_USER_ID) {
+        console.log(`Issue ${issue.identifier} is not assigned to the agent (${process.env.LINEAR_USER_ID}). Skipping comment processing.`);
+        return; // Do not process if not assigned
+      }
+
+      console.log(`Issue ${issue.identifier} is assigned to the agent. Creating session...`);
       // Process the issue to create a session
       await processIssueDirectly(issue);
     }
-    
+
     // Get the session info
     const sessionInfo = activeSessions.get(issueId);
     if (!sessionInfo || !sessionInfo.process) {
       console.error(`Could not find valid session for issue ${issueId}`);
-      return;
-    }
-    
-    // Send the comment to Claude via stdin
-    try {
-      // Check if the process is still alive
-      if (!sessionInfo.process || sessionInfo.process.killed) {
-        console.log(`Claude process is not running. sendToClaudeSession will start a new one.`);
-        // No need to start a session here, sendToClaudeSession handles it.
+      // Attempt to re-process if the issue is assigned, in case session setup failed previously
+      const issue = await linearClient.issue(issueId);
+      if (issue.assigneeId === process.env.LINEAR_USER_ID) {
+        console.log(`Re-attempting session creation for assigned issue ${issue.identifier}`);
+        await processIssueDirectly(issue);
+        // Re-fetch session info after attempting creation
+        const newSessionInfo = activeSessions.get(issueId);
+        if (!newSessionInfo || !newSessionInfo.process) {
+           console.error(`Still could not establish a valid session for assigned issue ${issueId} after retry.`);
+           return;
+        }
+        // If retry successful, proceed with the new session info
+        await sendCommentToSession(newSessionInfo, body);
+      } else {
+        console.log(`Issue ${issue.identifier} is not assigned to the agent, cannot process comment.`);
+        return;
       }
-      
-      // Send the comment prompt. sendToClaudeSession will handle
-      // killing any old process and starting a new one with the full context.
-      const newProcess = await sendToClaudeSession(sessionInfo.process, body);
-      
-      // Update the session info with the new process started by sendToClaudeSession
-      sessionInfo.process = newProcess;
-      
-      console.log(`✅ Comment successfully sent to Claude for issue ${issueId}`);
-      console.log(`Claude is processing the comment and will post a response to Linear when ready.`);
-    } catch (err) {
-      console.error(`Failed to send comment to Claude: ${err.message}`);
+    } else {
+      // Session exists, send the comment
+      await sendCommentToSession(sessionInfo, body);
     }
   } catch (error) {
     console.error('Error handling comment event:', error);
