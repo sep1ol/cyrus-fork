@@ -202,6 +202,7 @@ async function handleIssueCreateEvent(issueData) {
       
       // Fetch complete issue data
       const issue = await linearClient.issue(issueData.id);
+      // console.log(`Issue details:\n  Identifier: ${issue.identifier}\n  Title: ${issue.title}\n  Description: ${issue.description || 'No description'}\n  Status: ${issue.state?.name || 'Unknown'}\n  Priority: ${issue.priority}\n  URL: ${issue.url}`);
       
       // Process the issue right away
       await processIssueDirectly(issue);
@@ -264,6 +265,7 @@ async function handleIssueUpdateEvent(issueData) {
         
         // Fetch complete issue data
         const issue = await linearClient.issue(issueData.id);
+        // console.log(`Issue details:\n  Identifier: ${issue.identifier}\n  Title: ${issue.title}\n  Description: ${issue.description || 'No description'}\n  Status: ${issue.state?.name || 'Unknown'}\n  Priority: ${issue.priority}\n  URL: ${issue.url}`);
         
         // Process the issue right away
         await processIssueDirectly(issue);
