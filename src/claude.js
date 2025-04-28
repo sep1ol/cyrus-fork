@@ -25,6 +25,24 @@ const CLAUDE_ARGS = [
   'FileEditTool',
 ]
 
+// --- Prompt Template Loading ---
+let promptTemplate = '';
+try {
+  const templatePath = process.env.PROMPT_TEMPLATE_PATH;
+  if (!templatePath) {
+    throw new Error('PROMPT_TEMPLATE_PATH environment variable is not set.');
+  }
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(`Prompt template file not found at: ${templatePath}`);
+  }
+  promptTemplate = fs.readFileSync(templatePath, 'utf-8');
+  console.log(`Successfully loaded prompt template from: ${templatePath}`);
+} catch (error) {
+  console.error(`Error loading prompt template: ${error.message}`);
+  process.exit(1); // Exit if template cannot be loaded
+}
+// --- End Prompt Template Loading ---
+
 /**
  * Helper to format comments for the prompt
  */
@@ -49,19 +67,21 @@ function formatLinearComments(comments) {
   return commentString
 }
 
+// Basic XML escaping function (moved outside for reuse)
+const escapeXml = (unsafe) =>
+  unsafe
+    ? unsafe
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;')
+    : ''; // Return empty string if input is null or undefined
+
 /**
- * Build the initial prompt for Claude using XML structure
+ * Build the initial prompt for Claude using the loaded template
  */
 function buildInitialPrompt(issue) {
-  // Basic XML escaping for text content
-  const escapeXml = (unsafe) =>
-    unsafe
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;')
-
   const issueDetails = `
 <issue_details>
   <identifier>${escapeXml(issue.identifier)}</identifier>
@@ -77,27 +97,19 @@ function buildInitialPrompt(issue) {
 </issue_details>
 `
 
-  // Fetch/format comments - Assuming issue object might have comments attached
-  // Ensure the caller of startClaudeSession provides an issue object with comments if needed.
   const linearComments = formatLinearComments(issue.comments)
+  const branchName = escapeXml(issue.identifier.toLowerCase());
 
-  const instructions = `
-<instructions>
-You are an AI assistant assigned to work on the Linear issue detailed above.
-Analyze the issue details and any existing comments.
+  // Inject variables into the template
+  let finalPrompt = promptTemplate;
+  finalPrompt = finalPrompt.replace('{{issue_details}}', issueDetails);
+  finalPrompt = finalPrompt.replace('{{linear_comments}}', linearComments);
+  finalPrompt = finalPrompt.replace('{{branch_name}}', branchName);
+  // Remove placeholders for sections not used in the initial prompt
+  finalPrompt = finalPrompt.replace('{{process_history}}', '');
+  finalPrompt = finalPrompt.replace('{{new_input}}', '');
 
-IMPORTANT:
-- When creating branches, pull requests, or interacting with git, always use EXACTLY this branch name: "${escapeXml(
-    issue.identifier.toLowerCase()
-  )}". Do not use any prefixes or other modifications.
-- If you need clarification or encounter issues, state them clearly in your response.
-- Once the code changes are ready you may use the 'gh' command-line tool to create a new pull request or update an existing one for the branch "${escapeXml(
-    issue.identifier.toLowerCase()
-  )}".
-</instructions>
-`
-
-  return `${issueDetails}\n${linearComments}\n${instructions}`
+  return finalPrompt;
 }
 
 /**
@@ -319,7 +331,7 @@ function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
 
 /**
  * Starts the *initial* Claude session for an issue.
- * Sends only the issue details and initial instructions.
+ * Sends only the issue details and initial instructions based on the template.
  * Used when an issue is first assigned or processed.
  */
 async function startClaudeSession(issue, workspacePath) {
@@ -327,7 +339,7 @@ async function startClaudeSession(issue, workspacePath) {
     try {
       console.log(`Starting Claude session for issue ${issue.identifier}...`)
 
-      // Prepare initial prompt using XML structure
+      // Prepare initial prompt using the template
       const initialPrompt = buildInitialPrompt(issue)
 
       // Use the shared function to get the history path
@@ -406,7 +418,8 @@ async function startClaudeSession(issue, workspacePath) {
 
 /**
  * Sends subsequent input to an existing Claude session for an issue.
- * Kills the old process, starts a new one, and sends the *full* history + new input.
+ * Kills the old process, starts a new one, and sends the *full* history + new input,
+ * using the prompt template.
  * Used for follow-up interactions like user comments.
  */
 async function sendToClaudeSession(claudeProcess, newComment) {
@@ -434,19 +447,10 @@ async function sendToClaudeSession(claudeProcess, newComment) {
       const historyPath = getHistoryFilePath(workspacePath);
       const issue = claudeProcess.issue // Get the issue object passed during startClaudeSession
 
-      // Build the prompt using XML structure
+      // Build the prompt using the template and current context
       console.log(
-        `Building updated prompt with conversation history and comments...`
+        `Building updated prompt with conversation history and comments using template...`
       )
-
-      // Basic XML escaping function
-      const escapeXml = (unsafe) =>
-        unsafe
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&apos;')
 
       // Re-create issue details and comments sections
       const issueDetails = `
@@ -464,6 +468,7 @@ async function sendToClaudeSession(claudeProcess, newComment) {
       // Fetch/format comments EVERY time for subsequent prompts
       // Ensure issue object passed to startClaudeSession contains up-to-date comments
       const linearComments = formatLinearComments(issue.comments)
+      const branchName = escapeXml(issue.identifier.toLowerCase());
 
       // Process and append cleaned history
       let historySection = '<process_history>\n'
@@ -536,32 +541,24 @@ async function sendToClaudeSession(claudeProcess, newComment) {
       // Format the comment for Claude
       const commentPrompt = `
         A user has posted a new comment on the Linear issue you're working on:
-        
+
         <new_comment>
         ${newComment}
         </new_comment>
-        
+
         Please consider this information as you continue working on the issue.
         `
       const newInputSection = `<new_input>${escapeXml(
         commentPrompt
       )}</new_input>\n`
 
-      // Instructions section (can be simpler for subsequent turns)
-      const instructions = `
-<instructions>
-Continue working on the Linear issue based on the process history and the new input provided above.
-Use the provided tools and context. Remember the branch name convention: "${escapeXml(
-        issue.identifier.toLowerCase()
-      )}".
-First, check on the status of your branch, compared to the \`main\` branch, and check your pull request (if it exists yet), for its review status and code comments as well.
-When you are certain the task is complete and meets all the acceptance criteria laid out in the issue, create a pull request using 'gh' command line.
-You may also post the pull request when you believe you need review from someone in order to receive feedback or commentary, but only do this as a last resort.
-</instructions>
-`
-
-      // Combine all parts into the full prompt
-      const fullPrompt = `${issueDetails}\n${linearComments}\n${historySection}\n${newInputSection}\n${instructions}`
+      // Inject variables into the template
+      let fullPrompt = promptTemplate;
+      fullPrompt = fullPrompt.replace('{{issue_details}}', issueDetails);
+      fullPrompt = fullPrompt.replace('{{linear_comments}}', linearComments);
+      fullPrompt = fullPrompt.replace('{{branch_name}}', branchName);
+      fullPrompt = fullPrompt.replace('{{process_history}}', historySection);
+      fullPrompt = fullPrompt.replace('{{new_input}}', newInputSection);
 
       // Log new input marker to history file
       try {
@@ -645,7 +642,6 @@ async function postResponseToLinear(
   costUsd = null,
   durationMs = null
 ) {
-  // Removed historyPath parameter
   try {
     const { createComment } = require('./linearAgent') // Keep require inside if it's for lazy loading/circular dependency avoidance
 
@@ -683,7 +679,6 @@ async function postResponseToLinear(
 }
 
 module.exports = {
-  buildInitialPrompt,
   startClaudeSession,
   sendToClaudeSession,
   postResponseToLinear,

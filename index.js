@@ -15,7 +15,8 @@ async function main() {
     'LINEAR_WEBHOOK_SECRET',
     'WEBHOOK_PORT',
     'CLAUDE_PATH',
-    'WORKSPACE_BASE_DIR'
+    'WORKSPACE_BASE_DIR',
+    'PROMPT_TEMPLATE_PATH' // Add the new required variable
   ];
 
   for (const envVar of requiredEnvVars) {

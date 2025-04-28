@@ -28,6 +28,7 @@ A JavaScript application that integrates Linear with Claude to automate issue pr
 - `WEBHOOK_PORT`: Port for the webhook server
 - `CLAUDE_PATH`: Path to the Claude executable
 - `WORKSPACE_BASE_DIR`: Directory where issue workspaces will be created
+- `PROMPT_TEMPLATE_PATH`: Path to the file containing the prompt template for Claude. This file should contain placeholders like `{{issue_details}}`, `{{linear_comments}}`, `{{branch_name}}`, `{{process_history}}`, and `{{new_input}}`.
 
 ## Webhook Setup
 
