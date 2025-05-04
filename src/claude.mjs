@@ -1,30 +1,21 @@
-const { spawn } = require('child_process')
-const fs = require('fs-extra')
-const path = require('path')
-const readline = require('readline') // Import readline
-const os = require('os') // Import os module
-const { getHistoryFilePath } = require('./workspace'); // Import the shared function
+import { spawn } from 'child_process';
+import fs from 'fs-extra';
+
+import { getHistoryFilePath } from './workspace.mjs';
+import { createComment } from './linearAgent.mjs';
 
 // Ensure --print is included for non-interactive mode with stream-json
-/*
-Bash \
-Edit \
-Replace \
-FileWriteTool \
-FileEditTool
-*/
-const CLAUDE_ARGS = [
+// List of allowed tools could become an env var. Makes sense to do that actually
+const DEFAULT_CLAUDE_ARGS = [
   '--print',
   '--output-format',
   'stream-json',
   '--allowedTools',
-  'Bash',
+  'Bash', // could be constrained to specific bash commands
   'Edit',
   'Replace',
   'Write',
-  'FileWriteTool',
-  'FileEditTool',
-  'WebFetchTool'
+  'WebFetch' // could be constrained to specific web domains
 ]
 
 // --- Prompt Template Loading ---
@@ -116,7 +107,7 @@ function buildInitialPrompt(issue) {
 
 /**
  * Set up the event handlers for a Claude process
- * This is shared between startClaudeSession and sendToClaudeSession
+ * This is shared between startClaudeSession and interuptRunningProcessWithNewComment
  */
 function setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
   // Set up buffers to capture output
@@ -354,7 +345,7 @@ async function startClaudeSession(issue, workspacePath) {
 
       // Construct the command to pipe claude output through jq
       // Ensure CLAUDE_PATH and arguments are properly escaped for the shell
-      const claudeCmd = `${process.env.CLAUDE_PATH} ${CLAUDE_ARGS.join(' ')}`
+      const claudeCmd = `${process.env.CLAUDE_PATH} ${DEFAULT_CLAUDE_ARGS.join(' ')}`
       const fullCommand = `${claudeCmd} | jq -c .` // Pipe output to jq
 
       console.log(`Spawning Claude via shell: sh -c "${fullCommand}"`)
@@ -419,11 +410,10 @@ async function startClaudeSession(issue, workspacePath) {
 
 /**
  * Sends subsequent input to an existing Claude session for an issue.
- * Kills the old process, starts a new one, and sends the *full* history + new input,
- * using the prompt template.
+ * Kills the old process, starts a new one, uses --continue and provides the new comment input,
  * Used for follow-up interactions like user comments.
  */
-async function sendToClaudeSession(claudeProcess, newComment) {
+async function interuptRunningProcessWithNewComment(claudeProcess, newComment) {
   return new Promise(async (resolve, reject) => {
     try {
       if (!claudeProcess || claudeProcess.killed) {
@@ -446,120 +436,6 @@ async function sendToClaudeSession(claudeProcess, newComment) {
       const workspacePath = claudeProcess.issue.workspace
       // Use the shared function to get the history path (it should already be on claudeProcess, but recalculating is safer)
       const historyPath = getHistoryFilePath(workspacePath);
-      const issue = claudeProcess.issue // Get the issue object passed during startClaudeSession
-
-      // Build the prompt using the template and current context
-      console.log(
-        `Building updated prompt with conversation history and comments using template...`
-      )
-
-      // Re-create issue details and comments sections
-      const issueDetails = `
-<issue_details>
-  <identifier>${escapeXml(issue.identifier)}</identifier>
-  <title>${escapeXml(issue.title)}</title>
-  <description>${escapeXml(
-    issue.description || 'No description provided'
-  )}</description>
-  <status>${escapeXml(issue.state?.name || 'Unknown')}</status>
-  <priority>${issue.priority}</priority>
-  <url>${escapeXml(issue.url)}</url>
-</issue_details>
-`
-      // Fetch/format comments EVERY time for subsequent prompts
-      // Ensure issue object passed to startClaudeSession contains up-to-date comments
-      const linearComments = formatLinearComments(issue.comments)
-      const branchName = escapeXml(issue.identifier.toLowerCase());
-
-      // Process and append cleaned history
-      let historySection = '<process_history>\n'
-      let historyTokens = 0
-      if (fs.existsSync(historyPath)) {
-        try {
-          const historyContent = fs.readFileSync(historyPath, 'utf8')
-          const lines = historyContent.trim().split('\n')
-
-          for (const line of lines) {
-            const trimmedLine = line.trim()
-            if (!trimmedLine.startsWith('{') || !trimmedLine.endsWith('}')) {
-              // Allow history markers
-              if (!trimmedLine.startsWith('[')) {
-                console.warn(
-                  `Skipping non-JSON/non-marker line in history: ${trimmedLine.substring(
-                    0,
-                    50
-                  )}...`
-                )
-              } else {
-                historySection += trimmedLine + '\n' // Keep markers
-              }
-              continue
-            }
-            try {
-              const jsonEntry = JSON.parse(trimmedLine)
-              // Clean the entry (remove metadata)
-              const cleanedEntry = { ...jsonEntry }
-              delete cleanedEntry.id
-              delete cleanedEntry.model
-              delete cleanedEntry.stop_reason
-              delete cleanedEntry.stop_sequence
-              delete cleanedEntry.usage
-              if (
-                cleanedEntry.role === 'user' &&
-                Array.isArray(cleanedEntry.content)
-              ) {
-                cleanedEntry.content = cleanedEntry.content.map((item) => {
-                  if (item.type === 'tool_result') {
-                    const cleanedItem = { ...item }
-                    delete cleanedItem.usage // Remove usage if nested
-                    return cleanedItem
-                  }
-                  return item
-                })
-              }
-
-              const cleanedLine = JSON.stringify(cleanedEntry)
-              historySection += cleanedLine + '\n'
-              historyTokens += Math.ceil(cleanedLine.length / 4)
-            } catch (jsonErr) {
-              console.warn(
-                `Skipping invalid JSON line in history during rebuild: ${jsonErr.message}`
-              )
-            }
-          }
-          console.log(
-            `Appended cleaned history (${lines.length} entries, estimated ${historyTokens} tokens)`
-          )
-        } catch (err) {
-          console.error(
-            `Failed to read or process conversation history: ${err.message}`
-          )
-        }
-      }
-      historySection += '</process_history>\n'
-
-      // New input section
-      // Format the comment for Claude
-      const commentPrompt = `
-        A user has posted a new comment on the Linear issue you're working on:
-
-        <new_comment>
-        ${newComment}
-        </new_comment>
-
-        Please consider this information as you continue working on the issue.
-        `
-      const newInputSection = `<new_input>${escapeXml(
-        commentPrompt
-      )}</new_input>\n`
-
-      // Inject variables into the template
-      let fullPrompt = promptTemplate;
-      fullPrompt = fullPrompt.replace('{{issue_details}}', issueDetails);
-      fullPrompt = fullPrompt.replace('{{linear_comments}}', linearComments);
-      fullPrompt = fullPrompt.replace('{{branch_name}}', branchName);
-      fullPrompt = fullPrompt.replace('{{process_history}}', historySection);
-      fullPrompt = fullPrompt.replace('{{new_input}}', newInputSection);
 
       // Log new input marker to history file
       try {
@@ -577,7 +453,11 @@ async function sendToClaudeSession(claudeProcess, newComment) {
       console.log(
         `Starting new Claude process with updated prompt via stdin (piped through jq)...`
       )
-      const claudeCmd = `${process.env.CLAUDE_PATH} ${CLAUDE_ARGS.join(' ')}`
+      const CLAUDE_ARGS_WITH_CONTINUE = DEFAULT_CLAUDE_ARGS.concat([
+        '--continue',
+        newComment,
+      ])
+      const claudeCmd = `${process.env.CLAUDE_PATH} ${CLAUDE_ARGS_WITH_CONTINUE.join(' ')}`
       const fullCommand = `${claudeCmd} | jq -c .` // Pipe output to jq
 
       const newClaudeProcess = spawn(fullCommand, {
@@ -644,7 +524,6 @@ async function postResponseToLinear(
   durationMs = null
 ) {
   try {
-    const { createComment } = require('./linearAgent') // Keep require inside if it's for lazy loading/circular dependency avoidance
 
     console.log(`\n===== Posting Response to Linear for issue ${issueId} =====`)
     console.log(`Response length: ${response.length} characters`)
@@ -679,8 +558,8 @@ async function postResponseToLinear(
   }
 }
 
-module.exports = {
+export {
   startClaudeSession,
-  sendToClaudeSession,
+  interuptRunningProcessWithNewComment,
   postResponseToLinear,
 }

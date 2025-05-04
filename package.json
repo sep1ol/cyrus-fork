@@ -2,13 +2,14 @@
   "name": "linear-claude-agent",
   "version": "1.0.0",
   "description": "Integration between Linear and Claude for automated issue processing",
-  "main": "index.js",
+  "main": "index.mjs",
   "bin": {
-    "linear-claude-agent": "./index.js"
+    "linear-claude-agent": "./index.mjs"
   },
+  "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
+    "start": "node index.mjs",
+    "dev": "nodemon index.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

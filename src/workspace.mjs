@@ -1,7 +1,7 @@
-const fs = require('fs-extra');
-const path = require('path');
-const { spawn } = require('child_process');
-const os = require('os'); // Add os module requirement
+import fs from 'fs-extra';
+import path from 'path';
+import { spawn } from 'child_process';
+import os from 'os'
 
 /**
  * Create workspace directory structure
@@ -428,7 +428,7 @@ function getHistoryFilePath(workspacePath) {
   return path.join(historyDir, 'conversation-history.jsonl');
 }
 
-module.exports = {
+export {
   setupWorkspaceBaseDir,
   createWorkspace,
   getWorkspaceForIssue,

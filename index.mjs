@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-require('dotenv').config();
-const { startLinearAgent } = require('./src/linearAgent');
-const { startWebhookServer } = require('./src/webhookServer');
-const { setupWorkspaceBaseDir, cleanupAllWorktrees } = require('./src/workspace');
+import 'dotenv/config';
+import { startLinearAgent } from './src/linearAgent.mjs';
+import { startWebhookServer } from './src/webhookServer.mjs';
+import { setupWorkspaceBaseDir, cleanupAllWorktrees } from './src/workspace.mjs';
 
 let webhookServer;
 let isShuttingDown = false;

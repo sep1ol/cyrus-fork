@@ -23,7 +23,8 @@ A JavaScript application that integrates Linear with Claude to automate issue pr
 ## Environment Variables
 
 - `LINEAR_API_TOKEN`: Your Linear API token
-- `LINEAR_USER_ID`: Your Linear user ID
+- `LINEAR_USER_ID`: The Agent Linear user ID
+- `LINEAR_USERNAME`: The Agent Linear username
 - `LINEAR_WEBHOOK_SECRET`: Secret for verifying webhook requests
 - `WEBHOOK_PORT`: Port for the webhook server
 - `CLAUDE_PATH`: Path to the Claude executable

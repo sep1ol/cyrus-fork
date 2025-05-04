@@ -1,6 +1,6 @@
-const express = require('express');
-const crypto = require('crypto');
-const { handleCommentEvent, handleIssueUpdateEvent, handleIssueCreateEvent } = require('./linearAgent');
+import express from 'express';
+import crypto from 'crypto';
+import { handleCommentEvent, handleIssueUpdateEvent, handleIssueCreateEvent } from './linearAgent.mjs';
 
 /**
  * Verify Linear webhook signature
@@ -82,6 +82,6 @@ async function startWebhookServer(port) {
   });
 }
 
-module.exports = {
+export {
   startWebhookServer
 };
