@@ -22,3 +22,5 @@ pids
 .DS_Store
 Thumbs.db
 workspaces
+
+**/.claude/settings.local.json

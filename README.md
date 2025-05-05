@@ -63,3 +63,15 @@ A JavaScript application that integrates Linear with Claude to automate issue pr
 - Ensure your Linear API token and user ID are correct
 - Verify that the Claude executable path is correct
 - Make sure your webhook URL is publicly accessible
+
+## Debug Logging Options
+
+To reduce log verbosity, set the following environment variables in your `.env` file:
+
+- `DEBUG_WEBHOOKS=true`: Enable detailed webhook event logging
+- `DEBUG_SELF_WEBHOOKS=true`: Log when agent ignores its own comments (prevents infinite loops)
+- `DEBUG_LINEAR_API=true`: Show detailed Linear API request/response logs
+- `DEBUG_CLAUDE_RESPONSES=true`: Log full Claude response content
+- `DEBUG_COMMENT_CONTENT=true`: Log full comment text when posting to Linear
+
+By default, all these options are disabled for minimal, focused logging. Enable specific flags only when debugging particular issues.
