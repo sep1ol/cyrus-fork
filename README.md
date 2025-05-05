@@ -257,6 +257,20 @@ When you first start the agent, the webhook server will run even if authenticati
 - Ensure you've enabled the correct scopes (`app:assignable` and `app:mentionable`)
 - For OAuth issues, try the reset endpoint: `http://localhost:3000/oauth/reset`
 
+## Important Notes
+
+### GitHub Actions
+
+When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authentication. This means:
+
+- All PRs and commits will be created under your GitHub account
+- Comments and mentions in the PR will notify your account
+- Review requests will be attributed to you
+- Your repository permissions apply to all operations
+- The only indication that Claude assisted is the "Co-Authored-By" commit trailer
+
+Always review PR contents before allowing Claude to create them on your behalf.
+
 ## Documentation Resources
 
 - [Linear Agents Documentation](https://linear.app/developers/agents)
