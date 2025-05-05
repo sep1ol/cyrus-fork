@@ -34,7 +34,7 @@ A JavaScript application that integrates Linear with Claude to automate issue pr
 - `WEBHOOK_PORT`: Port for the webhook server
 - `CLAUDE_PATH`: Path to the Claude Code CLI executable
 - `WORKSPACE_BASE_DIR`: Directory where issue workspaces will be created
-- `PROMPT_TEMPLATE_PATH`: Path to the file containing the prompt template for Claude. This file should contain placeholders like `{{issue_details}}`, `{{linear_comments}}`, `{{branch_name}}`, `{{process_history}}`, and `{{new_input}}`.
+- `PROMPT_TEMPLATE_PATH`: Path to the file containing the prompt template for Claude. This file should contain placeholders like `{{issue_details}}`, `{{linear_comments}}`, `{{branch_name}}`, and `{{new_input}}`.
 - `ANTHROPIC_API_KEY`: Your Anthropic API key (required unless you have Claude Max with authenticated CLI)
 
 ### Authentication Options (one required)
