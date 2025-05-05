@@ -21,7 +21,8 @@ A JavaScript application that integrates Linear with Claude to automate issue pr
 2. Create a `.env` file based on `.env.example`
 3. Fill in your Linear API token, user ID, and webhook secret
 4. Install dependencies with `npm install`
-5. Start the agent with `npm start`
+5. Optional: Install globally with `npm install -g .` (allows running `linear-claude-agent` from any directory)
+6. Start the agent with `npm start` or `linear-claude-agent` if installed globally
 
 ## Environment Variables
 
@@ -153,14 +154,17 @@ There are several ways to run the agent:
    # Start an OAuth authorization server
    node scripts/start-auth-server.mjs
    
-   # In your browser, visit:
-   # http://localhost:3000/oauth/authorize
+   # Start ngrok in another terminal
+   ngrok http 3000
+   
+   # In your browser, visit (replace with your ngrok URL):
+   # https://your-ngrok-url.ngrok.io/oauth/authorize
    ```
 
 4. **OAuth Reset** (if you need to reauthorize):
    ```
-   # Visit in your browser:
-   # http://localhost:3000/oauth/reset
+   # Visit in your browser (replace with your ngrok URL):
+   # https://your-ngrok-url.ngrok.io/oauth/reset
    ```
 
 ## Authentication Flow
@@ -200,16 +204,6 @@ There are several ways to run the agent:
 - [Linear Webhooks Documentation](https://developers.linear.app/docs/webhooks/getting-started)
 - [Claude Code Documentation](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
 - [Anthropic Claude API Documentation](https://docs.anthropic.com/claude/reference/)
-
-## Debug Logging Options
-
-To reduce log verbosity, set the following environment variables in your `.env` file:
-
-- `DEBUG_WEBHOOKS=true`: Enable detailed webhook event logging
-- `DEBUG_SELF_WEBHOOKS=true`: Log when agent ignores its own comments (prevents infinite loops)
-- `DEBUG_LINEAR_API=true`: Show detailed Linear API request/response logs
-- `DEBUG_CLAUDE_RESPONSES=true`: Log full Claude response content
-- `DEBUG_COMMENT_CONTENT=true`: Log full comment text when posting to Linear
 
 ## License
 
