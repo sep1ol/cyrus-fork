@@ -1,7 +1,7 @@
 {
   "name": "linear-claude-agent",
   "version": "1.0.0",
-  "description": "Integration between Linear and Claude for automated issue processing",
+  "description": "Integration between Linear and Claude for automated issue processing using Linear's Agent API",
   "main": "index.mjs",
   "bin": {
     "linear-claude-agent": "./index.mjs"
@@ -11,16 +11,27 @@
     "start": "node index.mjs",
     "dev": "nodemon index.mjs",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "oauth:server": "node scripts/start-auth-server.mjs",
+    "oauth:reset": "node scripts/reset-oauth.mjs"
   },
   "keywords": [
     "linear",
     "claude",
+    "linear-agent",
+    "anthropic",
     "ai",
-    "agent"
+    "agent",
+    "issue-tracker",
+    "webhook",
+    "oauth"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Ceedar",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ceedar-lab/linear-claude-agent"
+  },
   "dependencies": {
     "@linear/sdk": "^39.0.0",
     "child_process": "^1.0.2",
