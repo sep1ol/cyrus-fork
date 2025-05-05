@@ -20,6 +20,7 @@ export class LinearIssueService extends IssueService {
     this.sessionManager = sessionManager;
     this.claudeService = claudeService;
     this.workspaceService = workspaceService;
+    this.isAuthenticated = false; // Track authentication status
   }
   
   /**
@@ -68,14 +69,41 @@ export class LinearIssueService extends IssueService {
    * @inheritdoc
    */
   async fetchAssignedIssues() {
-    const issues = await this.linearClient.issues({
-      filter: {
-        assignee: { id: { eq: this.userId } },
-        state: { type: { nin: ['canceled', 'completed'] } },
-      },
-    });
-    
-    return issues.nodes.map(issue => this._convertToDomainIssue(issue));
+    try {
+      const issues = await this.linearClient.issues({
+        filter: {
+          assignee: { id: { eq: this.userId } },
+          state: { type: { nin: ['canceled', 'completed'] } },
+        },
+      });
+      
+      // If we get here, we're authenticated
+      this.isAuthenticated = true;
+      console.log('✅ Authenticated successfully with Linear API');
+      
+      return issues.nodes.map(issue => this._convertToDomainIssue(issue));
+    } catch (error) {
+      this.isAuthenticated = false;
+      
+      // Handle authentication errors gracefully
+      if (error.type === 'AuthenticationError' || 
+          (error.message && error.message.includes('Authentication required'))) {
+        console.log('⚠️ Please authenticate with Linear to fetch issues.');
+        throw new Error(`Authentication required. Please use the OAuth flow to authenticate with Linear.`);
+      } else {
+        // For other errors, provide a concise message
+        console.error(`Error fetching assigned issues: ${error.message || String(error)}`);
+        throw error;
+      }
+    }
+  }
+  
+  /**
+   * Check if the service is authenticated with Linear
+   * @returns {boolean} - Authentication status
+   */
+  getAuthStatus() {
+    return this.isAuthenticated;
   }
   
   /**

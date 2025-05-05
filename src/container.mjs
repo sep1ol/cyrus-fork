@@ -153,14 +153,34 @@ export function createContainer() {
                 await client.viewer;
                 console.log('✅ Linear API connection test successful');
               } catch (testError) {
-                console.error('❌ Linear API connection test failed:', testError);
-                // Reset client to force re-initialization on next call
-                client = null;
-                throw new Error('Linear API connection test failed');
+                // Check if this is an authentication error (most common when setting up)
+                if (testError.type === 'AuthenticationError' || 
+                    (testError.raw && testError.raw.message && testError.raw.message.includes('Authentication required'))) {
+                  console.log('⚠️ Authentication required: Token validation failed');
+                  // Reset client to force re-initialization on next call
+                  client = null;
+                  throw new Error('Authentication required. Please complete the OAuth flow.');
+                } else {
+                  // For other errors, log a simplified message
+                  console.error('❌ Linear API connection test failed:', testError.message || String(testError));
+                  // Reset client to force re-initialization on next call
+                  client = null;
+                  throw new Error('Linear API connection test failed');
+                }
               }
             } catch (error) {
-              console.error('Failed to initialize Linear client:', error);
-              throw new Error('Failed to initialize Linear client');
+              // Simplified error message for authentication issues
+              if (error.message && error.message.includes('Authentication required')) {
+                console.log('⚠️ Linear authentication needed. Please complete the OAuth flow.');
+                throw new Error('Authentication required. Please complete the OAuth flow.');
+              } else if (error.message && error.message.includes('No authentication method available')) {
+                console.log('⚠️ No authentication credentials found. Please set up Linear authentication.');
+                throw new Error('No authentication credentials available. Please check your configuration.');
+              } else {
+                // For other errors, provide a concise message
+                console.error('Failed to initialize Linear client:', error.message || String(error));
+                throw new Error('Failed to initialize Linear client');
+              }
             }
           }
           

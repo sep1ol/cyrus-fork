@@ -34,22 +34,55 @@ export class App {
       // Get configuration
       const config = this.container.get('config');
       
-      // Start webhook server
+      // Start webhook server first (needed for OAuth flow)
       const webhookService = this.container.get('webhookService');
       this.webhookServer = await webhookService.startServer(config.webhook.port);
+      console.log(`✅ Webhook server listening on port ${config.webhook.port}`);
       
-      // Start Linear agent
-      const issueService = this.container.get('issueService');
-      await issueService.fetchAssignedIssues().then(issues => {
-        issues.forEach(issue => {
-          issueService.initializeIssueSession(issue).catch(err => {
-            console.error(`Failed to initialize session for issue ${issue.identifier}:`, err);
+      try {
+        // Try to start Linear agent - this may fail if not authenticated
+        console.log('Attempting to start Linear agent...');
+        const issueService = this.container.get('issueService');
+        const issues = await issueService.fetchAssignedIssues();
+        
+        if (issues && issues.length > 0) {
+          console.log(`Found ${issues.length} assigned issues to process.`);
+          issues.forEach(issue => {
+            issueService.initializeIssueSession(issue).catch(err => {
+              console.error(`Failed to initialize session for issue ${issue.identifier}:`, err);
+            });
           });
-        });
-      });
+        } else {
+          console.log('No assigned issues found. Agent is ready to receive new assignments.');
+        }
+        
+        console.log(`✅ Linear agent started successfully.`);
+      } catch (linearError) {
+        // Log the error but don't shut down the application
+        if (linearError.message && linearError.message.includes('Authentication required')) {
+          // Authentication error - clean and friendly message
+          console.log('\n──────────────────────────────────────────────────────────────────');
+          console.log('⚠️  Authentication Required');
+          console.log('──────────────────────────────────────────────────────────────────');
+          console.log('The Linear agent needs authentication to access your Linear account.');
+          console.log('The webhook server is still running, so you can complete the OAuth flow:');
+          console.log('\n👉 Visit this URL in your browser to authenticate:');
+          console.log(`👉 http://localhost:${config.webhook.port}/oauth/authorize`);
+          console.log('\nAfter authentication, the agent will automatically use your credentials.');
+          console.log('──────────────────────────────────────────────────────────────────\n');
+        } else {
+          // Other errors - more concise message
+          console.error('Failed to start Linear agent:', linearError.message || String(linearError));
+          console.log('\n⚠️ Linear agent failed to initialize, but webhook server is still running.');
+          console.log('👉 Visit the dashboard to check status and authenticate:');
+          console.log(`👉 http://localhost:${config.webhook.port}/\n`);
+        }
+        
+        // Return early without throwing - the webhook server is still running
+        return;
+      }
       
-      console.log(`✅ Linear agent and webhook server started successfully.`);
-      console.log(`Webhook server listening on port ${config.webhook.port}`);
+      console.log(`✅ Application running successfully.`);
     } catch (error) {
       console.error('Failed to start application:', error);
       await this.shutdown();

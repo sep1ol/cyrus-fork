@@ -184,6 +184,21 @@ There are several ways to run the agent:
 2. If OAuth fails or is not set up, it falls back to the API token
 3. As a last resort, it tries to use a personal access token if provided
 
+### OAuth First-Time Setup
+
+When you first start the agent, the webhook server will run even if authentication fails. This allows you to complete the OAuth flow:
+
+1. Start the agent: `npm start`
+2. If not authenticated, you'll see a message like:
+   ```
+   ⚠️ Linear agent failed to initialize, but webhook server is still running.
+   👉 You can complete the OAuth flow by visiting:
+   👉 http://localhost:3000/oauth/authorize
+   ```
+3. Visit the provided URL in your browser to authenticate
+4. After successful authentication, the agent will use the new token automatically
+5. You can also visit the dashboard at `http://localhost:3000/` to see your authentication status
+
 ## Development
 
 1. **Scripts**:

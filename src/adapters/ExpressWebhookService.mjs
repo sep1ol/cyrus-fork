@@ -88,6 +88,13 @@ export class ExpressWebhookService extends WebhookService {
   async processEvent(type, action, data) {
     console.log(`Processing legacy event of type: ${type}/${action}`);
     
+    // Check if we're authenticated before processing events that require API calls
+    if (!this.issueService.getAuthStatus()) {
+      console.log('⚠️ Received webhook event but not authenticated with Linear API.');
+      console.log(`Webhook event ${type}/${action} ignored. Complete the OAuth flow first.`);
+      return;
+    }
+    
     // Handle comment creation events
     if (type === 'Comment' && action === 'create') {
       // Additional validation for comment fields we need
@@ -155,6 +162,13 @@ export class ExpressWebhookService extends WebhookService {
     if (process.env.DEBUG_WEBHOOKS === 'true') {
       // Log notification data details only in debug mode
       console.log('Notification data:', JSON.stringify(data, null, 2));
+    }
+    
+    // Check if we're authenticated before processing events that require API calls
+    if (!this.issueService.getAuthStatus()) {
+      console.log('⚠️ Received agent notification but not authenticated with Linear API.');
+      console.log(`Agent notification ${action} ignored. Complete the OAuth flow first.`);
+      return;
     }
     
     // FIRST - Check if ANY notification is from the agent itself
@@ -414,6 +428,92 @@ export class ExpressWebhookService extends WebhookService {
     
     // Add OAuth endpoints if oauthHelper is available
     if (this.oauthHelper) {
+      // Add a dashboard that shows authentication status and provides helpful links
+      app.get('/', async (req, res) => {
+        try {
+          const authStatus = await this.oauthHelper.hasValidToken();
+          const linearClientStatus = this.issueService.getAuthStatus();
+          
+          let html = `
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Linear Claude Agent Dashboard</title>
+                <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; line-height: 1.6; }
+                  h1 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+                  .status { margin: 20px 0; padding: 15px; border-radius: 5px; }
+                  .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+                  .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+                  .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+                  .action { margin: 20px 0; }
+                  .btn { display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; 
+                         text-decoration: none; border-radius: 4px; font-weight: bold; }
+                  .btn-reset { background-color: #6c757d; }
+                  .code { font-family: monospace; background-color: #f5f5f5; padding: 10px; border-radius: 3px; }
+                </style>
+              </head>
+              <body>
+                <h1>Linear Claude Agent Dashboard</h1>
+          `;
+          
+          // Authentication status box
+          if (authStatus && linearClientStatus) {
+            html += `
+              <div class="status success">
+                <h2>✅ Authentication Status: Authenticated</h2>
+                <p>Your Linear Claude Agent is successfully authenticated and running.</p>
+              </div>
+              <div class="action">
+                <a class="btn" href="/health">Check Health</a>
+                <a class="btn btn-reset" href="/oauth/reset">Reset Authentication</a>
+              </div>
+            `;
+          } else if (authStatus) {
+            html += `
+              <div class="status warning">
+                <h2>⚠️ Authentication Status: Token Valid but Not Working</h2>
+                <p>You have a valid OAuth token, but there's an issue connecting to the Linear API. This could be due to permission issues or token scope problems.</p>
+              </div>
+              <div class="action">
+                <a class="btn" href="/oauth/reset">Reset Authentication</a>
+              </div>
+            `;
+          } else {
+            html += `
+              <div class="status error">
+                <h2>❌ Authentication Status: Not Authenticated</h2>
+                <p>You need to authenticate with Linear to use this agent.</p>
+              </div>
+              <div class="action">
+                <a class="btn" href="/oauth/authorize">Authenticate with Linear</a>
+              </div>
+            `;
+          }
+          
+          // Add webhook information
+          html += `
+            <h2>Webhook Information</h2>
+            <p>For the Linear Agent API to work, you need to set up a webhook in Linear pointing to this server.</p>
+            <div class="code">
+              <p>Webhook URL: <strong>${req.protocol}://${req.get('host')}/webhook</strong></p>
+              <p>Resource Types: Comments, Issues</p>
+              <p>For Agent API: Enable "App User Notification" events</p>
+            </div>
+          `;
+          
+          html += `
+              </body>
+            </html>
+          `;
+          
+          res.send(html);
+        } catch (error) {
+          console.error('Error rendering dashboard:', error);
+          res.status(500).send('Error rendering dashboard: ' + error.message);
+        }
+      });
+      
       // OAuth authorization endpoint - redirects to Linear
       app.get('/oauth/authorize', (req, res) => {
         try {
@@ -441,10 +541,66 @@ export class ExpressWebhookService extends WebhookService {
           const tokenInfo = await this.oauthHelper.handleCallback(code, state);
           
           console.log('OAuth flow completed successfully');
-          res.status(200).send('Authentication successful! You can close this window.');
+          
+          // HTML response with auto-redirect to dashboard
+          const html = `
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Authentication Successful</title>
+                <meta http-equiv="refresh" content="3;url=/" />
+                <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; line-height: 1.6; text-align: center; }
+                  .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 20px; border-radius: 5px; }
+                </style>
+              </head>
+              <body>
+                <div class="success">
+                  <h1>✅ Authentication Successful!</h1>
+                  <p>You have successfully authenticated with Linear.</p>
+                  <p>Redirecting to dashboard in 3 seconds...</p>
+                  <p><a href="/">Click here if you are not redirected automatically</a></p>
+                </div>
+              </body>
+            </html>
+          `;
+          
+          res.status(200).send(html);
+          
+          // Try to initialize the Linear client and fetch issues now
+          console.log('Authentication successful! The agent will now attempt to use the new token.');
+          try {
+            // Attempt to fetch assigned issues to verify the token works and update auth status
+            await this.issueService.fetchAssignedIssues();
+            console.log('✅ Successfully initialized Linear client with new token!');
+          } catch (initError) {
+            console.error('Error initializing Linear client with new token:', initError);
+            console.log('You may need to restart the application for the token to take effect.');
+          }
         } catch (error) {
           console.error('Error handling OAuth callback:', error);
-          res.status(500).send('Error processing OAuth callback');
+          const errorHtml = `
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Authentication Error</title>
+                <meta http-equiv="refresh" content="5;url=/" />
+                <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; line-height: 1.6; text-align: center; }
+                  .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 20px; border-radius: 5px; }
+                </style>
+              </head>
+              <body>
+                <div class="error">
+                  <h1>⚠️ Authentication Error</h1>
+                  <p>An error occurred during authentication: ${error.message}</p>
+                  <p>Redirecting to dashboard in 5 seconds...</p>
+                  <p><a href="/">Click here if you are not redirected automatically</a></p>
+                </div>
+              </body>
+            </html>
+          `;
+          res.status(500).send(errorHtml);
         }
       });
       
