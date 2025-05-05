@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://ceedar.ai">
-    <img src="https://img.shields.io/badge/Built%20by-Ceedar.ai-4A47C3?style=for-the-badge" alt="Built by Ceedar.ai">
+    <img src="https://img.shields.io/badge/Built%20by-Ceedar.ai-b8ec83?style=for-the-badge&logoColor=black&labelColor=333333" alt="Built by Ceedar.ai">
   </a>
 </p>
 
