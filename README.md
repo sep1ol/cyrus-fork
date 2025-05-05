@@ -114,17 +114,24 @@ See the [Linear Webhooks documentation](https://developers.linear.app/docs/webho
 The Linear Claude Agent connects Linear's issue tracking with Anthropic's Claude Code:
 
 ```
-┌────────────┐        ┌───────────────┐          ┌───────────────┐
-│            │        │               │          │               │
-│   Linear   │◄───────┤  Linear Agent ├─────────►│  Claude Code  │
-│            │        │               │          │               │
-└────────────┘        └───────────────┘          └───────────────┘
-      ▲                      │                          │
-      │                      ▼                          ▼
+┌────────────┐        ┌───────────────┐          
+│            │        │               │          
+│   Linear   │◄───────┤  Linear Agent │          
+│            │        │               │          
+└────────────┘        └───────────────┘          
+      ▲                      │                   
+      │                      ▼                   
       │               ┌───────────────┐          ┌───────────────┐
       └───────────────┤   Webhooks    │          │  Git Worktree │
                       │               │          │               │
                       └───────────────┘          └───────────────┘
+                                                        │
+                                                        ▼
+                                                 ┌───────────────┐
+                                                 │               │
+                                                 │  Claude Code  │
+                                                 │               │
+                                                 └───────────────┘
 ```
 
 ### Flow
