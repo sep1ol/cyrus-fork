@@ -69,9 +69,7 @@ Follow the [official Linear Agent documentation](https://linear.app/developers/a
 
 4. Once created, configure your OAuth settings:
    - Copy the Client ID and Client Secret for your `.env` file
-   - In the "OAuth" section, add the scopes needed:
-     - `app:assignable`: Required for the agent to be assigned to issues
-     - `app:mentionable`: Required for the agent to be @mentioned
+   - The required scopes (`app:assignable` and `app:mentionable`) are automatically included with Agent applications
 
 5. Set up webhooks:
    - Enable "Inbox notifications" for agent notifications
