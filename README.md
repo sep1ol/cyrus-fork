@@ -21,6 +21,55 @@ A JavaScript application that integrates Linear with Claude to automate issue pr
 - OAuth authentication for secure API access
 - Webhook signature verification
 
+## How It Works
+
+The Linear Claude Agent connects Linear's issue tracking with Anthropic's Claude Code:
+
+```
+┌────────────┐        ┌───────────────┐          
+│            │        │               │          
+│   Linear   │◄───────┤  Linear Agent ├─────────┐          
+│            │        │               │         │ 
+└────────────┘        └───────────────┘         │ 
+      ▲                      │                  │ 
+      │                      ▼                  ▼ 
+      │               ┌───────────────┐   ┌───────────────┐
+      └───────────────┤   Webhooks    │   │  Git Worktree │
+                      │               │   │               │
+                      └───────────────┘   └───────────────┘
+                                                  │
+                                                  ▼
+                                           ┌───────────────┐
+                                           │               │
+                                           │  Claude Code  │
+                                           │               │
+                                           └───────────────┘
+```
+
+### Flow
+
+1. When started, the agent fetches all issues assigned to the specified user
+2. For each issue, it creates a workspace (a git worktree if in a git repo).
+   - It checks if the workspace directory or branch already exists to allow persistence.
+   - If a script named `secretagentsetup.sh` exists in the root of the repository, it is executed within the new worktree after creation/setup. This allows for project-specific initialization (e.g., installing dependencies).
+3. It starts a Claude Code session within the workspace.
+   - For new issues, a full prompt template is used with issue details injected
+4. Initial responses from Claude are posted back to Linear as comments
+5. When users comment on issues, the webhook receives the event
+6. The comment is forwarded to the corresponding Claude session
+   - Uses the `--continue` flag to maintain conversation history and context
+   - No need to reload the full issue context for each comment
+7. Claude's responses are posted back to Linear
+
+### Conversation Continuity
+
+The agent uses two different approaches for prompting Claude:
+
+- **Initial Issue Assignment**: Loads the full prompt template with issue details, description, and existing comments
+- **New Comments**: Uses the `--continue` flag which maintains the entire conversation thread and context, only passing the new comment text
+
+This approach ensures continuous context while being efficient with token usage.
+
 ## Setup
 
 1. Clone this repository
@@ -108,43 +157,6 @@ ngrok http 3000
 ```
 
 See the [Linear Webhooks documentation](https://developers.linear.app/docs/webhooks/getting-started) for more details on webhooks.
-
-## How It Works
-
-The Linear Claude Agent connects Linear's issue tracking with Anthropic's Claude Code:
-
-```
-┌────────────┐        ┌───────────────┐          
-│            │        │               │          
-│   Linear   │◄───────┤  Linear Agent ├─────────┐          
-│            │        │               │         │ 
-└────────────┘        └───────────────┘         │ 
-      ▲                      │                  │ 
-      │                      ▼                  ▼ 
-      │               ┌───────────────┐   ┌───────────────┐
-      └───────────────┤   Webhooks    │   │  Git Worktree │
-                      │               │   │               │
-                      └───────────────┘   └───────────────┘
-                                                  │
-                                                  ▼
-                                           ┌───────────────┐
-                                           │               │
-                                           │  Claude Code  │
-                                           │               │
-                                           └───────────────┘
-```
-
-### Flow
-
-1. When started, the agent fetches all issues assigned to the specified user
-2. For each issue, it creates a workspace (a git worktree if in a git repo).
-   - It checks if the workspace directory or branch already exists to allow persistence.
-   - If a script named `secretagentsetup.sh` exists in the root of the repository, it is executed within the new worktree after creation/setup. This allows for project-specific initialization (e.g., installing dependencies).
-3. It starts a Claude Code session within the workspace.
-4. Initial responses from Claude are posted back to Linear as comments
-5. When users comment on issues, the webhook receives the event
-6. The comment is forwarded to the corresponding Claude session
-7. Claude's responses are posted back to Linear
 
 ## Running the Agent
 
