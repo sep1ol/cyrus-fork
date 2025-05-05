@@ -1,5 +1,11 @@
 # Linear Claude Agent
 
+<p align="center">
+  <a href="https://ceedar.ai">
+    <img src="https://img.shields.io/badge/Built%20by-Ceedar.ai-4A47C3?style=for-the-badge" alt="Built by Ceedar.ai">
+  </a>
+</p>
+
 A JavaScript application that integrates Linear with Claude to automate issue processing. This agent uses Linear's Agent API to assist with software development tasks by providing AI-powered responses in Linear issues.
 
 ## Features
@@ -209,7 +215,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Credits
 
-Developed by [Ceedar](https://ceedar.io/)
+Developed by [Ceedar](https://ceedar.ai/)
 
 Made possible by:
 - [Linear API](https://developers.linear.app/)
