@@ -4,8 +4,8 @@
   <a href="https://ceedar.ai">
     <img src="https://img.shields.io/badge/Built%20by-Ceedar.ai-b8ec83?style=for-the-badge&logoColor=black&labelColor=333333" alt="Built by Ceedar.ai">
   </a>
-  <a href="https://github.com/ceedar-lab/linear-claude-agent/actions">
-    <img src="https://github.com/ceedar-lab/linear-claude-agent/actions/workflows/tests.yml/badge.svg" alt="Tests">
+  <a href="https://github.com/ceedario/secret-agents/actions">
+    <img src="https://github.com/ceedario/secret-agents/actions/workflows/tests.yml/badge.svg" alt="Tests">
   </a>
 </p>
 

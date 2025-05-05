@@ -30,7 +30,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ceedar-lab/linear-claude-agent"
+    "url": "https://github.com/ceedario/secret-agents"
   },
   "dependencies": {
     "@linear/sdk": "^39.0.0",
