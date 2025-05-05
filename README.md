@@ -26,27 +26,47 @@ A JavaScript application that integrates Linear with Claude to automate issue pr
 
 ## How It Works
 
-The Linear Claude Agent connects Linear's issue tracking with Anthropic's Claude Code:
+The Linear Claude Agent connects Linear's issue tracking with Anthropic's Claude Code using a layered architecture. Here's a breakdown of how the components interact:
 
 ```
-┌────────────┐        ┌───────────────┐          
-│            │        │               │          
-│   Linear   │◄───────┤  Linear Agent ├─────────┐          
-│            │        │               │         │ 
-└────────────┘        └───────────────┘         │ 
-      ▲                      │                  │ 
-      │                      ▼                  ▼ 
-      │               ┌───────────────┐   ┌───────────────┐
-      └───────────────┤   Webhooks    │   │  Git Worktree │
-                      │               │   │               │
-                      └───────────────┘   └───────────────┘
-                                                  │
-                                                  ▼
-                                           ┌───────────────┐
-                                           │               │
-                                           │  Claude Code  │
-                                           │               │
-                                           └───────────────┘
+┌─────────────────────────────────────┐
+│            Linear Platform          │
+└───────────────┬─────────────────────┘
+                │
+                │ Webhooks (Issue assignments,
+                ▼ Comments, Mentions)
+┌─────────────────────────────────────┐
+│          Webhook Server             │◄─────────┐
+│  (ExpressWebhookService)            │          │
+└───────────────┬─────────────────────┘          │
+                │                                 │
+                │ Process                         │ Comments
+                ▼ Events                          │ Back to Linear
+┌─────────────────────────────────────┐          │
+│       Linear Issue Service          ├──────────┘
+│  (LinearIssueService)               │
+└───────────────┬─────────────────────┘
+                │
+                │ Creates separate
+                ▼ environment per issue
+┌─────────────────────────────────────┐
+│        Workspace Service            │
+│  (FSWorkspaceService)               │
+└───────────────┬─────────────────────┘
+                │
+                │ One worktree
+                ▼ per issue
+┌─────────────────────────────────────┐
+│       Claude Service                │
+│  (NodeClaudeService)                │
+└───────────────┬─────────────────────┘
+                │
+                │ Claude CLI
+                ▼ with --continue flag
+┌─────────────────────────────────────┐
+│       Claude Code CLI               │
+│  (Running in issue workspace)       │
+└─────────────────────────────────────┘
 ```
 
 ### Flow
