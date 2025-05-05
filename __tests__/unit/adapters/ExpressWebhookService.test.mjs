@@ -14,6 +14,8 @@ describe('ExpressWebhookService', () => {
       handleAgentAssignment: function() { return Promise.resolve(); },
       handleAgentReply: function() { return Promise.resolve(); },
       handleCommentEvent: function() { return Promise.resolve(); },
+      // Added getAuthStatus method to match recent changes
+      getAuthStatus: function() { return true; },
       // Mock the userId that our agent uses
       userId: 'agent-user-id'
     };
