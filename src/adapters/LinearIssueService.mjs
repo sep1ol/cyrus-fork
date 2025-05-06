@@ -208,6 +208,7 @@ export class LinearIssueService extends IssueService {
       // Store session
       this.sessionManager.addSession(issue.id, session);
     } catch (error) {
+      console.error(error);
       console.error(`Error setting up session for issue ${issue.identifier}:`, error.message);
       
       // Post error as a Linear comment
