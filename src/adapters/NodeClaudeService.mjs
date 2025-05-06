@@ -187,21 +187,13 @@ export class NodeClaudeService extends ClaudeService {
           
           // Post the final accumulated response when the turn ends
           if (jsonResponse.stop_reason === 'end_turn') {
-            // Skip posting if we've already posted and the content hasn't changed
+            // Post the final response if there's content to post
             if (lastAssistantResponseText.trim().length > 0) {
-              // If we've already posted a response and this is the same content,
-              // don't post again to avoid duplicates
-              if (firstResponsePosted) {
-                console.log(
-                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but first response was already posted.`
-                );
-              } else {
-                // If we haven't posted yet, post the final response
-                console.log(
-                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
-                );
-                this.postResponseToLinear(issue.id, lastAssistantResponseText);
-              }
+              // Always post the final response when we reach end_turn
+              console.log(
+                `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
+              );
+              this.postResponseToLinear(issue.id, lastAssistantResponseText);
               lastAssistantResponseText = '';
             } else {
               console.log(

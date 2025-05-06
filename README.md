@@ -130,15 +130,7 @@ This approach ensures continuous context while being efficient with token usage.
   If not specified, defaults to read-only tools.
 - `CLAUDE_READ_ONLY`: Set to "false" to allow all tools when `CLAUDE_ALLOWED_TOOLS` is not specified. Defaults to "true".
 
-Available tools:
-- **File System**: `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, `Grep`, `LS`
-- **Execution**: `Bash`, `Task`
-- **Web**: `WebFetch`
-- **Task Management**: `TodoRead`, `TodoWrite`
-- **Notebook**: `NotebookRead`, `NotebookEdit`
-- **Utility**: `Batch`
-
-Default read-only tools: `Read`, `Glob`, `Grep`, `LS`, `WebFetch`, `TodoRead`, `NotebookRead`, `Task`, `Batch`
+Available tools: https://docs.anthropic.com/en/docs/claude-code/security
 
 ### Debug Options (all optional)
 
