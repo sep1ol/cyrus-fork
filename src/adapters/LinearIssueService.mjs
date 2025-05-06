@@ -16,7 +16,8 @@ export class LinearIssueService extends IssueService {
   constructor(linearClient, userId, sessionManager, claudeService, workspaceService) {
     super();
     this.linearClient = linearClient;
-    this.userId = userId;
+    this.userId = userId; // Can be null initially, will be populated from API
+    this.username = null; // Will be populated from API
     this.sessionManager = sessionManager;
     this.claudeService = claudeService;
     this.workspaceService = workspaceService;
@@ -70,6 +71,40 @@ export class LinearIssueService extends IssueService {
    */
   async fetchAssignedIssues() {
     try {
+      // Ensure we have user ID from API before proceeding
+      if (!this.userId && this.fetchUserData) {
+        console.log('No user ID available, fetching from API first...');
+        const success = await this.fetchUserData();
+        if (!success || !this.userId) {
+          console.error('Could not automatically determine the agent user ID. Will attempt to fetch all open issues instead.');
+          
+          // If we didn't get a user ID, try a different approach: get all open issues
+          console.log('Fetching all open issues as a fallback...');
+          const allIssues = await this.linearClient.issues({
+            filter: {
+              state: { type: { nin: ['canceled', 'completed'] } },
+            },
+            first: 50
+          });
+          
+          if (allIssues && allIssues.nodes && allIssues.nodes.length > 0) {
+            console.log(`Found ${allIssues.nodes.length} open issues.`);
+            this.isAuthenticated = true;
+            return allIssues.nodes.map(issue => this._convertToDomainIssue(issue))
+              .filter(issue => issue.assigneeId === this.userId);
+          } else {
+            console.log('No issues found in fallback query.');
+            return [];
+          }
+        }
+      }
+      
+      if (!this.userId) {
+        console.error('No user ID available - will return an empty list of assigned issues');
+        return [];
+      }
+      
+      console.log(`Fetching issues assigned to user ID: ${this.userId}`);
       const issues = await this.linearClient.issues({
         filter: {
           assignee: { id: { eq: this.userId } },
@@ -202,7 +237,7 @@ export class LinearIssueService extends IssueService {
       }
       
       // Start a Claude session
-      console.log(`Starting Claude session for issue ${issue.identifier}`);
+      console.log(`Starting Claude session for issue ${issue.identifier} with agent user ID: ${this.userId}`);
       const session = await this.claudeService.startSession(issue, workspace);
       
       // Store session
@@ -389,15 +424,14 @@ export class LinearIssueService extends IssueService {
         return;
       }
       
-      // Get the username from the environment for mention checking
-      const linearUsername = process.env.LINEAR_USERNAME;
-      console.log(`Checking for agent mention. Agent username: ${linearUsername}`);
+      // Use the username from the API for mention checking
+      console.log(`Checking for agent mention. Agent username: ${this.username}`);
       
       // In the legacy webhook format, we still want to check for mentions
       // But for new Agent API notifications, this is handled based on notification type
-      if (linearUsername && !body.includes(linearUsername)) {
+      if (this.username && !body.includes(this.username)) {
         console.log(
-          `Skipping comment that does not mention the agent (${linearUsername})`
+          `Skipping comment that does not mention the agent (${this.username})`
         );
         return;
       }
@@ -415,7 +449,7 @@ export class LinearIssueService extends IssueService {
       }
       
       console.log(
-        `===== WEBHOOK: Received comment on assigned issue ${issueId} that mentions ${linearUsername}. Processing... =====`
+        `===== WEBHOOK: Received comment on assigned issue ${issueId} that mentions ${this.username}. Processing... =====`
       );
       
       // Get the session info, if it exists

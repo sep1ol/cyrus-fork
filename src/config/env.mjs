@@ -4,8 +4,6 @@
 export default {
   linear: {
     apiToken: process.env.LINEAR_API_TOKEN,
-    userId: process.env.LINEAR_USER_ID,
-    username: process.env.LINEAR_USERNAME,
     webhookSecret: process.env.LINEAR_WEBHOOK_SECRET,
     // OAuth configuration for Linear Agents API
     oauthClientId: process.env.LINEAR_OAUTH_CLIENT_ID,
@@ -46,14 +44,17 @@ export default {
   validate() {
     // Always required variables
     const requiredEnvVars = [
-      'LINEAR_USER_ID',
-      'LINEAR_USERNAME',
       'LINEAR_WEBHOOK_SECRET',
       'WEBHOOK_PORT',
       'CLAUDE_PATH',
       'WORKSPACE_BASE_DIR',
       'PROMPT_TEMPLATE_PATH'
     ];
+    
+    // Environment variables that are no longer used
+  if (process.env['LINEAR_USER_ID'] || process.env['LINEAR_USERNAME']) {
+    console.log('Note: LINEAR_USER_ID and LINEAR_USERNAME are no longer used. User information is now automatically fetched from the Linear API.');
+  }
     
     // OAuth or API token is required (one of them)
     const authRequirement = {

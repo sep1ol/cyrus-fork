@@ -106,8 +106,6 @@ This approach ensures continuous context while being efficient with token usage.
 
 ### Required Variables
 
-- `LINEAR_USER_ID`: The Agent Linear user ID
-- `LINEAR_USERNAME`: The Agent Linear username
 - `LINEAR_WEBHOOK_SECRET`: Secret for verifying webhook requests
 - `WEBHOOK_PORT`: Port for the webhook server
 - `CLAUDE_PATH`: Path to the Claude Code CLI executable
@@ -256,13 +254,13 @@ When you first start the agent, the webhook server will run even if authenticati
 
 - Check the logs for error messages
 - Enable debug flags for more verbose logging
-- Ensure your Linear API token and user ID are correct
+- Ensure your Linear API token or OAuth credentials are correct
 - Verify that the Claude executable path is correct
 - Make sure your webhook URL is publicly accessible (Linear must be able to reach it)
 - If using Claude CLI without Claude Max, ensure `ANTHROPIC_API_KEY` is set in your environment
 - Check OAuth status by visiting `http://localhost:3000/oauth/status`
 - If the agent is not receiving webhooks, verify your webhook secret and URL
-- Ensure you've enabled the correct scopes (`app:assignable` and `app:mentionable`)
+- Ensure your Linear agent has the correct scopes (`app:assignable` and `app:mentionable`)
 - For OAuth issues, try the reset endpoint: `http://localhost:3000/oauth/reset`
 
 ## Important Notes

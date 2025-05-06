@@ -337,7 +337,7 @@ export class OAuthHelper {
       
       // Check if there's a viewer property in the response
       if (result.data && result.data.viewer) {
-        console.log(`Token validated with API - user: ${result.data.viewer.name}`);
+        console.log(`Token validated with API - user: ${result.data.viewer.name} (ID: ${result.data.viewer.id})`);
         return true;
       }
       

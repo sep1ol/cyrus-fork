@@ -270,9 +270,10 @@ export function createContainer() {
     const claudeService = () => c.get('claudeService');
     const workspaceService = () => c.get('workspaceService');
     
-    return new LinearIssueService(
+    // Create the service with placeholder ID - will be updated after API fetch
+    const service = new LinearIssueService(
       linearClient, 
-      config.linear.userId,
+      null, // userId will be fetched from API instead of config
       sessionManager,
       {
         startSession: (...args) => claudeService().startSession(...args),
@@ -283,6 +284,77 @@ export function createContainer() {
         createWorkspace: (...args) => workspaceService().createWorkspace(...args)
       }
     );
+    
+    // Set up a method to fetch user data from the API
+    service.fetchUserData = async () => {
+      try {
+        console.log('Fetching agent user data from Linear API...');
+        
+        // Try getting organization information first
+        const organization = await linearClient.organization;
+        console.log(`Connected to Linear organization: ${organization.name || 'Unknown'}`);
+        
+        // Now get the viewer information
+        try {
+          const viewer = await linearClient.viewer;
+          
+          if (viewer && viewer.id) {
+            service.userId = viewer.id;
+            service.username = viewer.name;
+            console.log(`Updated agent details from API - user: ${viewer.name} (ID: ${viewer.id})`);
+            return true;
+          } else {
+            console.error('Viewer data returned from API but missing ID - will try different approach');
+          }
+        } catch (viewerError) {
+          console.error('Error fetching viewer data:', viewerError.message);
+        }
+        
+        // If viewer approach fails, try getting all users
+        console.log('Attempting to fetch agent details from users list...');
+        try {
+          const users = await linearClient.users();
+          
+          // Look for a user that has "Agent" or "Bot" in the name
+          const agentUser = users.nodes.find(user => 
+            user.name && (
+              user.name.includes('Agent') || 
+              user.name.includes('Bot') || 
+              user.name.toLowerCase().includes('agent') ||
+              user.name.toLowerCase().includes('bot')
+            )
+          );
+          
+          if (agentUser) {
+            service.userId = agentUser.id;
+            service.username = agentUser.name;
+            console.log(`Found agent user in users list: ${agentUser.name} (ID: ${agentUser.id})`);
+            return true;
+          }
+          
+          // If no agent found, use the first user as a fallback (not ideal)
+          if (users.nodes.length > 0) {
+            const firstUser = users.nodes[0];
+            service.userId = firstUser.id;
+            service.username = firstUser.name;
+            console.log(`Using first user as fallback: ${firstUser.name} (ID: ${firstUser.id})`);
+            console.warn('Warning: Had to use first user in list as agent ID. Verify this is correct!');
+            return true;
+          }
+          
+          console.error('No users found in the organization');
+          return false;
+        } catch (usersError) {
+          console.error('Error fetching users list:', usersError.message);
+          return false;
+        }
+      } catch (error) {
+        console.error('Error fetching user data from Linear API:', error.message);
+        return false;
+      }
+    };
+    
+    return service;
   });
   
   // Register Claude service

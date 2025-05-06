@@ -302,12 +302,12 @@ export class NodeClaudeService extends ClaudeService {
       
       if (code !== 0) {
         console.error(
-          `Claude process exited with error code ${code}. Stderr will be posted by linearAgent if needed.`
+          `Claude process exited with error code ${code}. Stderr will be posted by linearAgent (ID: ${this.issueService.userId}) if needed.`
         );
         claudeProcess.stderrContent = stderr;
       } else {
         console.log(
-          `Claude process exited successfully. Final comment will be posted by linearAgent.`
+          `Claude process exited successfully. Final comment will be posted by linearAgent (ID: ${this.issueService.userId}).`
         );
       }
     });
