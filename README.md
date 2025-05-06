@@ -9,7 +9,9 @@
   </a>
 </p>
 
-A JavaScript application that integrates Linear with Claude to automate issue processing. This agent uses Linear's Agent API to assist with software development tasks by providing AI-powered responses in Linear issues.
+A JavaScript application that integrates Linear with Claude Code to automate issue processing. This agent uses Linear's Agent API to assist with software development tasks by providing AI-powered responses in Linear issues.
+
+https://github.com/user-attachments/assets/730fdf2e-3875-4255-8124-9b2377b086fc
 
 ## Features
 
