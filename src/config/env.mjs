@@ -20,6 +20,12 @@ export default {
   claude: {
     path: process.env.CLAUDE_PATH,
     promptTemplatePath: process.env.PROMPT_TEMPLATE_PATH,
+    // Tool permissions - parse from comma-separated string or use defaults
+    allowedTools: process.env.CLAUDE_ALLOWED_TOOLS ? 
+      process.env.CLAUDE_ALLOWED_TOOLS.split(',').map(tool => tool.trim()) : 
+      null, // null means use the default read-only tools
+    // Whether to use strict read-only mode (when allowedTools is null)
+    readOnlyMode: process.env.CLAUDE_READ_ONLY === 'true' || process.env.CLAUDE_READ_ONLY === undefined,
   },
   workspace: {
     baseDir: process.env.WORKSPACE_BASE_DIR,

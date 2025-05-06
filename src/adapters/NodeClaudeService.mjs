@@ -1,6 +1,6 @@
 import { ClaudeService } from '../services/ClaudeService.mjs';
 import { Session } from '../core/Session.mjs';
-import { claudeConfig } from '../config/index.mjs';
+import { claudeConfig, env } from '../config/index.mjs';
 import { FileSystem, ProcessManager } from '../utils/index.mjs';
 
 /**
@@ -343,8 +343,27 @@ export class NodeClaudeService extends ClaudeService {
           this.fileSystem.writeFileSync(historyPath, '');
         }
         
-        // Construct the command to pipe claude output through jq
-        const claudeCmd = `${this.claudePath} ${claudeConfig.defaultArgs.join(' ')}`;
+        // Get the allowed tools based on configuration
+        const config = env.claude;
+        let allowedTools;
+        
+        if (config.allowedTools) {
+          // If specific tools are configured, use them
+          allowedTools = config.allowedTools;
+          console.log(`Using configured tools: ${allowedTools.join(', ')}`);
+        } else if (config.readOnlyMode) {
+          // If read-only mode is enabled (default), use read-only tools
+          allowedTools = claudeConfig.readOnlyTools;
+          console.log(`Using read-only tools: ${allowedTools.join(', ')}`);
+        } else {
+          // Otherwise, use all available tools
+          allowedTools = claudeConfig.availableTools;
+          console.log(`Using all available tools: ${allowedTools.join(', ')}`);
+        }
+        
+        // Get the arguments with the appropriate tool permissions
+        const claudeArgs = claudeConfig.getDefaultArgs(allowedTools);
+        const claudeCmd = `${this.claudePath} ${claudeArgs.join(' ')}`;
         const fullCommand = `${claudeCmd} | jq -c .`;
         
         console.log(`Spawning Claude via shell: sh -c "${fullCommand}"`);
@@ -448,9 +467,24 @@ export class NodeClaudeService extends ClaudeService {
           `Starting new Claude process with --continue flag...`
         );
         
+        // Get the allowed tools based on configuration (same as in startSession)
+        const config = env.claude;
+        let allowedTools;
+        
+        if (config.allowedTools) {
+          // If specific tools are configured, use them
+          allowedTools = config.allowedTools;
+        } else if (config.readOnlyMode) {
+          // If read-only mode is enabled (default), use read-only tools
+          allowedTools = claudeConfig.readOnlyTools;
+        } else {
+          // Otherwise, use all available tools
+          allowedTools = claudeConfig.availableTools;
+        }
+        
         // Create a shell script to properly handle the continuation
         const escapedComment = commentText.replace(/'/g, "'\\''");
-        const claudeArgs = claudeConfig.getContinueArgs(commentText);
+        const claudeArgs = claudeConfig.getContinueArgs(allowedTools);
         
         // Log the arguments for debugging
         console.log(`Claude arguments: ${JSON.stringify(claudeArgs)}`);
