@@ -3,15 +3,15 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/services/ClaudeService.mjs</title>
+    <title>Code coverage report for services/WorkspaceService.mjs</title>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="../../prettify.css" />
-    <link rel="stylesheet" href="../../base.css" />
-    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
+    <link rel="stylesheet" href="../prettify.css" />
+    <link rel="stylesheet" href="../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style type='text/css'>
         .coverage-summary .sorter {
-            background-image: url(../../sort-arrow-sprite.png);
+            background-image: url(../sort-arrow-sprite.png);
         }
     </style>
 </head>
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/services</a> ClaudeService.mjs</h1>
+        <h1><a href="../index.html">All files</a> / <a href="index.html">services</a> WorkspaceService.mjs</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/4</span>
+                <span class='fraction'>0/5</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/2</span>
+                <span class='fraction'>0/0</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/4</span>
+                <span class='fraction'>0/5</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/4</span>
+                <span class='fraction'>0/5</span>
             </div>
         
             
@@ -107,19 +107,9 @@
 <a name='L42'></a><a href='#L42'>42</a>
 <a name='L43'></a><a href='#L43'>43</a>
 <a name='L44'></a><a href='#L44'>44</a>
-<a name='L45'></a><a href='#L45'>45</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -137,11 +127,25 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -152,47 +156,49 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * Interface for Claude AI operations
+ * Interface for workspace-related operations
  */
-export class ClaudeService {
+export class WorkspaceService {
   /**
-   * Start a new Claude session for an issue
-   * @param {Issue} issue - The issue to process
-   * @param {Workspace} workspace - The workspace for the issue
-   * @returns {Promise&lt;Session&gt;} - The created session
+   * Set up the base workspace directory
+   * @returns {Promise&lt;string&gt;} - Path to base directory
    */
-<span class="fstat-no" title="function not covered" >  as</span>ync startSession(issue, workspace) {
+<span class="fstat-no" title="function not covered" >  as</span>ync setupBaseDir() {
 <span class="cstat-no" title="statement not covered" >    throw new Error('Not implemented');</span>
   }
   
   /**
-   * Send a comment to an existing Claude session
-   * @param {Session} session - The existing session
-   * @param {string} commentText - The comment text to send
-   * @returns {Promise&lt;Session&gt;} - The updated session
+   * Get the workspace for an issue
+   * @param {Issue} issue - The issue
+   * @returns {Promise&lt;Workspace|null&gt;} - The workspace if it exists, or null
    */
-<span class="fstat-no" title="function not covered" >  as</span>ync sendComment(session, commentText) {
+<span class="fstat-no" title="function not covered" >  as</span>ync getWorkspaceForIssue(issue) {
 <span class="cstat-no" title="statement not covered" >    throw new Error('Not implemented');</span>
   }
   
   /**
-   * Post a response from Claude to Linear
-   * @param {string} issueId - The issue ID
-   * @param {string} response - The response text
-   * @param {number|null} costUsd - Optional cost information
-   * @param {number|null} durationMs - Optional duration information
-   * @returns {Promise&lt;boolean&gt;} - Success status
+   * Create a new workspace for an issue
+   * @param {Issue} issue - The issue
+   * @returns {Promise&lt;Workspace&gt;} - The created workspace
    */
-<span class="fstat-no" title="function not covered" >  as</span>ync postResponseToLinear(issueId, response, costUsd = <span class="branch-0 cbranch-no" title="branch not covered" >null,</span> durationMs = <span class="branch-0 cbranch-no" title="branch not covered" >null)</span> {
+<span class="fstat-no" title="function not covered" >  as</span>ync createWorkspace(issue) {
 <span class="cstat-no" title="statement not covered" >    throw new Error('Not implemented');</span>
   }
   
   /**
-   * Build an initial prompt for Claude using the loaded template
-   * @param {Issue} issue - The issue to build the prompt for
-   * @returns {string} - The formatted prompt
+   * Clean up a specific workspace
+   * @param {Workspace} workspace - The workspace to clean up
+   * @returns {Promise&lt;void&gt;}
    */
-<span class="fstat-no" title="function not covered" >  bu</span>ildInitialPrompt(issue) {
+<span class="fstat-no" title="function not covered" >  as</span>ync cleanupWorkspace(workspace) {
+<span class="cstat-no" title="statement not covered" >    throw new Error('Not implemented');</span>
+  }
+  
+  /**
+   * Clean up all workspaces
+   * @returns {Promise&lt;void&gt;}
+   */
+<span class="fstat-no" title="function not covered" >  as</span>ync cleanupAllWorkspaces() {
 <span class="cstat-no" title="statement not covered" >    throw new Error('Not implemented');</span>
   }
 }</pre></td></tr></table></pre>
@@ -202,16 +208,16 @@ export class ClaudeService {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-05-07T19:26:02.079Z
+                at 2025-05-07T19:25:43.925Z
             </div>
-        <script src="../../prettify.js"></script>
+        <script src="../prettify.js"></script>
         <script>
             window.onload = function () {
                 prettyPrint();
             };
         </script>
-        <script src="../../sorter.js"></script>
-        <script src="../../block-navigation.js"></script>
+        <script src="../sorter.js"></script>
+        <script src="../block-navigation.js"></script>
     </body>
 </html>
     

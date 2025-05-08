@@ -256,7 +256,8 @@ export function createContainer() {
     return new FSWorkspaceService(
       config.workspace.baseDir,
       fileSystem,
-      processManager
+      processManager,
+      config.workspace.mainBranch
     );
   });
   

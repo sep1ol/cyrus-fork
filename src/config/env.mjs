@@ -27,6 +27,8 @@ export default {
   },
   workspace: {
     baseDir: process.env.WORKSPACE_BASE_DIR,
+    // Default main branch is 'main' if not specified
+    mainBranch: process.env.GIT_MAIN_BRANCH || 'main',
   },
   
   // Debugging flags (all default to false if not explicitly set to 'true')

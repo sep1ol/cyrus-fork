@@ -14,12 +14,14 @@ export class FSWorkspaceService extends WorkspaceService {
    * @param {string} baseDir - Base directory for workspaces
    * @param {FileSystem} fileSystem - File system utility
    * @param {ProcessManager} processManager - Process manager utility
+   * @param {string} mainBranch - Main branch name
    */
-  constructor(baseDir, fileSystem = new FileSystem(), processManager = new ProcessManager()) {
+  constructor(baseDir, fileSystem = new FileSystem(), processManager = new ProcessManager(), mainBranch = 'main') {
     super();
     this.baseDir = baseDir;
     this.fileSystem = fileSystem;
     this.processManager = processManager;
+    this.mainBranch = mainBranch;
   }
   
   /**
@@ -199,12 +201,122 @@ export class FSWorkspaceService extends WorkspaceService {
   }
   
   /**
+   * Pull the latest changes from the main branch
+   * @param {string} mainBranch - The name of the main branch
+   * @returns {Promise<boolean>} - Whether the pull was successful
+   */
+  async _pullMainBranch(mainBranch) {
+    return new Promise(async (resolve) => {
+      const repoRoot = await this._getRepoRoot();
+      
+      if (!repoRoot) {
+        console.log('Not in a git repository, skipping pull.');
+        resolve(false);
+        return;
+      }
+      
+      // First, check if we're on the main branch
+      const currentBranch = await new Promise((resolveBranch) => {
+        let branchName = '';
+        const branchProcess = this.processManager.spawn('git', ['branch', '--show-current'], { 
+          cwd: repoRoot,
+          stdio: ['ignore', 'pipe', 'pipe'] 
+        });
+        
+        branchProcess.stdout.on('data', (data) => branchName += data.toString().trim());
+        
+        branchProcess.on('close', (code) => {
+          if (code === 0) {
+            resolveBranch(branchName);
+          } else {
+            console.warn('Unable to determine current branch.');
+            resolveBranch(null);
+          }
+        });
+        
+        branchProcess.on('error', (err) => {
+          console.error(`Error checking current branch: ${err.message}`);
+          resolveBranch(null);
+        });
+      });
+      
+      // If we're not on the main branch, checkout the main branch first
+      if (currentBranch !== mainBranch) {
+        console.log(`Currently on branch '${currentBranch}', checking out '${mainBranch}' before pulling...`);
+        
+        const checkoutResult = await new Promise((resolveCheckout) => {
+          const checkoutProcess = this.processManager.spawn('git', ['checkout', mainBranch], { 
+            cwd: repoRoot,
+            stdio: ['ignore', 'pipe', 'pipe'] 
+          });
+          
+          let checkoutError = '';
+          
+          checkoutProcess.stderr.on('data', (data) => checkoutError += data.toString());
+          
+          checkoutProcess.on('close', (code) => {
+            if (code === 0) {
+              console.log(`Successfully checked out ${mainBranch} branch.`);
+              resolveCheckout(true);
+            } else {
+              console.error(`Failed to checkout ${mainBranch} branch: ${checkoutError.trim()}`);
+              resolveCheckout(false);
+            }
+          });
+          
+          checkoutProcess.on('error', (err) => {
+            console.error(`Error checking out ${mainBranch} branch: ${err.message}`);
+            resolveCheckout(false);
+          });
+        });
+        
+        if (!checkoutResult) {
+          console.warn(`Unable to checkout ${mainBranch} branch, skipping pull.`);
+          resolve(false);
+          return;
+        }
+      }
+      
+      // Now pull the latest changes
+      console.log(`Pulling latest changes from ${mainBranch} branch...`);
+      
+      const pullProcess = this.processManager.spawn('git', ['pull', 'origin', mainBranch], { 
+        cwd: repoRoot,
+        stdio: ['ignore', 'pipe', 'pipe'] 
+      });
+      
+      let pullOutput = '';
+      let pullError = '';
+      
+      pullProcess.stdout.on('data', (data) => pullOutput += data.toString());
+      pullProcess.stderr.on('data', (data) => pullError += data.toString());
+      
+      pullProcess.on('close', (code) => {
+        if (code === 0) {
+          console.log(`Successfully pulled latest changes from ${mainBranch} branch.`);
+          console.log(pullOutput.trim());
+          resolve(true);
+        } else {
+          console.error(`Failed to pull latest changes from ${mainBranch} branch: ${pullError.trim()}`);
+          resolve(false);
+        }
+      });
+      
+      pullProcess.on('error', (err) => {
+        console.error(`Error pulling from ${mainBranch} branch: ${err.message}`);
+        resolve(false);
+      });
+    });
+  }
+  
+  /**
    * Create git worktree
    * @param {string} workspacePath - Path to workspace
    * @param {string} branchName - Branch name
+   * @param {string} mainBranch - The name of the main branch
    * @returns {Promise<boolean>} - Whether it's a git worktree
    */
-  async _createGitWorktree(workspacePath, branchName) {
+  async _createGitWorktree(workspacePath, branchName, mainBranch) {
     return new Promise(async (resolve, reject) => {
       const repoRoot = await this._getRepoRoot();
       
@@ -215,10 +327,13 @@ export class FSWorkspaceService extends WorkspaceService {
         return;
       }
       
+      // Pull the latest changes from the main branch
+      await this._pullMainBranch(mainBranch);
+      
       console.log(`Attempting to create/attach git worktree for branch ${branchName} at ${workspacePath}`);
       
       // Try creating worktree with a new branch first, tracking origin/main
-      const addWithNewBranch = spawn('git', ['worktree', 'add', '--track', '-b', branchName, workspacePath, 'origin/main'], {
+      const addWithNewBranch = spawn('git', ['worktree', 'add', '--track', '-b', branchName, workspacePath, `origin/${mainBranch}`], {
         cwd: repoRoot,
         stdio: 'pipe'
       });
@@ -358,6 +473,8 @@ export class FSWorkspaceService extends WorkspaceService {
     const workspacePath = path.join(this.baseDir, workspaceName);
     
     try {
+      console.log(`Using main branch: ${this.mainBranch}`);
+      
       // Ensure the parent directory exists
       await fs.ensureDir(path.dirname(workspacePath));
       
@@ -381,7 +498,7 @@ export class FSWorkspaceService extends WorkspaceService {
         console.log(`Workspace directory ${workspacePath} does not exist. Creating worktree/directory...`);
         
         // Create the worktree (or simple dir if git fails)
-        const isGitWorktree = await this._createGitWorktree(workspacePath, workspaceName);
+        const isGitWorktree = await this._createGitWorktree(workspacePath, workspaceName, this.mainBranch);
         
         // Verify branch and run setup script
         console.log(`Worktree/directory created. Verifying branch and running setup script...`);
