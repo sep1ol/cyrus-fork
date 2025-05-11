@@ -180,6 +180,8 @@ export class NodeClaudeService extends ClaudeService {
               if (!firstResponsePosted) {
                 console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear.`);
                 this.postResponseToLinear(issue.id, lastAssistantResponseText);
+                // Store first response content in issue object for comparison
+                issue.firstResponseContent = lastAssistantResponseText.trim();
                 firstResponsePosted = true;
               }
             }
@@ -189,11 +191,17 @@ export class NodeClaudeService extends ClaudeService {
           if (jsonResponse.stop_reason === 'end_turn') {
             // Post the final response if there's content to post
             if (lastAssistantResponseText.trim().length > 0) {
-              // Always post the final response when we reach end_turn
-              console.log(
-                `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
-              );
-              this.postResponseToLinear(issue.id, lastAssistantResponseText);
+              // Only post the final response if it differs from the first response
+              if (!firstResponsePosted || this._isContentChanged(issue.firstResponseContent, lastAssistantResponseText)) {
+                console.log(
+                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
+                );
+                this.postResponseToLinear(issue.id, lastAssistantResponseText);
+              } else {
+                console.log(
+                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but final response is identical to first response. Skipping duplicate post.`
+                );
+              }
               lastAssistantResponseText = '';
             } else {
               console.log(
@@ -574,6 +582,23 @@ CLAUDE_INPUT_EOF`;
     console.log(`Cost for run: $${jsonResponse.cost_usd.toFixed(2)}, Duration: ${jsonResponse.duration_ms / 1000}s`);
   }
   
+  /**
+   * Checks if the content has changed between first and final response
+   * @param {string} firstResponse - The first response content
+   * @param {string} finalResponse - The final response content
+   * @returns {boolean} - True if content has changed, false otherwise
+   * @private
+   */
+  _isContentChanged(firstResponse, finalResponse) {
+    // If first response wasn't stored, consider it changed
+    if (!firstResponse) {
+      return true;
+    }
+
+    // Compare content after normalization (trim whitespace)
+    return firstResponse.trim() !== finalResponse.trim();
+  }
+
   /**
    * @inheritdoc
    */
