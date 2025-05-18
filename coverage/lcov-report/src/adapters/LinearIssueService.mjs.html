@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/239</span>
+                <span class='fraction'>0/240</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/236</span>
+                <span class='fraction'>0/237</span>
             </div>
         
             
@@ -696,7 +696,11 @@
 <a name='L631'></a><a href='#L631'>631</a>
 <a name='L632'></a><a href='#L632'>632</a>
 <a name='L633'></a><a href='#L633'>633</a>
-<a name='L634'></a><a href='#L634'>634</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L634'></a><a href='#L634'>634</a>
+<a name='L635'></a><a href='#L635'>635</a>
+<a name='L636'></a><a href='#L636'>636</a>
+<a name='L637'></a><a href='#L637'>637</a>
+<a name='L638'></a><a href='#L638'>638</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -930,16 +934,20 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1560,19 +1568,23 @@ export class LinearIssueService extends IssueService {
     }
     
 <span class="cstat-no" title="statement not covered" >    try {</span>
-      // Get or create a workspace (without verbose logging)
+      // Check if workspace already exists
       let workspace = <span class="cstat-no" title="statement not covered" >await this.workspaceService.getWorkspaceForIssue(issue);</span>
 <span class="cstat-no" title="statement not covered" >      if (!workspace) {</span>
+        // No existing workspace, create a new one and start a session
 <span class="cstat-no" title="statement not covered" >        console.log(`Creating workspace for issue ${issue.identifier}`);</span>
 <span class="cstat-no" title="statement not covered" >        workspace = await this.workspaceService.createWorkspace(issue);</span>
+        
+        // Start a Claude session for the new workspace
+<span class="cstat-no" title="statement not covered" >        console.log(`Starting Claude session for issue ${issue.identifier} with agent user ID: ${this.userId}`);</span>
+        const session = <span class="cstat-no" title="statement not covered" >await this.claudeService.startSession(issue, workspace);</span>
+        
+        // Store session
+<span class="cstat-no" title="statement not covered" >        this.sessionManager.addSession(issue.id, session);</span>
+      } else {
+        // Workspace already exists - don't automatically start a Claude session
+<span class="cstat-no" title="statement not covered" >        console.log(`Workspace already exists for issue ${issue.identifier}. Skipping automatic Claude session start.`);</span>
       }
-      
-      // Start a Claude session
-<span class="cstat-no" title="statement not covered" >      console.log(`Starting Claude session for issue ${issue.identifier} with agent user ID: ${this.userId}`);</span>
-      const session = <span class="cstat-no" title="statement not covered" >await this.claudeService.startSession(issue, workspace);</span>
-      
-      // Store session
-<span class="cstat-no" title="statement not covered" >      this.sessionManager.addSession(issue.id, session);</span>
     } catch (error) {
 <span class="cstat-no" title="statement not covered" >      console.error(error);</span>
 <span class="cstat-no" title="statement not covered" >      console.error(`Error setting up session for issue ${issue.identifier}:`, error.message);</span>
@@ -1969,7 +1981,7 @@ export class LinearIssueService extends IssueService {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-05-11T18:27:59.085Z
+                at 2025-05-18T02:27:38.801Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
