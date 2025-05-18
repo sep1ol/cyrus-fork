@@ -220,8 +220,9 @@ export class LinearIssueService extends IssueService {
   /**
    * Initialize a session for an issue
    * @param {Issue} issue - The issue to initialize
+   * @param {boolean} isStartupInit - Whether this is a system startup initialization
    */
-  async initializeIssueSession(issue) {
+  async initializeIssueSession(issue, isStartupInit = false) {
     // Skip if we already have an active session
     if (this.sessionManager.hasSession(issue.id)) {
       console.log(`Already have an active session for issue ${issue.identifier}`);
@@ -243,8 +244,16 @@ export class LinearIssueService extends IssueService {
         // Store session
         this.sessionManager.addSession(issue.id, session);
       } else {
-        // Workspace already exists - don't automatically start a Claude session
-        console.log(`Workspace already exists for issue ${issue.identifier}. Skipping automatic Claude session start.`);
+        // Workspace already exists
+        if (isStartupInit) {
+          // On startup, skip automatic session start for existing workspaces
+          console.log(`Workspace already exists for issue ${issue.identifier}. Skipping automatic Claude session start.`);
+        } else {
+          // For comment/mention triggers, always start a session
+          console.log(`Starting Claude session for issue ${issue.identifier} with existing workspace`);
+          const session = await this.claudeService.startSession(issue, workspace);
+          this.sessionManager.addSession(issue.id, session);
+        }
       }
     } catch (error) {
       console.error(error);

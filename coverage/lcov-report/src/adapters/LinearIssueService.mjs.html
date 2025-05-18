@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/240</span>
+                <span class='fraction'>0/244</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/134</span>
+                <span class='fraction'>0/137</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/237</span>
+                <span class='fraction'>0/241</span>
             </div>
         
             
@@ -700,7 +700,16 @@
 <a name='L635'></a><a href='#L635'>635</a>
 <a name='L636'></a><a href='#L636'>636</a>
 <a name='L637'></a><a href='#L637'>637</a>
-<a name='L638'></a><a href='#L638'>638</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L638'></a><a href='#L638'>638</a>
+<a name='L639'></a><a href='#L639'>639</a>
+<a name='L640'></a><a href='#L640'>640</a>
+<a name='L641'></a><a href='#L641'>641</a>
+<a name='L642'></a><a href='#L642'>642</a>
+<a name='L643'></a><a href='#L643'>643</a>
+<a name='L644'></a><a href='#L644'>644</a>
+<a name='L645'></a><a href='#L645'>645</a>
+<a name='L646'></a><a href='#L646'>646</a>
+<a name='L647'></a><a href='#L647'>647</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -925,6 +934,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -939,14 +949,22 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1559,8 +1577,9 @@ export class LinearIssueService extends IssueService {
   /**
    * Initialize a session for an issue
    * @param {Issue} issue - The issue to initialize
+   * @param {boolean} isStartupInit - Whether this is a system startup initialization
    */
-<span class="fstat-no" title="function not covered" >  as</span>ync initializeIssueSession(issue) {
+<span class="fstat-no" title="function not covered" >  as</span>ync initializeIssueSession(issue, isStartupInit = <span class="branch-0 cbranch-no" title="branch not covered" >false)</span> {
     // Skip if we already have an active session
 <span class="cstat-no" title="statement not covered" >    if (this.sessionManager.hasSession(issue.id)) {</span>
 <span class="cstat-no" title="statement not covered" >      console.log(`Already have an active session for issue ${issue.identifier}`);</span>
@@ -1582,8 +1601,16 @@ export class LinearIssueService extends IssueService {
         // Store session
 <span class="cstat-no" title="statement not covered" >        this.sessionManager.addSession(issue.id, session);</span>
       } else {
-        // Workspace already exists - don't automatically start a Claude session
-<span class="cstat-no" title="statement not covered" >        console.log(`Workspace already exists for issue ${issue.identifier}. Skipping automatic Claude session start.`);</span>
+        // Workspace already exists
+<span class="cstat-no" title="statement not covered" >        if (isStartupInit) {</span>
+          // On startup, skip automatic session start for existing workspaces
+<span class="cstat-no" title="statement not covered" >          console.log(`Workspace already exists for issue ${issue.identifier}. Skipping automatic Claude session start.`);</span>
+        } else {
+          // For comment/mention triggers, always start a session
+<span class="cstat-no" title="statement not covered" >          console.log(`Starting Claude session for issue ${issue.identifier} with existing workspace`);</span>
+          const session = <span class="cstat-no" title="statement not covered" >await this.claudeService.startSession(issue, workspace);</span>
+<span class="cstat-no" title="statement not covered" >          this.sessionManager.addSession(issue.id, session);</span>
+        }
       }
     } catch (error) {
 <span class="cstat-no" title="statement not covered" >      console.error(error);</span>
@@ -1981,7 +2008,7 @@ export class LinearIssueService extends IssueService {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-05-18T02:27:38.801Z
+                at 2025-05-18T02:37:09.188Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
