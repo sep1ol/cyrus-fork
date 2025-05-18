@@ -37,9 +37,10 @@ export class ClaudeService {
   /**
    * Build an initial prompt for Claude using the loaded template
    * @param {Issue} issue - The issue to build the prompt for
-   * @returns {string} - The formatted prompt
+   * @param {boolean} tokenLimitResumeContext - Whether this is a resume after token limit
+   * @returns {Promise<string>} - The formatted prompt
    */
-  buildInitialPrompt(issue) {
+  async buildInitialPrompt(issue, tokenLimitResumeContext = false) {
     throw new Error('Not implemented');
   }
 }

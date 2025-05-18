@@ -229,19 +229,23 @@ export class LinearIssueService extends IssueService {
     }
     
     try {
-      // Get or create a workspace (without verbose logging)
+      // Check if workspace already exists
       let workspace = await this.workspaceService.getWorkspaceForIssue(issue);
       if (!workspace) {
+        // No existing workspace, create a new one and start a session
         console.log(`Creating workspace for issue ${issue.identifier}`);
         workspace = await this.workspaceService.createWorkspace(issue);
+        
+        // Start a Claude session for the new workspace
+        console.log(`Starting Claude session for issue ${issue.identifier} with agent user ID: ${this.userId}`);
+        const session = await this.claudeService.startSession(issue, workspace);
+        
+        // Store session
+        this.sessionManager.addSession(issue.id, session);
+      } else {
+        // Workspace already exists - don't automatically start a Claude session
+        console.log(`Workspace already exists for issue ${issue.identifier}. Skipping automatic Claude session start.`);
       }
-      
-      // Start a Claude session
-      console.log(`Starting Claude session for issue ${issue.identifier} with agent user ID: ${this.userId}`);
-      const session = await this.claudeService.startSession(issue, workspace);
-      
-      // Store session
-      this.sessionManager.addSession(issue.id, session);
     } catch (error) {
       console.error(error);
       console.error(`Error setting up session for issue ${issue.identifier}:`, error.message);

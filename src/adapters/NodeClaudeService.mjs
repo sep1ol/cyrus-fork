@@ -89,7 +89,7 @@ export class NodeClaudeService extends ClaudeService {
   /**
    * @inheritdoc
    */
-  async buildInitialPrompt(issue) {
+  async buildInitialPrompt(issue, tokenLimitResumeContext = false) {
     // Ensure prompt template is loaded
     if (!this.promptTemplate) {
       console.log('Prompt template not loaded yet, loading now...');
@@ -109,6 +109,17 @@ export class NodeClaudeService extends ClaudeService {
       throw new Error('Prompt template is not a string. Cannot build initial prompt.');
     }
     
+    // Add token limit context if needed
+    if (tokenLimitResumeContext) {
+      const resumeMessage = `
+[SYSTEM NOTICE: This is a fresh Claude session that was started after hitting the token limit in the previous conversation. 
+You should continue working on the issue as if you're resuming from where you left off. The workspace state and conversation 
+history are preserved. Please continue your work on the issue.]
+
+`;
+      finalPrompt = resumeMessage + finalPrompt;
+    }
+    
     finalPrompt = finalPrompt.replace('{{issue_details}}', issueDetails);
     finalPrompt = finalPrompt.replace('{{linear_comments}}', linearComments);
     finalPrompt = finalPrompt.replace('{{branch_name}}', branchName);
@@ -124,15 +135,18 @@ export class NodeClaudeService extends ClaudeService {
    * Set up Claude process handlers
    * @param {ChildProcess} claudeProcess - The Claude process
    * @param {Issue} issue - The issue
+   * @param {Workspace} workspace - The workspace
    * @param {string} historyPath - Path to history file
+   * @param {Function} onTokenLimitError - Callback when token limit is reached
    * @returns {ChildProcess} - The Claude process with handlers attached
    */
-  _setupClaudeProcessHandlers(claudeProcess, issue, historyPath) {
+  _setupClaudeProcessHandlers(claudeProcess, issue, workspace, historyPath, onTokenLimitError = null) {
     // Set up buffers to capture output
     let stderr = '';
     let lastAssistantResponseText = '';
     let firstResponsePosted = false;
     let lineBuffer = '';
+    let tokenLimitErrorDetected = false;
     
     console.log(
       `=== Setting up JSON stream handlers for Claude process ${claudeProcess.pid} ===`
@@ -212,6 +226,40 @@ export class NodeClaudeService extends ClaudeService {
             }
           }
           
+          // Check for token limit error in various possible formats
+          const isTokenLimitError = (
+            // Direct error type
+            (jsonResponse.type === 'error' && 
+             jsonResponse.message && 
+             jsonResponse.message.toLowerCase().includes('prompt is too long')) ||
+            // Error object
+            (jsonResponse.error && 
+             typeof jsonResponse.error.message === 'string' && 
+             jsonResponse.error.message.toLowerCase().includes('prompt is too long')) ||
+            // Assistant message with error
+            (jsonResponse.type === 'assistant' && 
+             jsonResponse.message && 
+             jsonResponse.message.content &&
+             typeof jsonResponse.message.content === 'string' &&
+             jsonResponse.message.content.toLowerCase().includes('prompt is too long')) ||
+            // Tool error
+            (jsonResponse.type === 'tool_error' &&
+             jsonResponse.error &&
+             jsonResponse.error.toLowerCase().includes('prompt is too long'))
+          );
+          
+          if (isTokenLimitError) {
+            console.error(
+              `[CLAUDE JSON - ${issue.identifier}] Token limit error detected: ${JSON.stringify(jsonResponse)}`
+            );
+            
+            // Trigger the callback if provided and not already triggered
+            if (onTokenLimitError && !tokenLimitErrorDetected) {
+              tokenLimitErrorDetected = true;
+              onTokenLimitError(issue, workspace);
+            }
+          }
+          
           // Handle result type for cost information
           if (jsonResponse.type === 'result' && jsonResponse.subtype === 'success' && jsonResponse.cost_usd) {
             // Only log the essential info - cost and duration
@@ -261,6 +309,27 @@ export class NodeClaudeService extends ClaudeService {
                 );
               }
               
+              // Check for token limit error in final response as well
+              const isTokenLimitError = (
+                (jsonResponse.type === 'error' && 
+                 jsonResponse.message && 
+                 jsonResponse.message.toLowerCase().includes('prompt is too long')) ||
+                (jsonResponse.error && 
+                 typeof jsonResponse.error.message === 'string' && 
+                 jsonResponse.error.message.toLowerCase().includes('prompt is too long'))
+              );
+              
+              if (isTokenLimitError && !tokenLimitErrorDetected) {
+                console.error(
+                  `[CLAUDE JSON END - ${issue.identifier}] Token limit error detected in final response: ${JSON.stringify(jsonResponse)}`
+                );
+                tokenLimitErrorDetected = true;
+                
+                if (onTokenLimitError) {
+                  onTokenLimitError(issue, workspace);
+                }
+              }
+              
               if (jsonResponse.type === 'result' && jsonResponse.subtype === 'success' && jsonResponse.cost_usd) {
                 console.log(
                   `Claude response completed (on end) - Cost: $${jsonResponse.cost_usd.toFixed(2)}, Duration: ${jsonResponse.duration_ms / 1000}s`
@@ -299,6 +368,19 @@ export class NodeClaudeService extends ClaudeService {
       console.error(`----------------------------------------`);
       console.error(error);
       console.error(`----------------------------------------`);
+      
+      // Check for token limit error in stderr as well
+      if (error.toLowerCase().includes('prompt is too long') && !tokenLimitErrorDetected) {
+        console.error(
+          `[CLAUDE STDERR - ${issue.identifier}] Token limit error detected in stderr`
+        );
+        tokenLimitErrorDetected = true;
+        
+        // Trigger the callback if provided
+        if (onTokenLimitError) {
+          onTokenLimitError(issue, workspace);
+        }
+      }
     });
     
     // Handle process exit
@@ -325,6 +407,101 @@ export class NodeClaudeService extends ClaudeService {
     return claudeProcess;
   }
   
+  /**
+   * Start a new session after token limit error
+   * @param {Issue} issue - The issue to work on
+   * @param {Workspace} workspace - The workspace
+   * @returns {Promise<Session>} A promise that resolves with the session
+   */
+  async startFreshSessionAfterTokenLimit(issue, workspace) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        console.log(`Starting fresh Claude session for issue ${issue.identifier} after token limit error...`);
+        
+        // Prepare initial prompt with token limit context
+        const initialPrompt = await this.buildInitialPrompt(issue, true);
+        
+        // Get the history path (but don't clear it - we preserve the conversation history)
+        const historyPath = workspace.getHistoryFilePath();
+        
+        console.log(`Fresh session will continue with existing conversation history at: ${historyPath}`);
+        
+        // Get the allowed tools based on configuration
+        const config = env.claude;
+        let allowedTools;
+        
+        if (config.allowedTools) {
+          allowedTools = config.allowedTools;
+          console.log(`Using configured tools: ${allowedTools.join(', ')}`);
+        } else if (config.readOnlyMode) {
+          allowedTools = claudeConfig.readOnlyTools;
+          console.log(`Using read-only tools: ${allowedTools.join(', ')}`);
+        } else {
+          allowedTools = claudeConfig.availableTools;
+          console.log(`Using all available tools: ${allowedTools.join(', ')}`);
+        }
+        
+        // Use default args (without --continue) for fresh start
+        const claudeArgs = claudeConfig.getDefaultArgs(allowedTools);
+        const claudeCmd = `${this.claudePath} ${claudeArgs.join(' ')}`;
+        
+        // Build the full command
+        const fullCommand = `${claudeCmd} | jq -c .`;
+        
+        console.log(`Spawning fresh Claude session via shell: sh -c "${fullCommand}"`);
+        
+        const claudeProcess = this.processManager.spawn(fullCommand, {
+          cwd: workspace.path,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: true,
+        });
+        
+        // Set up error handler
+        claudeProcess.on('error', (err) => {
+          console.error(`\n[CLAUDE/JQ SPAWN ERROR] ${err.message}`);
+          console.error(
+            `Make sure the Claude executable and 'jq' are correctly installed and available in PATH`
+          );
+          reject(err);
+        });
+        
+        // Write the initial prompt with token limit context
+        try {
+          claudeProcess.stdin.write(initialPrompt);
+          claudeProcess.stdin.end();
+          console.log(
+            `Initial prompt with token limit context sent to fresh Claude session (PID: ${claudeProcess.pid}) for issue ${issue.identifier}`
+          );
+        } catch (stdinError) {
+          console.error(
+            `Failed to write to Claude/jq stdin: ${stdinError.message}`
+          );
+          reject(stdinError);
+          return;
+        }
+        
+        // Set up common event handlers
+        this._setupClaudeProcessHandlers(claudeProcess, issue, workspace, historyPath);
+        
+        // Create and resolve with a new Session object
+        const session = new Session({
+          issue,
+          workspace,
+          process: claudeProcess,
+          startedAt: new Date()
+        });
+        
+        resolve(session);
+      } catch (error) {
+        console.error(
+          `Failed to start fresh Claude session for issue ${issue.identifier}:`,
+          error
+        );
+        reject(error);
+      }
+    });
+  }
+
   /**
    * @inheritdoc
    */
@@ -437,8 +614,38 @@ CLAUDE_INPUT_EOF`;
           return;
         }
         
-        // Set up common event handlers
-        this._setupClaudeProcessHandlers(claudeProcess, issue, historyPath);
+        // Set up common event handlers with token limit callback
+        this._setupClaudeProcessHandlers(claudeProcess, issue, workspace, historyPath, async (issue, workspace) => {
+          console.log(`Token limit reached for issue ${issue.identifier}. Starting fresh session...`);
+          
+          // Kill the current process gracefully
+          if (claudeProcess && !claudeProcess.killed) {
+            claudeProcess.kill();
+          }
+          
+          // Start a fresh session without --continue
+          try {
+            const freshSession = await this.startFreshSessionAfterTokenLimit(issue, workspace);
+            console.log(`Fresh session started successfully for issue ${issue.identifier}`);
+            
+            // Update the SessionManager with the fresh session
+            if (this.issueService && this.issueService.sessionManager) {
+              this.issueService.sessionManager.updateSession(issue.id, freshSession);
+            }
+            
+            // Post a comment to Linear about the token limit restart
+            await this.postResponseToLinear(
+              issue.id, 
+              `[System] The conversation hit the token limit. Starting a fresh session while preserving the workspace state and conversation history.`
+            );
+          } catch (error) {
+            console.error(`Failed to start fresh session after token limit:`, error);
+            await this.postResponseToLinear(
+              issue.id, 
+              `[System Error] Failed to recover from token limit: ${error.message}`
+            );
+          }
+        });
         
         // Create and resolve with a new Session object
         const session = new Session({
@@ -545,8 +752,38 @@ CLAUDE_INPUT_EOF`;
           reject(err);
         });
         
-        // Set up handlers and resolve with new session
-        this._setupClaudeProcessHandlers(newClaudeProcess, issue, historyPath);
+        // Set up handlers and resolve with new session with token limit callback
+        this._setupClaudeProcessHandlers(newClaudeProcess, issue, workspace, historyPath, async (issue, workspace) => {
+          console.log(`Token limit reached while continuing issue ${issue.identifier}. Starting fresh session...`);
+          
+          // Kill the current process gracefully
+          if (newClaudeProcess && !newClaudeProcess.killed) {
+            newClaudeProcess.kill();
+          }
+          
+          // Start a fresh session without --continue
+          try {
+            const freshSession = await this.startFreshSessionAfterTokenLimit(issue, workspace);
+            console.log(`Fresh session started successfully after token limit in continuation for issue ${issue.identifier}`);
+            
+            // Update the SessionManager with the fresh session
+            if (this.issueService && this.issueService.sessionManager) {
+              this.issueService.sessionManager.updateSession(issue.id, freshSession);
+            }
+            
+            // Post a comment to Linear about the token limit restart
+            await this.postResponseToLinear(
+              issue.id, 
+              `[System] The conversation hit the token limit during continuation. Starting a fresh session while preserving the workspace state and conversation history.`
+            );
+          } catch (error) {
+            console.error(`Failed to start fresh session after token limit in continuation:`, error);
+            await this.postResponseToLinear(
+              issue.id, 
+              `[System Error] Failed to recover from token limit during continuation: ${error.message}`
+            );
+          }
+        });
         
         console.log(
           `New Claude process started with PID: ${newClaudeProcess.pid}`

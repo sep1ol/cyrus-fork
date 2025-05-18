@@ -46,7 +46,7 @@ export class App {
         const issues = await issueService.fetchAssignedIssues();
         
         if (issues && issues.length > 0) {
-          console.log(`Found ${issues.length} assigned issues to process.`);
+          console.log(`Found ${issues.length} assigned issues. Checking for existing workspaces...`);
           issues.forEach(issue => {
             issueService.initializeIssueSession(issue).catch(err => {
               console.error(`Failed to initialize session for issue ${issue.identifier}:`, err);
