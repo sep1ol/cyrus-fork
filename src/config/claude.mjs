@@ -55,6 +55,7 @@ export default {
   getDefaultArgs(allowedTools = []) {
     return [
       '--print',
+      '--verbose',
       '--output-format',
       'stream-json',
       ...this.getToolsArgs(allowedTools)
