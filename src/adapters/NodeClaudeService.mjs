@@ -159,18 +159,20 @@ export class NodeClaudeService extends ClaudeService {
             );
           }
           
-          // Process the jsonResponse
-          if (jsonResponse.role === 'assistant' && jsonResponse.content) {
+          // Process the jsonResponse based on new format
+          // Handle assistant messages wrapped in message object
+          if (jsonResponse.type === 'assistant' && jsonResponse.message) {
+            const message = jsonResponse.message;
             let currentResponseText = '';
             
-            if (Array.isArray(jsonResponse.content)) {
-              for (const content of jsonResponse.content) {
+            if (message.content && Array.isArray(message.content)) {
+              for (const content of message.content) {
                 if (content.type === 'text') {
                   currentResponseText += content.text;
                 }
               }
-            } else if (typeof jsonResponse.content === 'string') {
-              currentResponseText = jsonResponse.content;
+            } else if (typeof message.content === 'string') {
+              currentResponseText = message.content;
             }
             
             if (currentResponseText.trim().length > 0) {
@@ -185,33 +187,33 @@ export class NodeClaudeService extends ClaudeService {
                 firstResponsePosted = true;
               }
             }
-          }
-          
-          // Post the final accumulated response when the turn ends
-          if (jsonResponse.stop_reason === 'end_turn') {
-            // Post the final response if there's content to post
-            if (lastAssistantResponseText.trim().length > 0) {
-              // Only post the final response if it differs from the first response
-              if (!firstResponsePosted || this._isContentChanged(issue.firstResponseContent, lastAssistantResponseText)) {
-                console.log(
-                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
-                );
-                this.postResponseToLinear(issue.id, lastAssistantResponseText);
+            
+            // Check for end_turn in the message
+            if (message.stop_reason === 'end_turn') {
+              // Post the final response if there's content to post
+              if (lastAssistantResponseText.trim().length > 0) {
+                // Only post the final response if it differs from the first response
+                if (!firstResponsePosted || this._isContentChanged(issue.firstResponseContent, lastAssistantResponseText)) {
+                  console.log(
+                    `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
+                  );
+                  this.postResponseToLinear(issue.id, lastAssistantResponseText);
+                } else {
+                  console.log(
+                    `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but final response is identical to first response. Skipping duplicate post.`
+                  );
+                }
+                lastAssistantResponseText = '';
               } else {
                 console.log(
-                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but final response is identical to first response. Skipping duplicate post.`
+                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but no content to post.`
                 );
               }
-              lastAssistantResponseText = '';
-            } else {
-              console.log(
-                `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but no content to post.`
-              );
             }
           }
           
-          // If this is the final cost message, log it concisely
-          if (jsonResponse.role === 'system' && jsonResponse.cost_usd) {
+          // Handle result type for cost information
+          if (jsonResponse.type === 'result' && jsonResponse.subtype === 'success' && jsonResponse.cost_usd) {
             // Only log the essential info - cost and duration
             console.log(
               `Claude response for ${issue.identifier} - Cost: $${jsonResponse.cost_usd.toFixed(2)}, Duration: ${(jsonResponse.duration_ms / 1000).toFixed(1)}s`
@@ -259,7 +261,7 @@ export class NodeClaudeService extends ClaudeService {
                 );
               }
               
-              if (jsonResponse.role === 'system' && jsonResponse.cost_usd) {
+              if (jsonResponse.type === 'result' && jsonResponse.subtype === 'success' && jsonResponse.cost_usd) {
                 console.log(
                   `Claude response completed (on end) - Cost: $${jsonResponse.cost_usd.toFixed(2)}, Duration: ${jsonResponse.duration_ms / 1000}s`
                 );
@@ -339,7 +341,13 @@ export class NodeClaudeService extends ClaudeService {
         
         console.log(`Conversation history will be stored at: ${historyPath}`);
         
-        if (!this.fileSystem.existsSync(historyPath)) {
+        // Check if conversation history exists and has content
+        let hasExistingHistory = false;
+        if (this.fileSystem.existsSync(historyPath)) {
+          const historyContent = await this.fileSystem.readFile(historyPath, 'utf-8');
+          hasExistingHistory = historyContent.trim().length > 0;
+          console.log(`History file exists with ${hasExistingHistory ? 'content' : 'no content'}`);
+        } else {
           this.fileSystem.writeFileSync(historyPath, '');
         }
         
@@ -362,9 +370,24 @@ export class NodeClaudeService extends ClaudeService {
         }
         
         // Get the arguments with the appropriate tool permissions
-        const claudeArgs = claudeConfig.getDefaultArgs(allowedTools);
+        // Use continue args if we have existing history, otherwise use default args
+        const claudeArgs = hasExistingHistory 
+          ? claudeConfig.getContinueArgs(allowedTools)
+          : claudeConfig.getDefaultArgs(allowedTools);
         const claudeCmd = `${this.claudePath} ${claudeArgs.join(' ')}`;
-        const fullCommand = `${claudeCmd} | jq -c .`;
+        
+        // Build the full command
+        let fullCommand;
+        if (hasExistingHistory) {
+          // For continuation, use heredoc like in sendComment
+          const continuationMessage = "The system has been restarted. Please continue working on this issue.";
+          fullCommand = `${claudeCmd} << 'CLAUDE_INPUT_EOF' | jq -c .
+${continuationMessage}
+CLAUDE_INPUT_EOF`;
+        } else {
+          // For new sessions, pipe the input normally
+          fullCommand = `${claudeCmd} | jq -c .`;
+        }
         
         console.log(`Spawning Claude via shell: sh -c "${fullCommand}"`);
         console.log(
@@ -390,16 +413,25 @@ export class NodeClaudeService extends ClaudeService {
           reject(err);
         });
         
-        // Write the initial prompt to stdin and close it
+        // Write the initial prompt only for new sessions
+        // For continuations, the content is already included in the heredoc command
         try {
-          claudeProcess.stdin.write(initialPrompt);
-          claudeProcess.stdin.end();
-          console.log(
-            `Initial prompt sent via stdin to Claude/jq shell (PID: ${claudeProcess.pid}) for issue ${issue.identifier}`
-          );
+          if (!hasExistingHistory) {
+            // For new sessions, send the initial prompt
+            claudeProcess.stdin.write(initialPrompt);
+            claudeProcess.stdin.end();
+            console.log(
+              `Initial prompt sent via stdin to Claude/jq shell (PID: ${claudeProcess.pid}) for issue ${issue.identifier}`
+            );
+          } else {
+            // For continuations, the heredoc already contains the content
+            console.log(
+              `Continuation started for issue ${issue.identifier} (using --continue with existing history)`
+            );
+          }
         } catch (stdinError) {
           console.error(
-            `Failed to write prompt to Claude/jq stdin: ${stdinError.message}`
+            `Failed to write to Claude/jq stdin: ${stdinError.message}`
           );
           reject(stdinError);
           return;
@@ -556,7 +588,7 @@ CLAUDE_INPUT_EOF`;
           try {
             const entry = JSON.parse(line);
             
-            if (entry.role === 'system' && typeof entry.cost_usd === 'number') {
+            if (entry.type === 'result' && entry.subtype === 'success' && typeof entry.cost_usd === 'number') {
               totalCost += entry.cost_usd;
             }
           } catch (parseError) {
