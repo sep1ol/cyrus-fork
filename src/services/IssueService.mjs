@@ -82,4 +82,13 @@ export class IssueService {
   async handleAgentReply(data) {
     throw new Error('Not implemented');
   }
+  
+  /**
+   * Handle when the agent is unassigned from an issue
+   * @param {Object} data - The unassignment notification data
+   * @returns {Promise<void>}
+   */
+  async handleAgentUnassignment(data) {
+    throw new Error('Not implemented');
+  }
 }

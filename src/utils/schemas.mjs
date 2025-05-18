@@ -112,6 +112,14 @@ export const IssueAssignedToYouNotificationSchema = NotificationBaseSchema.exten
   actor: UserSchema
 });
 
+// Issue Unassigned From You notification (when an issue is unassigned from the agent)
+export const IssueUnassignedFromYouNotificationSchema = NotificationBaseSchema.extend({
+  type: z.literal('issueUnassignedFromYou'),
+  issueId: z.string(),
+  issue: IssueMinimalSchema,
+  actor: UserSchema
+});
+
 // Union of all notification types
 export const NotificationSchema = z.discriminatedUnion('type', [
   IssueCommentMentionNotificationSchema,
@@ -119,7 +127,8 @@ export const NotificationSchema = z.discriminatedUnion('type', [
   IssueCommentReplyNotificationSchema,
   IssueNewCommentNotificationSchema,
   AgentAssignableNotificationSchema,
-  IssueAssignedToYouNotificationSchema
+  IssueAssignedToYouNotificationSchema,
+  IssueUnassignedFromYouNotificationSchema
 ]);
 
 /**
@@ -249,6 +258,7 @@ export const WebhookPayloadSchema = z.discriminatedUnion('type', [
  * @typedef {z.infer<typeof IssueNewCommentNotificationSchema>} IssueNewCommentNotificationType
  * @typedef {z.infer<typeof AgentAssignableNotificationSchema>} AgentAssignableNotificationType
  * @typedef {z.infer<typeof IssueAssignedToYouNotificationSchema>} IssueAssignedToYouNotificationType
+ * @typedef {z.infer<typeof IssueUnassignedFromYouNotificationSchema>} IssueUnassignedFromYouNotificationType
  * @typedef {z.infer<typeof NotificationSchema>} NotificationType
  * 
  * @typedef {z.infer<typeof AgentNotificationWebhookSchema>} AgentNotificationWebhookType

@@ -189,23 +189,53 @@ history are preserved. Please continue your work on the issue.]
               currentResponseText = message.content;
             }
             
-            if (currentResponseText.trim().length > 0) {
-              lastAssistantResponseText = currentResponseText;
+            // Check for token limit error in assistant response
+            if (currentResponseText === 'Prompt is too long') {
+              console.error(
+                `[CLAUDE JSON - ${issue.identifier}] Token limit error detected in assistant response`
+              );
+              console.error(
+                `[CLAUDE JSON - ${issue.identifier}] onTokenLimitError: ${onTokenLimitError ? 'provided' : 'not provided'}`
+              );
+              console.error(
+                `[CLAUDE JSON - ${issue.identifier}] tokenLimitErrorDetected: ${tokenLimitErrorDetected}`
+              );
               
-              // Post the first complete response immediately
-              if (!firstResponsePosted) {
-                console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear.`);
-                this.postResponseToLinear(issue.id, lastAssistantResponseText);
-                // Store first response content in issue object for comparison
-                issue.firstResponseContent = lastAssistantResponseText.trim();
-                firstResponsePosted = true;
+              // Trigger the callback if provided and not already triggered
+              if (onTokenLimitError && !tokenLimitErrorDetected) {
+                tokenLimitErrorDetected = true;
+                console.error(
+                  `[CLAUDE JSON - ${issue.identifier}] Calling onTokenLimitError callback`
+                );
+                onTokenLimitError(issue, workspace);
+              }
+              // Don't post the error message to Linear, but don't return early
+              // to allow the rest of the stream to be processed
+              tokenLimitErrorDetected = true;
+              lastAssistantResponseText = ''; // Clear the response so it doesn't get posted
+              return;
+            }
+            
+            if (currentResponseText.trim().length > 0) {
+              // Don't store or post if it's a token limit error
+              if (currentResponseText !== 'Prompt is too long') {
+                lastAssistantResponseText = currentResponseText;
+                
+                // Post the first complete response immediately
+                if (!firstResponsePosted) {
+                  console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear.`);
+                  this.postResponseToLinear(issue.id, lastAssistantResponseText);
+                  // Store first response content in issue object for comparison
+                  issue.firstResponseContent = lastAssistantResponseText.trim();
+                  firstResponsePosted = true;
+                }
               }
             }
             
             // Check for end_turn in the message
             if (message.stop_reason === 'end_turn') {
               // Post the final response if there's content to post
-              if (lastAssistantResponseText.trim().length > 0) {
+              if (lastAssistantResponseText.trim().length > 0 && lastAssistantResponseText !== 'Prompt is too long') {
                 // Only post the final response if it differs from the first response
                 if (!firstResponsePosted || this._isContentChanged(issue.firstResponseContent, lastAssistantResponseText)) {
                   console.log(
@@ -231,32 +261,56 @@ history are preserved. Please continue your work on the issue.]
             // Direct error type
             (jsonResponse.type === 'error' && 
              jsonResponse.message && 
-             jsonResponse.message.toLowerCase().includes('prompt is too long')) ||
+             (jsonResponse.message === 'Prompt is too long' || 
+              jsonResponse.message.toLowerCase().includes('prompt is too long'))) ||
             // Error object
             (jsonResponse.error && 
              typeof jsonResponse.error.message === 'string' && 
-             jsonResponse.error.message.toLowerCase().includes('prompt is too long')) ||
-            // Assistant message with error
+             (jsonResponse.error.message === 'Prompt is too long' ||
+              jsonResponse.error.message.toLowerCase().includes('prompt is too long'))) ||
+            // Assistant message with error (handled above, but keeping for completeness)
             (jsonResponse.type === 'assistant' && 
              jsonResponse.message && 
              jsonResponse.message.content &&
              typeof jsonResponse.message.content === 'string' &&
-             jsonResponse.message.content.toLowerCase().includes('prompt is too long')) ||
+             (jsonResponse.message.content === 'Prompt is too long' ||
+              jsonResponse.message.content.toLowerCase().includes('prompt is too long'))) ||
             // Tool error
             (jsonResponse.type === 'tool_error' &&
              jsonResponse.error &&
-             jsonResponse.error.toLowerCase().includes('prompt is too long'))
+             (jsonResponse.error === 'Prompt is too long' ||
+              jsonResponse.error.toLowerCase().includes('prompt is too long'))) ||
+            // Result type with error - this is the most reliable indicator
+            (jsonResponse.type === 'result' &&
+             (jsonResponse.result === 'Prompt is too long' || jsonResponse.is_error === true))
           );
           
           if (isTokenLimitError) {
             console.error(
               `[CLAUDE JSON - ${issue.identifier}] Token limit error detected: ${JSON.stringify(jsonResponse)}`
             );
+            console.error(
+              `[CLAUDE JSON - ${issue.identifier}] onTokenLimitError: ${onTokenLimitError ? 'provided' : 'not provided'}`
+            );
+            console.error(
+              `[CLAUDE JSON - ${issue.identifier}] tokenLimitErrorDetected: ${tokenLimitErrorDetected}`
+            );
             
             // Trigger the callback if provided and not already triggered
             if (onTokenLimitError && !tokenLimitErrorDetected) {
               tokenLimitErrorDetected = true;
+              console.error(
+                `[CLAUDE JSON - ${issue.identifier}] Triggering onTokenLimitError callback`
+              );
               onTokenLimitError(issue, workspace);
+            } else if (tokenLimitErrorDetected) {
+              console.error(
+                `[CLAUDE JSON - ${issue.identifier}] Token limit error already detected, skipping callback`
+              );
+            } else if (!onTokenLimitError) {
+              console.error(
+                `[CLAUDE JSON - ${issue.identifier}] No token limit error callback provided`
+              );
             }
           }
           
@@ -313,10 +367,16 @@ history are preserved. Please continue your work on the issue.]
               const isTokenLimitError = (
                 (jsonResponse.type === 'error' && 
                  jsonResponse.message && 
-                 jsonResponse.message.toLowerCase().includes('prompt is too long')) ||
+                 (jsonResponse.message === 'Prompt is too long' ||
+                  jsonResponse.message.toLowerCase().includes('prompt is too long'))) ||
                 (jsonResponse.error && 
                  typeof jsonResponse.error.message === 'string' && 
-                 jsonResponse.error.message.toLowerCase().includes('prompt is too long'))
+                 (jsonResponse.error.message === 'Prompt is too long' ||
+                  jsonResponse.error.message.toLowerCase().includes('prompt is too long'))) ||
+                (jsonResponse.type === 'result' &&
+                 jsonResponse.result === 'Prompt is too long') ||
+                (jsonResponse.type === 'assistant' && 
+                 jsonResponse.message?.content === 'Prompt is too long')
               );
               
               if (isTokenLimitError && !tokenLimitErrorDetected) {

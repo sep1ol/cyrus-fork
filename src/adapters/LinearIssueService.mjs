@@ -536,6 +536,14 @@ export class LinearIssueService extends IssueService {
       const issue = await this.fetchIssue(issueId);
       console.log(`Fetched issue: ${issue.identifier}`);
       
+      // Check if the issue is still assigned to our agent
+      if (issue.assigneeId !== this.userId) {
+        console.log(
+          `Skipping mention on issue ${issue.identifier} that is not assigned to our agent`
+        );
+        return;
+      }
+      
       // Check if we already have a session for this issue
       if (this.sessionManager.hasSession(issueId)) {
         console.log(`Using existing session for issue ${issue.identifier}`);
@@ -642,6 +650,49 @@ export class LinearIssueService extends IssueService {
       console.log('Successfully processed agent reply');
     } catch (error) {
       console.error('Error handling agent reply:', error);
+    }
+  }
+
+  /**
+   * @inheritdoc
+   */
+  async handleAgentUnassignment(data) {
+    try {
+      console.log('===== PROCESSING AGENT UNASSIGNMENT NOTIFICATION =====');
+      const { issueId, issue, actor } = data;
+      
+      console.log(`Agent unassigned from issue ${issue.identifier} by ${actor.name}`);
+      
+      // Check if we have an active session for this issue
+      if (this.sessionManager.hasSession(issueId)) {
+        const session = this.sessionManager.getSession(issueId);
+        
+        // Terminate the Claude process if it's running
+        if (session.process && !session.process.killed) {
+          console.log(`Terminating Claude process for issue ${issue.identifier}`);
+          session.process.kill();
+        }
+        
+        // Remove the session from the manager
+        this.sessionManager.removeSession(issueId);
+        console.log(`Session removed for issue ${issue.identifier}`);
+        
+        // Post a final comment to Linear
+        try {
+          await this.createComment(
+            issueId,
+            `[System] Agent has been unassigned from this issue by ${actor.name}. Terminating active work session.`
+          );
+        } catch (commentError) {
+          console.error(`Failed to post unassignment comment to Linear: ${commentError.message}`);
+        }
+      } else {
+        console.log(`No active session found for issue ${issue.identifier}`);
+      }
+      
+      console.log('Successfully processed agent unassignment');
+    } catch (error) {
+      console.error('Error handling agent unassignment:', error);
     }
   }
 }

@@ -281,6 +281,16 @@ export class ExpressWebhookService extends WebhookService {
         // For now, let's handle it similar to a mention
         await this.issueService.handleAgentMention(newCommentData);
         break;
+
+      case 'issueUnassignedFromYou':
+        console.log('Agent was unassigned from an issue');
+        // Handle the unassignment by terminating any active sessions
+        await this.issueService.handleAgentUnassignment({
+          issueId: data.issueId,
+          issue: data.issue,
+          actor: data.actor
+        });
+        break;
         
       // Log any other notification types for analysis
       default:
