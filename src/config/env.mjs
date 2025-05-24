@@ -53,11 +53,6 @@ export default {
       'PROMPT_TEMPLATE_PATH'
     ];
     
-    // Environment variables that are no longer used
-  if (process.env['LINEAR_USER_ID'] || process.env['LINEAR_USERNAME']) {
-    console.log('Note: LINEAR_USER_ID and LINEAR_USERNAME are no longer used. User information is now automatically fetched from the Linear API.');
-  }
-    
     // OAuth or API token is required (one of them)
     const authRequirement = {
       api: 'LINEAR_API_TOKEN',

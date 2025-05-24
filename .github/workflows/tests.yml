@@ -30,8 +30,6 @@ jobs:
     - name: Create .env file
       run: |
         touch .env
-        echo "LINEAR_USER_ID=test" >> .env
-        echo "LINEAR_USERNAME=test" >> .env
         echo "LINEAR_WEBHOOK_SECRET=test" >> .env
         echo "WEBHOOK_PORT=3000" >> .env
         echo "CLAUDE_PATH=/bin/echo" >> .env
