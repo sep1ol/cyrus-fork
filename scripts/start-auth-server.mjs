@@ -2,7 +2,7 @@
 
 /**
  * Utility script to start just the OAuth authorization server
- * Run with: node scripts/start-auth-server.mjs
+ * Run with: node scripts/start-auth-server.mjs [--env-file <path>]
  */
 
 import express from 'express';
@@ -10,9 +10,29 @@ import dotenv from 'dotenv';
 import { OAuthHelper } from '../src/utils/OAuthHelper.mjs';
 import { FileSystem } from '../src/utils/FileSystem.mjs';
 import fetch from 'node-fetch'; // Ensure node-fetch is used in Node.js environment
+import { parseArgs } from 'node:util';
 
-// Load environment variables
-dotenv.config();
+// Parse command line arguments
+const options = {
+  'env-file': {
+    type: 'string',
+    short: 'e',
+    default: '.env.secret-agents',
+    description: 'Path to the environment file'
+  }
+};
+
+let values;
+try {
+  const parsed = parseArgs({ options, allowPositionals: false });
+  values = parsed.values;
+} catch (err) {
+  console.error(`Error: ${err.message}`);
+  process.exit(1);
+}
+
+// Load environment variables from the specified file
+dotenv.config({ path: values['env-file'] });
 
 // Initialize dependencies
 const fileSystem = new FileSystem();
