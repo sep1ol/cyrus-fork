@@ -334,6 +334,45 @@ export class LinearIssueService extends IssueService {
         } =====`
       );
       
+      // Check if the issue state was changed to canceled
+      if (issueData.state && (issueData.state.type === 'canceled' || issueData.state.name === 'Canceled')) {
+        console.log(`Issue ${issueData.identifier || issueData.id} has been canceled`);
+        
+        // Check if we have an active session for this issue
+        if (this.sessionManager.hasSession(issueData.id)) {
+          const session = this.sessionManager.getSession(issueData.id);
+          
+          console.log(`Issue ${session.issue.identifier} has been canceled, terminating Claude process`);
+          
+          // Post a comment acknowledging the cancellation
+          try {
+            await this.createComment(
+              issueData.id,
+              `I will stop working on this. If you ever reopen it, I will start again.`
+            );
+          } catch (commentError) {
+            console.error(`Failed to post cancellation comment: ${commentError.message}`);
+          }
+          
+          // Kill the Claude process
+          if (session.process && !session.process.killed) {
+            try {
+              session.process.kill('SIGTERM');
+              console.log(`✅ Terminated Claude process for canceled issue ${session.issue.identifier}`);
+            } catch (killError) {
+              console.error(
+                `Error terminating Claude process for canceled issue ${session.issue.identifier}:`,
+                killError
+              );
+            }
+          }
+          
+          // Remove the session
+          this.sessionManager.removeSession(issueData.id);
+          console.log(`Session removed for canceled issue ${session.issue.identifier}`);
+        }
+      }
+      
       // Check if the assignee was changed
       if ('assigneeId' in issueData) {
         const newAssigneeId = issueData.assigneeId;
@@ -437,22 +476,35 @@ export class LinearIssueService extends IssueService {
         return;
       }
       
+      // Fetch issue details first to check status
+      console.log('Fetching issue details to check status...');
+      const issue = await this.fetchIssue(issueId);
+      console.log('Issue details:');
+      console.log(JSON.stringify(issue, null, 2));
+      
+      // Check if the issue is canceled
+      const isCanceled = issue.state && (issue.state === 'Canceled' || issue.state === 'canceled');
+      
       // Use the username from the API for mention checking
       console.log(`Checking for agent mention. Agent username: ${this.username}`);
+      const hasAgentMention = this.username && body.includes(this.username);
+      
+      // If issue is canceled and there's no agent mention, ignore the comment
+      if (isCanceled && !hasAgentMention) {
+        console.log(
+          `Skipping comment on canceled issue ${issue.identifier} that does not mention the agent`
+        );
+        return;
+      }
       
       // In the legacy webhook format, we still want to check for mentions
       // But for new Agent API notifications, this is handled based on notification type
-      if (this.username && !body.includes(this.username)) {
+      if (!isCanceled && this.username && !hasAgentMention) {
         console.log(
           `Skipping comment that does not mention the agent (${this.username})`
         );
         return;
       }
-      
-      console.log('Agent mention found in comment, fetching issue details...');
-      const issue = await this.fetchIssue(issueId);
-      console.log('Issue details:');
-      console.log(JSON.stringify(issue, null, 2));
       
       if (issue.assigneeId !== this.userId) {
         console.log(
@@ -535,6 +587,12 @@ export class LinearIssueService extends IssueService {
       // Fetch the issue to get full context
       const issue = await this.fetchIssue(issueId);
       console.log(`Fetched issue: ${issue.identifier}`);
+      
+      // Check if the issue is canceled - mentions on canceled issues should still be processed
+      const isCanceled = issue.state && (issue.state === 'Canceled' || issue.state === 'canceled');
+      if (isCanceled) {
+        console.log(`Note: Issue ${issue.identifier} is canceled, but processing mention anyway`);
+      }
       
       // Check if the issue is still assigned to our agent
       if (issue.assigneeId !== this.userId) {
@@ -629,6 +687,13 @@ export class LinearIssueService extends IssueService {
       // Fetch the issue to get full context
       const issue = await this.fetchIssue(issueId);
       console.log(`Fetched issue: ${issue.identifier}`);
+      
+      // Check if the issue is canceled - for replies on canceled issues, we should ignore them
+      const isCanceled = issue.state && (issue.state === 'Canceled' || issue.state === 'canceled');
+      if (isCanceled) {
+        console.log(`Skipping reply on canceled issue ${issue.identifier}`);
+        return;
+      }
       
       // Check if we have a session for this issue
       if (this.sessionManager.hasSession(issueId)) {
