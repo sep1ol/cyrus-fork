@@ -2,15 +2,35 @@
 
 /**
  * Utility script to reset OAuth tokens and other persistence files
- * Run with: node scripts/reset-oauth.mjs
+ * Run with: node scripts/reset-oauth.mjs [--env-file <path>]
  */
 
 import fs from 'fs-extra';
 import path from 'path';
 import dotenv from 'dotenv';
+import { parseArgs } from 'node:util';
 
-// Load environment variables
-dotenv.config();
+// Parse command line arguments
+const options = {
+  'env-file': {
+    type: 'string',
+    short: 'e',
+    default: '.env.secret-agents',
+    description: 'Path to the environment file'
+  }
+};
+
+let values;
+try {
+  const parsed = parseArgs({ options, allowPositionals: false });
+  values = parsed.values;
+} catch (err) {
+  console.error(`Error: ${err.message}`);
+  process.exit(1);
+}
+
+// Load environment variables from the specified file
+dotenv.config({ path: values['env-file'] });
 
 // Get the workspace base directory from environment
 const baseDir = process.env.WORKSPACE_BASE_DIR || './workspaces';

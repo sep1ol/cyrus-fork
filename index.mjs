@@ -1,8 +1,45 @@
 #!/usr/bin/env node
 import { App } from './src/app.mjs';
+import { parseArgs } from 'node:util';
 
-// Create the application
-const app = new App();
+// Parse command line arguments
+const options = {
+  'env-file': {
+    type: 'string',
+    short: 'e',
+    default: '.env.secret-agents',
+    description: 'Path to the environment file'
+  },
+  help: {
+    type: 'boolean',
+    short: 'h',
+    description: 'Show help'
+  }
+};
+
+let values;
+try {
+  const parsed = parseArgs({ options, allowPositionals: false });
+  values = parsed.values;
+} catch (err) {
+  console.error(`Error: ${err.message}`);
+  process.exit(1);
+}
+
+// Show help if requested
+if (values.help) {
+  console.log(`
+Usage: linear-claude-agent [options]
+
+Options:
+  -e, --env-file <path>    Path to the environment file (default: .env.secret-agents)
+  -h, --help               Show help
+`);
+  process.exit(0);
+}
+
+// Create the application with the env file path
+const app = new App(values['env-file']);
 let isShuttingDown = false;
 
 // Graceful shutdown handler

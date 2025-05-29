@@ -98,13 +98,15 @@ This approach ensures continuous context while being efficient with token usage.
 ## Setup
 
 1. Clone this repository
-2. Create a `.env` file based on `.env.example`
+2. Create a `.env.secret-agents` file based on `.env.example`
 3. Fill in your Linear API token, user ID, and webhook secret
 4. Install dependencies with `npm install`
 5. Optional: Install globally with `npm install -g .` (allows running `linear-claude-agent` from any directory)
 6. Start the agent with `npm start` or `linear-claude-agent` if installed globally
 
 ## Environment Variables
+
+By default, the agent looks for a `.env.secret-agents` file in the current directory. You can specify a different file using the `--env-file` option when running the agent.
 
 ### Required Variables
 
@@ -194,9 +196,16 @@ See the [Linear Webhooks documentation](https://developers.linear.app/docs/webho
 
 There are several ways to run the agent:
 
-1. **Standard Mode**:
+1. **Standard Mode** (uses `.env.secret-agents` by default):
    ```
    npm start
+   ```
+   
+   Or with a custom environment file:
+   ```
+   npm start -- --env-file .env.custom
+   # or
+   linear-claude-agent --env-file .env.custom
    ```
 
 2. **Development Mode** (auto-restart on file changes):
@@ -208,6 +217,8 @@ There are several ways to run the agent:
    ```
    # Start an OAuth authorization server
    node scripts/start-auth-server.mjs
+   # or with custom env file:
+   node scripts/start-auth-server.mjs --env-file .env.custom
    
    # Start ngrok in another terminal
    ngrok http 3000
@@ -218,7 +229,11 @@ There are several ways to run the agent:
 
 4. **OAuth Reset** (if you need to reauthorize):
    ```
-   # Visit in your browser (replace with your ngrok URL):
+   node scripts/reset-oauth.mjs
+   # or with custom env file:
+   node scripts/reset-oauth.mjs --env-file .env.custom
+   
+   # Then visit in your browser (replace with your ngrok URL):
    # https://your-ngrok-url.ngrok.io/oauth/reset
    ```
 
