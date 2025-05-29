@@ -589,12 +589,6 @@ export class LinearIssueService extends IssueService {
       const issue = await this.fetchIssue(issueId);
       console.log(`Fetched issue: ${issue.identifier}`);
       
-      // Check if the issue is canceled - mentions on canceled issues should still be processed
-      const isCanceled = issue.stateType === 'canceled';
-      if (isCanceled) {
-        console.log(`Note: Issue ${issue.identifier} is canceled, but processing mention anyway`);
-      }
-      
       // Check if the issue is still assigned to our agent
       if (issue.assigneeId !== this.userId) {
         console.log(
