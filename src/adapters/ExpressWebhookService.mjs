@@ -278,8 +278,23 @@ export class ExpressWebhookService extends WebhookService {
         };
         console.log(`New comment by ${data.actor.name} on issue ${data.issue.identifier}: ${data.comment.body.substring(0, 100)}${data.comment.body.length > 100 ? '...' : ''}`);
         
-        // For now, let's handle it similar to a mention
-        await this.issueService.handleAgentMention(newCommentData);
+        // Check if comment mentions other users but not the agent
+        // Get the agent's username from the issueService
+        const agentUsername = this.issueService.username;
+        const commentBody = data.comment?.body || '';
+        
+        // Check if comment contains any @ mentions
+        const hasMentions = commentBody.includes('@');
+        const mentionsAgent = agentUsername && commentBody.includes(`@${agentUsername}`);
+        
+        if (!hasMentions || mentionsAgent) {
+          // Process if: no mentions at all OR agent is mentioned
+          console.log(`Processing comment: ${!hasMentions ? 'no mentions' : `mentions agent @${agentUsername}`}`);
+          await this.issueService.handleAgentMention(newCommentData);
+        } else {
+          // Skip if: has mentions but agent is NOT mentioned
+          console.log(`Comment mentions other users but not agent @${agentUsername}, ignoring.`);
+        }
         break;
 
       case 'issueUnassignedFromYou':
