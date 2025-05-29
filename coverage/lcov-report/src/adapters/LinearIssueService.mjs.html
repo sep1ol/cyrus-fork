@@ -32,7 +32,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/178</span>
+                <span class='fraction'>0/168</span>
             </div>
         
             
@@ -825,7 +825,8 @@
 <a name='L760'></a><a href='#L760'>760</a>
 <a name='L761'></a><a href='#L761'>761</a>
 <a name='L762'></a><a href='#L762'>762</a>
-<a name='L763'></a><a href='#L763'>763</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L763'></a><a href='#L763'>763</a>
+<a name='L764'></a><a href='#L764'>764</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -881,6 +882,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -1648,6 +1650,7 @@ export class LinearIssueService extends IssueService {
       title: linearIssue.title,
       description: linearIssue.description,
       state: linearIssue.state?.name || linearIssue.state,
+      stateType: linearIssue.state?.type,
       priority: linearIssue.priority,
       url: linearIssue.url,
       assigneeId: linearIssue.assignee?.id || linearIssue._assignee?.id || linearIssue.assigneeId,
@@ -1924,7 +1927,7 @@ export class LinearIssueService extends IssueService {
       );
       
       // Check if the issue state was changed to canceled
-<span class="cstat-no" title="statement not covered" >      if (issueData.state &amp;&amp; (issueData.state.type === 'canceled' || issueData.state.name === 'Canceled')) {</span>
+<span class="cstat-no" title="statement not covered" >      if (issueData.state &amp;&amp; issueData.state.type === 'canceled') {</span>
 <span class="cstat-no" title="statement not covered" >        console.log(`Issue ${issueData.identifier || issueData.id} has been canceled`);</span>
         
         // Check if we have an active session for this issue
@@ -2072,7 +2075,7 @@ export class LinearIssueService extends IssueService {
 <span class="cstat-no" title="statement not covered" >      console.log(JSON.stringify(issue, null, 2));</span>
       
       // Check if the issue is canceled
-      const isCanceled = <span class="cstat-no" title="statement not covered" >issue.state &amp;&amp; (issue.state === 'Canceled' || issue.state === 'canceled');</span>
+      const isCanceled = <span class="cstat-no" title="statement not covered" >issue.stateType === 'canceled';</span>
       
       // Use the username from the API for mention checking
 <span class="cstat-no" title="statement not covered" >      console.log(`Checking for agent mention. Agent username: ${this.username}`);</span>
@@ -2178,7 +2181,7 @@ export class LinearIssueService extends IssueService {
 <span class="cstat-no" title="statement not covered" >      console.log(`Fetched issue: ${issue.identifier}`);</span>
       
       // Check if the issue is canceled - mentions on canceled issues should still be processed
-      const isCanceled = <span class="cstat-no" title="statement not covered" >issue.state &amp;&amp; (issue.state === 'Canceled' || issue.state === 'canceled');</span>
+      const isCanceled = <span class="cstat-no" title="statement not covered" >issue.stateType === 'canceled';</span>
 <span class="cstat-no" title="statement not covered" >      if (isCanceled) {</span>
 <span class="cstat-no" title="statement not covered" >        console.log(`Note: Issue ${issue.identifier} is canceled, but processing mention anyway`);</span>
       }
@@ -2278,7 +2281,7 @@ export class LinearIssueService extends IssueService {
 <span class="cstat-no" title="statement not covered" >      console.log(`Fetched issue: ${issue.identifier}`);</span>
       
       // Check if the issue is canceled - for replies on canceled issues, we should ignore them
-      const isCanceled = <span class="cstat-no" title="statement not covered" >issue.state &amp;&amp; (issue.state === 'Canceled' || issue.state === 'canceled');</span>
+      const isCanceled = <span class="cstat-no" title="statement not covered" >issue.stateType === 'canceled';</span>
 <span class="cstat-no" title="statement not covered" >      if (isCanceled) {</span>
 <span class="cstat-no" title="statement not covered" >        console.log(`Skipping reply on canceled issue ${issue.identifier}`);</span>
 <span class="cstat-no" title="statement not covered" >        return;</span>
@@ -2356,7 +2359,7 @@ export class LinearIssueService extends IssueService {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-05-29T03:30:12.868Z
+                at 2025-05-29T03:47:17.019Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

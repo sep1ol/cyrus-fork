@@ -6,7 +6,8 @@ describe('Issue', () => {
     identifier: 'TEST-456',
     title: 'Test Issue',
     description: 'This is a test issue',
-    state: { name: 'Todo' },
+    state: 'Todo',
+    stateType: 'unstarted',
     priority: 1,
     url: 'https://linear.app/test/issue/TEST-456',
     assigneeId: 'user-789',
@@ -30,7 +31,8 @@ describe('Issue', () => {
       expect(issue.identifier).toBe('TEST-456');
       expect(issue.title).toBe('Test Issue');
       expect(issue.description).toBe('This is a test issue');
-      expect(issue.state).toEqual({ name: 'Todo' });
+      expect(issue.state).toBe('Todo');
+      expect(issue.stateType).toBe('unstarted');
       expect(issue.priority).toBe(1);
       expect(issue.url).toBe('https://linear.app/test/issue/TEST-456');
       expect(issue.assigneeId).toBe('user-789');

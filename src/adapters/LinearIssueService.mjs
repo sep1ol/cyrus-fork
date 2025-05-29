@@ -59,6 +59,7 @@ export class LinearIssueService extends IssueService {
       title: linearIssue.title,
       description: linearIssue.description,
       state: linearIssue.state?.name || linearIssue.state,
+      stateType: linearIssue.state?.type,
       priority: linearIssue.priority,
       url: linearIssue.url,
       assigneeId: linearIssue.assignee?.id || linearIssue._assignee?.id || linearIssue.assigneeId,
@@ -335,7 +336,7 @@ export class LinearIssueService extends IssueService {
       );
       
       // Check if the issue state was changed to canceled
-      if (issueData.state && (issueData.state.type === 'canceled' || issueData.state.name === 'Canceled')) {
+      if (issueData.state && issueData.state.type === 'canceled') {
         console.log(`Issue ${issueData.identifier || issueData.id} has been canceled`);
         
         // Check if we have an active session for this issue
@@ -482,8 +483,8 @@ export class LinearIssueService extends IssueService {
       console.log('Issue details:');
       console.log(JSON.stringify(issue, null, 2));
       
-      // Check if the issue is canceled (issue.state is just the name string from the conversion)
-      const isCanceled = issue.state && (issue.state.toLowerCase() === 'canceled' || issue.state.toLowerCase().includes('cancel'));
+      // Check if the issue is canceled
+      const isCanceled = issue.stateType === 'canceled';
       
       // Use the username from the API for mention checking
       console.log(`Checking for agent mention. Agent username: ${this.username}`);
@@ -589,7 +590,7 @@ export class LinearIssueService extends IssueService {
       console.log(`Fetched issue: ${issue.identifier}`);
       
       // Check if the issue is canceled - mentions on canceled issues should still be processed
-      const isCanceled = issue.state && (issue.state.toLowerCase() === 'canceled' || issue.state.toLowerCase().includes('cancel'));
+      const isCanceled = issue.stateType === 'canceled';
       if (isCanceled) {
         console.log(`Note: Issue ${issue.identifier} is canceled, but processing mention anyway`);
       }
@@ -689,7 +690,7 @@ export class LinearIssueService extends IssueService {
       console.log(`Fetched issue: ${issue.identifier}`);
       
       // Check if the issue is canceled - for replies on canceled issues, we should ignore them
-      const isCanceled = issue.state && (issue.state.toLowerCase() === 'canceled' || issue.state.toLowerCase().includes('cancel'));
+      const isCanceled = issue.stateType === 'canceled';
       if (isCanceled) {
         console.log(`Skipping reply on canceled issue ${issue.identifier}`);
         return;

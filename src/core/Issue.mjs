@@ -8,6 +8,7 @@ export class Issue {
     title,
     description,
     state,
+    stateType,
     priority,
     url,
     assigneeId,
@@ -18,6 +19,7 @@ export class Issue {
     this.title = title;
     this.description = description || '';
     this.state = state;
+    this.stateType = stateType;
     this.priority = priority;
     this.url = url;
     this.assigneeId = assigneeId;
@@ -33,7 +35,7 @@ export class Issue {
   <identifier>${this.escapeXml(this.identifier)}</identifier>
   <title>${this.escapeXml(this.title)}</title>
   <description>${this.escapeXml(this.description || 'No description provided')}</description>
-  <status>${this.escapeXml(this.state?.name || 'Unknown')}</status>
+  <status>${this.escapeXml(this.state || 'Unknown')}</status>
   <priority>${this.priority}</priority>
   <url>${this.escapeXml(this.url)}</url>
 </issue_details>
