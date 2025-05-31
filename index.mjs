@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { App } from './src/app.mjs';
+import dotenv from 'dotenv';
 import { parseArgs } from 'node:util';
 
-// Parse command line arguments
+// Parse command line arguments first to get env file path
 const options = {
   'env-file': {
     type: 'string',
@@ -38,8 +38,14 @@ Options:
   process.exit(0);
 }
 
-// Create the application with the env file path
-const app = new App(values['env-file']);
+// Load environment variables BEFORE importing App
+dotenv.config({ path: values['env-file'] });
+
+// Now import App after environment is loaded
+const { App } = await import('./src/app.mjs');
+
+// Create the application
+const app = new App();
 let isShuttingDown = false;
 
 // Graceful shutdown handler

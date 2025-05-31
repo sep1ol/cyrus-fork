@@ -1,14 +1,11 @@
-import dotenv from 'dotenv';
 import { createContainer } from './container.mjs';
 
 /**
  * Application class that orchestrates the components
  */
 export class App {
-  constructor(envFilePath = '.env.secret-agents') {
-    // Load environment variables from the specified file
-    dotenv.config({ path: envFilePath });
-    
+  constructor() {
+    // Environment variables should already be loaded in index.mjs
     this.container = createContainer();
     this.webhookServer = null;
     this.isShuttingDown = false;

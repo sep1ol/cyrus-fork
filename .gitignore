@@ -24,3 +24,5 @@ Thumbs.db
 workspaces
 
 **/.claude/settings.local.json
+
+.env.secret-agents
