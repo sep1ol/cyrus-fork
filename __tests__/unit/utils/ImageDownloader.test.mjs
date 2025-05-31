@@ -5,8 +5,14 @@ jest.unstable_mockModule('node-fetch', () => ({
   default: jest.fn()
 }));
 
+// Mock file-type module
+jest.unstable_mockModule('file-type', () => ({
+  fileTypeFromBuffer: jest.fn()
+}));
+
 // Import modules after mocking
 const fetch = (await import('node-fetch')).default;
+const { fileTypeFromBuffer } = await import('file-type');
 const { ImageDownloader } = await import('../../../src/utils/ImageDownloader.mjs');
 const { Issue } = await import('../../../src/core/Issue.mjs');
 
@@ -20,6 +26,7 @@ describe('ImageDownloader', () => {
     // Reset mocks
     jest.clearAllMocks();
     fetch.mockClear();
+    fileTypeFromBuffer.mockClear();
 
     // Create mock dependencies
     mockLinearClient = {
@@ -29,7 +36,11 @@ describe('ImageDownloader', () => {
     mockFileSystem = {
       ensureDir: jest.fn().mockResolvedValue(undefined),
       existsSync: jest.fn().mockReturnValue(false),
-      writeFile: jest.fn().mockResolvedValue(undefined)
+      writeFile: jest.fn().mockResolvedValue(undefined),
+      homedir: jest.fn().mockReturnValue('/home/user'),
+      basename: jest.fn().mockReturnValue('workspace'),
+      joinPath: jest.fn().mockImplementation((...args) => args.join('/')),
+      rename: jest.fn().mockResolvedValue(undefined)
     };
 
     mockOAuthHelper = {
@@ -94,13 +105,16 @@ describe('ImageDownloader', () => {
         statusText: 'OK',
         buffer: jest.fn().mockResolvedValue(mockBuffer)
       });
+      
+      // Mock file type detection
+      fileTypeFromBuffer.mockResolvedValueOnce({ ext: 'png', mime: 'image/png' });
 
       const result = await imageDownloader.downloadImage(
         'https://uploads.linear.app/12345/image.png',
         '/workspace/images/image.png'
       );
 
-      expect(result).toBe(true);
+      expect(result).toEqual({ success: true, fileType: '.png' });
       expect(fetch).toHaveBeenCalledWith(
         'https://uploads.linear.app/12345/image.png',
         {
@@ -124,13 +138,16 @@ describe('ImageDownloader', () => {
         statusText: 'OK',
         buffer: jest.fn().mockResolvedValue(mockBuffer)
       });
+      
+      // Mock file type detection
+      fileTypeFromBuffer.mockResolvedValueOnce({ ext: 'jpg', mime: 'image/jpeg' });
 
       const result = await imageDownloader.downloadImage(
         'https://uploads.linear.app/12345/image.png',
         '/workspace/images/image.png'
       );
 
-      expect(result).toBe(true);
+      expect(result).toEqual({ success: true, fileType: '.jpg' });
       expect(fetch).toHaveBeenCalledWith(
         'https://uploads.linear.app/12345/image.png',
         {
@@ -141,6 +158,26 @@ describe('ImageDownloader', () => {
       );
 
       delete process.env.LINEAR_API_TOKEN;
+    });
+
+    it('should default to .png when file type cannot be detected', async () => {
+      const mockBuffer = Buffer.from('unknown-file-data');
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        buffer: jest.fn().mockResolvedValue(mockBuffer)
+      });
+      
+      // Mock file type detection returning null (unknown type)
+      fileTypeFromBuffer.mockResolvedValueOnce(null);
+
+      const result = await imageDownloader.downloadImage(
+        'https://uploads.linear.app/12345/unknownfile',
+        '/workspace/images/image.tmp'
+      );
+
+      expect(result).toEqual({ success: true, fileType: '.png' });
     });
 
     it('should handle download failures', async () => {
@@ -155,7 +192,7 @@ describe('ImageDownloader', () => {
         '/workspace/images/missing.png'
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ success: false });
     });
 
     it('should handle network errors', async () => {
@@ -166,7 +203,7 @@ describe('ImageDownloader', () => {
         '/workspace/images/image.png'
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ success: false });
     });
 
     it('should throw error when no authentication is available', async () => {
@@ -180,7 +217,7 @@ describe('ImageDownloader', () => {
         '/workspace/images/image.png'
       );
 
-      expect(result).toBe(false);
+      expect(result).toEqual({ success: false });
     });
   });
 
@@ -209,6 +246,11 @@ describe('ImageDownloader', () => {
         statusText: 'OK',
         buffer: jest.fn().mockResolvedValue(mockBuffer)
       }));
+      
+      // Mock file type detection - first image is png, second is jpg
+      fileTypeFromBuffer
+        .mockResolvedValueOnce({ ext: 'png', mime: 'image/png' })
+        .mockResolvedValueOnce({ ext: 'jpg', mime: 'image/jpeg' });
 
       const result = await imageDownloader.downloadIssueImages(issue, '/workspace');
 
@@ -216,8 +258,19 @@ describe('ImageDownloader', () => {
       expect(result.totalFound).toBe(2);
       expect(result.skipped).toBe(0);
       expect(Object.keys(result.imageMap)).toHaveLength(2);
-      expect(result.imageMap['https://uploads.linear.app/12345/screenshot.png']).toMatch(/\.linear-images\/image_1\.png$/);
-      expect(result.imageMap['https://uploads.linear.app/67890/image.jpg']).toMatch(/\.linear-images\/image_2\.jpg$/);
+      expect(result.imageMap['https://uploads.linear.app/12345/screenshot.png']).toBe('/home/user/.linearsecretagent/workspace/images/image_1.png');
+      expect(result.imageMap['https://uploads.linear.app/67890/image.jpg']).toBe('/home/user/.linearsecretagent/workspace/images/image_2.jpg');
+      
+      // Check that rename was called with correct arguments
+      expect(mockFileSystem.rename).toHaveBeenCalledTimes(2);
+      expect(mockFileSystem.rename).toHaveBeenCalledWith(
+        '/home/user/.linearsecretagent/workspace/images/image_1.tmp',
+        '/home/user/.linearsecretagent/workspace/images/image_1.png'
+      );
+      expect(mockFileSystem.rename).toHaveBeenCalledWith(
+        '/home/user/.linearsecretagent/workspace/images/image_2.tmp',
+        '/home/user/.linearsecretagent/workspace/images/image_2.jpg'
+      );
     });
 
     it('should respect the 10 image limit', async () => {
@@ -242,6 +295,9 @@ describe('ImageDownloader', () => {
         statusText: 'OK',
         buffer: jest.fn().mockResolvedValue(mockBuffer)
       }));
+      
+      // Mock file type detection - always return png for simplicity
+      fileTypeFromBuffer.mockResolvedValue({ ext: 'png', mime: 'image/png' });
 
       const result = await imageDownloader.downloadIssueImages(issue, '/workspace', 10);
 
@@ -290,6 +346,9 @@ describe('ImageDownloader', () => {
           status: 404,
           statusText: 'Not Found'
         });
+        
+      // Mock file type detection for successful download
+      fileTypeFromBuffer.mockResolvedValueOnce({ ext: 'png', mime: 'image/png' });
 
       const result = await imageDownloader.downloadIssueImages(issue, '/workspace');
 
@@ -304,8 +363,8 @@ describe('ImageDownloader', () => {
     it('should generate manifest for downloaded images', () => {
       const downloadResult = {
         imageMap: {
-          'https://uploads.linear.app/12345/screenshot.png': '/workspace/.linear-images/image_1.png',
-          'https://uploads.linear.app/67890/diagram.jpg': '/workspace/.linear-images/image_2.jpg'
+          'https://uploads.linear.app/12345/screenshot.png': '/home/user/.linearsecretagent/workspace/images/image_1.png',
+          'https://uploads.linear.app/67890/diagram.jpg': '/home/user/.linearsecretagent/workspace/images/image_2.jpg'
         },
         totalFound: 2,
         downloaded: 2,
@@ -318,14 +377,15 @@ describe('ImageDownloader', () => {
       expect(manifest).toContain('Found 2 images. Downloaded 2');
       expect(manifest).toContain('image_1.png');
       expect(manifest).toContain('image_2.jpg');
+      expect(manifest).toContain('Images have been downloaded to the `~/.linearsecretagent/<workspace>/images` directory');
       expect(manifest).toContain('You can use the Read tool to view these images');
     });
 
     it('should mention skipped images in manifest', () => {
       const downloadResult = {
         imageMap: {
-          'https://uploads.linear.app/1/image1.png': '/workspace/.linear-images/image_1.png',
-          'https://uploads.linear.app/2/image2.png': '/workspace/.linear-images/image_2.png'
+          'https://uploads.linear.app/1/image1.png': '/home/user/.linearsecretagent/workspace/images/image_1.png',
+          'https://uploads.linear.app/2/image2.png': '/home/user/.linearsecretagent/workspace/images/image_2.png'
         },
         totalFound: 15,
         downloaded: 10,

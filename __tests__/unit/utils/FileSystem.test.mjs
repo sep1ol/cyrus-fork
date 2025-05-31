@@ -134,4 +134,13 @@ describe('FileSystem', () => {
     fileSystem.existsSync(mockPath);
     expect(fs.existsSync).toHaveBeenCalledWith(mockPath);
   });
+  
+  test('rename forwards to fs.rename', async () => {
+    const oldPath = '/test/oldfile.txt';
+    const newPath = '/test/newfile.txt';
+    jest.spyOn(fs, 'rename').mockImplementation(() => Promise.resolve());
+    
+    await fileSystem.rename(oldPath, newPath);
+    expect(fs.rename).toHaveBeenCalledWith(oldPath, newPath);
+  });
 });
