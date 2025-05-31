@@ -6,20 +6,27 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Coverage folder to .gitignore to prevent test coverage reports from being tracked
+- AttachmentDownloader class to handle all types of Linear attachments (not just images)
+  - Supports downloading any file type from Linear's authenticated storage
+  - Automatically detects file types and categorizes them as images or other attachments
+  - Gracefully handles download failures with informative warnings
+  - Replaces the previous ImageDownloader with a more comprehensive solution
 
 ### Removed
 - Coverage folder from git tracking (now properly ignored)
+- ImageDownloader class (replaced by AttachmentDownloader)
+  - All image handling functionality is now provided by AttachmentDownloader
+  - Removed ImageDownloader tests, exports, and container registration
 
 ### Changed
 - CLI argument `--env-file`/`-e` to specify custom environment file
 - Default environment file changed from `.env` to `.env.secret-agents`
 - CLAUDE.md file with project conventions and guidelines for Claude Code assistant
-- Image download functionality for Linear issue attachments
-  - Automatically downloads images from issue descriptions and comments
-  - Supports Linear's authenticated file storage URLs
-  - Includes images in Claude Code prompt with local file paths
-  - Implements 10 image hard cap limit to prevent token overflow
-  - Posts warning to Linear when image limit is exceeded
+- Updated attachment handling to support all file types, not just images
+  - NodeClaudeService now uses AttachmentDownloader instead of ImageDownloader
+  - Attachments are stored in `~/.linearsecretagent/<workspace>/attachments` directory
+  - Claude configuration updated to allow reading from attachments directory only
+  - Error messages now indicate when non-image attachments fail to process
 - Branch naming now uses Linear's workspace-configured branch format
   - Fetches `branchName` property from Linear API
   - Respects workspace settings for branch naming conventions
@@ -46,3 +53,6 @@ All notable changes to this project will be documented in this file.
   - Prompt template now uses dynamic `{{agent_name}}` placeholder
   - Agent name is fetched from Linear API and injected into prompts
   - Fallback to "Linear Agent" if username is not available
+- Fixed issue where all attachments were treated as images
+  - Non-image attachments (like .jsonl files) no longer cause "Could not process image" errors
+  - Attachment failures are now handled gracefully without stopping the agent
