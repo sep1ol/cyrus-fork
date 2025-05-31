@@ -20,3 +20,7 @@ All notable changes to this project will be documented in this file.
 - Updated documentation to reflect new environment file behavior
 - NodeClaudeService now downloads images before starting Claude sessions
 - Fresh sessions after token limit also include previously downloaded images
+- Agent now has better social awareness when reading Linear comments 🎭
+  - Only responds to comments without @ mentions (general conversation)
+  - Always responds when directly @ mentioned (someone needs the agent!)
+  - Politely ignores when other users are @ mentioned but not the agent (respecting private conversations)
