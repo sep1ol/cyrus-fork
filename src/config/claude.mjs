@@ -47,13 +47,16 @@ export default {
     const toolArgs = [];
     if (allowedTools && allowedTools.length > 0) {
       // If workspace path is provided and Read is in the allowed tools,
-      // add the image directory path pattern to allow Claude to read downloaded images
+      // add the attachment directory path pattern to allow Claude to read downloaded attachments
       const modifiedTools = [...allowedTools];
       if (workspacePath && allowedTools.includes('Read')) {
-        // Add Read with the image directory path pattern
-        // This allows Claude to read images from ~/.linearsecretagent/<workspace>/images/*
+        // Add Read with the attachment directory path pattern
+        // This allows Claude to read attachments from ~/.linearsecretagent/<workspace>/attachments/*
         const homeDir = os.homedir();
         const workspaceName = path.basename(workspacePath);
+        const attachmentPathPattern = `Read(${homeDir}/.linearsecretagent/${workspaceName}/attachments/*)`;
+        modifiedTools.push(attachmentPathPattern);
+        // Also keep the old images path for backward compatibility
         const imagePathPattern = `Read(${homeDir}/.linearsecretagent/${workspaceName}/images/*)`;
         modifiedTools.push(imagePathPattern);
       }

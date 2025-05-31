@@ -14,7 +14,7 @@ export class NodeClaudeService extends ClaudeService {
    * @param {IssueService} issueService - Service for issue operations (for posting comments)
    * @param {FileSystem} fileSystem - File system utility
    * @param {ProcessManager} processManager - Process manager utility
-   * @param {ImageDownloader} imageDownloader - Image downloader utility
+   * @param {AttachmentDownloader} attachmentDownloader - Attachment downloader utility
    */
   constructor(
     claudePath, 
@@ -22,7 +22,7 @@ export class NodeClaudeService extends ClaudeService {
     issueService, 
     fileSystem = new FileSystem(), 
     processManager = new ProcessManager(),
-    imageDownloader = null
+    attachmentDownloader = null
   ) {
     super();
     this.claudePath = claudePath;
@@ -31,7 +31,7 @@ export class NodeClaudeService extends ClaudeService {
     this.processManager = processManager;
     this.promptTemplatePath = promptTemplatePath;
     this.promptTemplate = null;
-    this.imageDownloader = imageDownloader;
+    this.attachmentDownloader = attachmentDownloader;
     
     // Initialize the promptTemplate asynchronously
     this._initPromptTemplate();
@@ -93,7 +93,7 @@ export class NodeClaudeService extends ClaudeService {
   /**
    * @inheritdoc
    */
-  async buildInitialPrompt(issue, tokenLimitResumeContext = false, imageManifest = '') {
+  async buildInitialPrompt(issue, tokenLimitResumeContext = false, attachmentManifest = '') {
     // Ensure prompt template is loaded
     if (!this.promptTemplate) {
       console.log('Prompt template not loaded yet, loading now...');
@@ -129,9 +129,9 @@ history are preserved. Please continue your work on the issue.]
       finalPrompt = resumeMessage + finalPrompt;
     }
     
-    // Add image manifest if provided
-    if (imageManifest) {
-      finalPrompt = finalPrompt + '\n' + imageManifest;
+    // Add attachment manifest if provided
+    if (attachmentManifest) {
+      finalPrompt = finalPrompt + '\n' + attachmentManifest;
     }
     
     finalPrompt = finalPrompt.replace('{{agent_name}}', agentName);
@@ -493,30 +493,30 @@ history are preserved. Please continue your work on the issue.]
       try {
         console.log(`Starting fresh Claude session for issue ${issue.identifier} after token limit error...`);
         
-        // Check if images were already downloaded (they should persist in the home directory)
-        let imageManifest = '';
-        if (this.imageDownloader) {
+        // Check if attachments were already downloaded (they should persist in the home directory)
+        let attachmentManifest = '';
+        if (this.attachmentDownloader) {
           const homeDir = this.fileSystem.homedir();
           const workspaceFolderName = this.fileSystem.basename(workspace.path);
-          const imagesDir = this.fileSystem.joinPath(
+          const attachmentsDir = this.fileSystem.joinPath(
             homeDir,
             '.linearsecretagent',
             workspaceFolderName,
-            'images'
+            'attachments'
           );
-          if (this.fileSystem.existsSync(imagesDir)) {
-            // Images already exist, just regenerate the manifest
-            console.log('Found existing downloaded images, regenerating manifest...');
+          if (this.fileSystem.existsSync(attachmentsDir)) {
+            // Attachments already exist, just regenerate the manifest
+            console.log('Found existing downloaded attachments, regenerating manifest...');
             // We need to re-download to get the proper mapping, but files will be overwritten
-            const downloadResult = await this.imageDownloader.downloadIssueImages(issue, workspace.path);
+            const downloadResult = await this.attachmentDownloader.downloadIssueAttachments(issue, workspace.path);
             if (downloadResult.downloaded > 0) {
-              imageManifest = this.imageDownloader.generateImageManifest(downloadResult);
+              attachmentManifest = this.attachmentDownloader.generateAttachmentManifest(downloadResult);
             }
           }
         }
         
         // Prepare initial prompt with token limit context
-        const initialPrompt = await this.buildInitialPrompt(issue, true, imageManifest);
+        const initialPrompt = await this.buildInitialPrompt(issue, true, attachmentManifest);
         
         // Get the history path (but don't clear it - we preserve the conversation history)
         const historyPath = workspace.getHistoryFilePath();
@@ -607,28 +607,36 @@ history are preserved. Please continue your work on the issue.]
       try {
         console.log(`Starting Claude session for issue ${issue.identifier}...`);
         
-        // Download images if ImageDownloader is available
-        let imageManifest = '';
-        if (this.imageDownloader) {
-          console.log('Checking for images in issue...');
-          const downloadResult = await this.imageDownloader.downloadIssueImages(issue, workspace.path);
+        // Download attachments if AttachmentDownloader is available
+        let attachmentManifest = '';
+        if (this.attachmentDownloader) {
+          console.log('Checking for attachments in issue...');
+          const downloadResult = await this.attachmentDownloader.downloadIssueAttachments(issue, workspace.path);
           
           if (downloadResult.downloaded > 0) {
-            imageManifest = this.imageDownloader.generateImageManifest(downloadResult);
-            console.log(`Downloaded ${downloadResult.downloaded} images for issue ${issue.identifier}`);
+            attachmentManifest = this.attachmentDownloader.generateAttachmentManifest(downloadResult);
+            console.log(`Downloaded ${downloadResult.downloaded} attachments for issue ${issue.identifier}`);
           }
           
           if (downloadResult.skipped > 0) {
-            // Post a warning comment about skipped images
+            // Post a warning comment about skipped attachments
             await this.postResponseToLinear(
               issue.id,
-              `[System] Found ${downloadResult.totalFound} images in this issue. Downloaded ${downloadResult.downloaded} images (hard limit: 10). Skipped ${downloadResult.skipped} images.`
+              `[System] Found ${downloadResult.totalFound} attachments in this issue. Downloaded ${downloadResult.downloaded} attachments (hard limit: 10). Skipped ${downloadResult.skipped} attachments.`
+            );
+          }
+          
+          if (downloadResult.failed > 0) {
+            // Post a warning comment about failed downloads
+            await this.postResponseToLinear(
+              issue.id,
+              `[System] Failed to download ${downloadResult.failed} attachment(s). This may be due to authentication issues or files being unavailable. Continuing with available information.`
             );
           }
         }
         
         // Prepare initial prompt using the template - await the async method
-        const initialPrompt = await this.buildInitialPrompt(issue, false, imageManifest);
+        const initialPrompt = await this.buildInitialPrompt(issue, false, attachmentManifest);
         
         // Get the history path
         const historyPath = workspace.getHistoryFilePath();
