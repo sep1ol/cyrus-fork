@@ -13,6 +13,7 @@ export class Issue {
     url,
     assigneeId,
     comments = { nodes: [] },
+    branchName,
   }) {
     this.id = id;
     this.identifier = identifier;
@@ -24,6 +25,7 @@ export class Issue {
     this.url = url;
     this.assigneeId = assigneeId;
     this.comments = comments;
+    this.branchName = branchName;
   }
 
   /**
@@ -77,9 +79,10 @@ export class Issue {
   }
 
   /**
-   * Get the branch name for this issue (lowercase identifier)
+   * Get the branch name for this issue
+   * Uses the branchName from Linear API if available, otherwise falls back to lowercase identifier
    */
   getBranchName() {
-    return this.identifier.toLowerCase();
+    return this.branchName || this.identifier.toLowerCase();
   }
 }

@@ -63,7 +63,8 @@ export class LinearIssueService extends IssueService {
       priority: linearIssue.priority,
       url: linearIssue.url,
       assigneeId: linearIssue.assignee?.id || linearIssue._assignee?.id || linearIssue.assigneeId,
-      comments: comments
+      comments: comments,
+      branchName: linearIssue.branchName
     });
   }
   
