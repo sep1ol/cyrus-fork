@@ -26,7 +26,8 @@ export class AttachmentDownloader {
     if (!text) return []
     
     // Match URLs that start with https://uploads.linear.app
-    const regex = /https:\/\/uploads\.linear\.app\/[^\s<>"]+/gi
+    // Stop at common URL delimiters including parentheses used in markdown
+    const regex = /https:\/\/uploads\.linear\.app\/[^\s<>"')]+/gi
     const matches = text.match(regex) || []
     
     // Remove duplicates
@@ -53,7 +54,7 @@ export class AttachmentDownloader {
         console.log('Using OAuth token for attachment download')
       } else if (process.env.LINEAR_API_TOKEN) {
         // Fall back to API token
-        authHeader = process.env.LINEAR_API_TOKEN
+        authHeader = `Bearer ${process.env.LINEAR_API_TOKEN}`
         console.log('Using API token for attachment download')
       } else if (process.env.LINEAR_PERSONAL_ACCESS_TOKEN) {
         // Fall back to personal access token
@@ -70,7 +71,21 @@ export class AttachmentDownloader {
       })
       
       if (!response.ok) {
-        throw new Error(`Failed to download attachment: ${response.status || 401} ${response.statusText || 'Unauthorized'}`)
+        console.error(`Attachment download failed: ${response.status} ${response.statusText}`)
+        console.error(`URL attempted: ${attachmentUrl}`)
+        
+        // Handle specific error cases gracefully
+        if (response.status === 404) {
+          console.warn(`Attachment not found (404) - it may have been deleted from Linear`)
+          return { success: false }
+        } else if (response.status === 401) {
+          console.error(`Authentication failed - check that the token has proper permissions`)
+          return { success: false }
+        }
+        
+        // For other errors, still return false instead of throwing
+        console.error(`Skipping attachment due to error: ${response.status} ${response.statusText}`)
+        return { success: false }
       }
       
       const buffer = await response.buffer()
@@ -106,7 +121,8 @@ export class AttachmentDownloader {
       console.log(`Successfully downloaded attachment to: ${destinationPath}`)
       return { success: true, fileType: detectedExtension, isImage }
     } catch (error) {
-      console.error(`Error downloading attachment from ${attachmentUrl}:`, error)
+      console.error(`Error downloading attachment:`, error.message)
+      console.error(`URL: ${attachmentUrl}`)
       return { success: false }
     }
   }

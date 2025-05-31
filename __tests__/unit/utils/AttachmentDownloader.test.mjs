@@ -192,7 +192,7 @@ describe('AttachmentDownloader', () => {
         'https://uploads.linear.app/12345/file.txt',
         {
           headers: {
-            'Authorization': 'api-token-456'
+            'Authorization': 'Bearer api-token-456'
           }
         }
       )
