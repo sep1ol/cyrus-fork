@@ -104,6 +104,11 @@ export class NodeClaudeService extends ClaudeService {
     const linearComments = issue.formatComments();
     const branchName = issue.getBranchName();
     
+    // Get the agent name from the issueService (Linear username)
+    const agentName = this.issueService && this.issueService.username 
+      ? this.issueService.username 
+      : 'Linear Agent'; // Fallback if username not available
+    
     // Inject variables into the template
     let finalPrompt = this.promptTemplate;
     
@@ -129,6 +134,7 @@ history are preserved. Please continue your work on the issue.]
       finalPrompt = finalPrompt + '\n' + imageManifest;
     }
     
+    finalPrompt = finalPrompt.replace('{{agent_name}}', agentName);
     finalPrompt = finalPrompt.replace('{{issue_details}}', issueDetails);
     finalPrompt = finalPrompt.replace('{{linear_comments}}', linearComments);
     finalPrompt = finalPrompt.replace('{{branch_name}}', branchName);

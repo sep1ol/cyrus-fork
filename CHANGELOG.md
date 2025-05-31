@@ -24,8 +24,6 @@ All notable changes to this project will be documented in this file.
   - Fetches `branchName` property from Linear API
   - Respects workspace settings for branch naming conventions
   - Falls back to lowercase identifier if API value not available
-
-### Changed
 - All entry points now support custom environment file paths
 - Updated documentation to reflect new environment file behavior
 - NodeClaudeService now downloads images before starting Claude sessions
@@ -42,3 +40,9 @@ All notable changes to this project will be documented in this file.
   - Automatically detects actual file type (png, jpg, gif, etc.) from downloaded content
   - No longer relies on URL extensions which Linear doesn't provide
   - Falls back to .png if file type cannot be determined
+
+### Fixed
+- Agent now correctly identifies itself using its Linear username instead of "Claude"
+  - Prompt template now uses dynamic `{{agent_name}}` placeholder
+  - Agent name is fetched from Linear API and injected into prompts
+  - Fallback to "Linear Agent" if username is not available
