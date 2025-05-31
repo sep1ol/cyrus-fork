@@ -20,6 +20,10 @@ All notable changes to this project will be documented in this file.
   - Includes images in Claude Code prompt with local file paths
   - Implements 10 image hard cap limit to prevent token overflow
   - Posts warning to Linear when image limit is exceeded
+- Branch naming now uses Linear's workspace-configured branch format
+  - Fetches `branchName` property from Linear API
+  - Respects workspace settings for branch naming conventions
+  - Falls back to lowercase identifier if API value not available
 
 ### Changed
 - All entry points now support custom environment file paths

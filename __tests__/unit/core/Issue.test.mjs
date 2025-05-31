@@ -133,9 +133,25 @@ describe('Issue', () => {
   });
   
   describe('getBranchName', () => {
-    it('should return the lowercase identifier', () => {
+    it('should return the branchName from Linear API if available', () => {
+      const issueWithBranchName = new Issue({
+        ...mockIssueData,
+        branchName: 'feature/test-456-custom-branch-name'
+      });
+      expect(issueWithBranchName.getBranchName()).toBe('feature/test-456-custom-branch-name');
+    });
+    
+    it('should fall back to lowercase identifier if branchName is not provided', () => {
       const issue = new Issue(mockIssueData);
       expect(issue.getBranchName()).toBe('test-456');
+    });
+    
+    it('should fall back to lowercase identifier if branchName is null', () => {
+      const issueWithNullBranchName = new Issue({
+        ...mockIssueData,
+        branchName: null
+      });
+      expect(issueWithNullBranchName.getBranchName()).toBe('test-456');
     });
   });
 });
