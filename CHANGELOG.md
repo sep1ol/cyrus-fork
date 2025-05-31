@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Coverage folder to .gitignore to prevent test coverage reports from being tracked
+
+### Removed
+- Coverage folder from git tracking (now properly ignored)
+
+### Changed
 - CLI argument `--env-file`/`-e` to specify custom environment file
 - Default environment file changed from `.env` to `.env.secret-agents`
 - CLAUDE.md file with project conventions and guidelines for Claude Code assistant
