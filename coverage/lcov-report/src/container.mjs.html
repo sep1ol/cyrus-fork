@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">12.28% </span>
+                <span class="strong">12.42% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>21/171</span>
+                <span class='fraction'>22/177</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">18.51% </span>
+                <span class="strong">17.85% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>5/27</span>
+                <span class='fraction'>5/28</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">12.19% </span>
+                <span class="strong">12.35% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>20/164</span>
+                <span class='fraction'>21/170</span>
             </div>
         
             
@@ -457,7 +457,18 @@
 <a name='L392'></a><a href='#L392'>392</a>
 <a name='L393'></a><a href='#L393'>393</a>
 <a name='L394'></a><a href='#L394'>394</a>
-<a name='L395'></a><a href='#L395'>395</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L395'></a><a href='#L395'>395</a>
+<a name='L396'></a><a href='#L396'>396</a>
+<a name='L397'></a><a href='#L397'>397</a>
+<a name='L398'></a><a href='#L398'>398</a>
+<a name='L399'></a><a href='#L399'>399</a>
+<a name='L400'></a><a href='#L400'>400</a>
+<a name='L401'></a><a href='#L401'>401</a>
+<a name='L402'></a><a href='#L402'>402</a>
+<a name='L403'></a><a href='#L403'>403</a>
+<a name='L404'></a><a href='#L404'>404</a>
+<a name='L405'></a><a href='#L405'>405</a>
+<a name='L406'></a><a href='#L406'>406</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -483,7 +494,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">33x</span>
+<span class="cline-any cline-yes">36x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -712,6 +723,15 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -823,12 +843,14 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -861,7 +883,7 @@ import {
   ExpressWebhookService 
 } from './adapters/index.mjs';
 import { SessionManager } from './services/index.mjs';
-import { FileSystem, ProcessManager, HttpServer, OAuthHelper } from './utils/index.mjs';
+import { FileSystem, ProcessManager, HttpServer, OAuthHelper, ImageDownloader } from './utils/index.mjs';
 &nbsp;
 /**
  * Simple dependency injection container
@@ -1101,6 +1123,15 @@ export function createContainer() {
     }, fileSystem);
   });
   
+  // Register image downloader
+  container.register('imageDownloader', <span class="fstat-no" title="function not covered" >(c</span>) =&gt; {
+    const linearClient = <span class="cstat-no" title="statement not covered" >c.get('linearClient');</span>
+    const fileSystem = <span class="cstat-no" title="statement not covered" >c.get('fileSystem');</span>
+    const oauthHelper = <span class="cstat-no" title="statement not covered" >c.get('oauthHelper');</span>
+    
+<span class="cstat-no" title="statement not covered" >    return new ImageDownloader(linearClient, fileSystem, oauthHelper);</span>
+  });
+  
   // Register workspace service
   container.register('workspaceService', <span class="fstat-no" title="function not covered" >(c</span>) =&gt; {
     const config = <span class="cstat-no" title="statement not covered" >c.get('config');</span>
@@ -1217,6 +1248,7 @@ export function createContainer() {
     const issueService = <span class="cstat-no" title="statement not covered" >c.get('issueService');</span>
     const fileSystem = <span class="cstat-no" title="statement not covered" >c.get('fileSystem');</span>
     const processManager = <span class="cstat-no" title="statement not covered" >c.get('processManager');</span>
+    const imageDownloader = <span class="cstat-no" title="statement not covered" >c.get('imageDownloader');</span>
     
 <span class="cstat-no" title="statement not covered" >    return new NodeClaudeService(</span>
       config.claude.path,
@@ -1225,7 +1257,8 @@ export function createContainer() {
         createComment: <span class="fstat-no" title="function not covered" >(.</span>..args) =&gt; <span class="cstat-no" title="statement not covered" >issueService.createComment(...args)</span>
       },
       fileSystem,
-      processManager
+      processManager,
+      imageDownloader
     );
   });
   
@@ -1252,7 +1285,7 @@ export function createContainer() {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-05-29T03:47:17.019Z
+                at 2025-05-31T05:21:24.263Z
             </div>
         <script src="../prettify.js"></script>
         <script>

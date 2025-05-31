@@ -8,7 +8,7 @@ import {
   ExpressWebhookService 
 } from './adapters/index.mjs';
 import { SessionManager } from './services/index.mjs';
-import { FileSystem, ProcessManager, HttpServer, OAuthHelper } from './utils/index.mjs';
+import { FileSystem, ProcessManager, HttpServer, OAuthHelper, ImageDownloader } from './utils/index.mjs';
 
 /**
  * Simple dependency injection container
@@ -248,6 +248,15 @@ export function createContainer() {
     }, fileSystem);
   });
   
+  // Register image downloader
+  container.register('imageDownloader', (c) => {
+    const linearClient = c.get('linearClient');
+    const fileSystem = c.get('fileSystem');
+    const oauthHelper = c.get('oauthHelper');
+    
+    return new ImageDownloader(linearClient, fileSystem, oauthHelper);
+  });
+  
   // Register workspace service
   container.register('workspaceService', (c) => {
     const config = c.get('config');
@@ -364,6 +373,7 @@ export function createContainer() {
     const issueService = c.get('issueService');
     const fileSystem = c.get('fileSystem');
     const processManager = c.get('processManager');
+    const imageDownloader = c.get('imageDownloader');
     
     return new NodeClaudeService(
       config.claude.path,
@@ -372,7 +382,8 @@ export function createContainer() {
         createComment: (...args) => issueService.createComment(...args)
       },
       fileSystem,
-      processManager
+      processManager,
+      imageDownloader
     );
   });
   

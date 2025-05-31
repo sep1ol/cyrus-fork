@@ -2,6 +2,7 @@ import { ClaudeService } from '../services/ClaudeService.mjs';
 import { Session } from '../core/Session.mjs';
 import { claudeConfig, env } from '../config/index.mjs';
 import { FileSystem, ProcessManager } from '../utils/index.mjs';
+import path from 'path';
 
 /**
  * Implementation of ClaudeService using Node.js child_process
@@ -13,13 +14,15 @@ export class NodeClaudeService extends ClaudeService {
    * @param {IssueService} issueService - Service for issue operations (for posting comments)
    * @param {FileSystem} fileSystem - File system utility
    * @param {ProcessManager} processManager - Process manager utility
+   * @param {ImageDownloader} imageDownloader - Image downloader utility
    */
   constructor(
     claudePath, 
     promptTemplatePath, 
     issueService, 
     fileSystem = new FileSystem(), 
-    processManager = new ProcessManager()
+    processManager = new ProcessManager(),
+    imageDownloader = null
   ) {
     super();
     this.claudePath = claudePath;
@@ -28,6 +31,7 @@ export class NodeClaudeService extends ClaudeService {
     this.processManager = processManager;
     this.promptTemplatePath = promptTemplatePath;
     this.promptTemplate = null;
+    this.imageDownloader = imageDownloader;
     
     // Initialize the promptTemplate asynchronously
     this._initPromptTemplate();
@@ -89,7 +93,7 @@ export class NodeClaudeService extends ClaudeService {
   /**
    * @inheritdoc
    */
-  async buildInitialPrompt(issue, tokenLimitResumeContext = false) {
+  async buildInitialPrompt(issue, tokenLimitResumeContext = false, imageManifest = '') {
     // Ensure prompt template is loaded
     if (!this.promptTemplate) {
       console.log('Prompt template not loaded yet, loading now...');
@@ -118,6 +122,11 @@ history are preserved. Please continue your work on the issue.]
 
 `;
       finalPrompt = resumeMessage + finalPrompt;
+    }
+    
+    // Add image manifest if provided
+    if (imageManifest) {
+      finalPrompt = finalPrompt + '\n' + imageManifest;
     }
     
     finalPrompt = finalPrompt.replace('{{issue_details}}', issueDetails);
@@ -478,8 +487,23 @@ history are preserved. Please continue your work on the issue.]
       try {
         console.log(`Starting fresh Claude session for issue ${issue.identifier} after token limit error...`);
         
+        // Check if images were already downloaded (they should persist in the workspace)
+        let imageManifest = '';
+        if (this.imageDownloader) {
+          const imagesDir = path.join(workspace.path, '.linear-images');
+          if (this.fileSystem.existsSync(imagesDir)) {
+            // Images already exist, just regenerate the manifest
+            console.log('Found existing downloaded images, regenerating manifest...');
+            // We need to re-download to get the proper mapping, but files will be overwritten
+            const downloadResult = await this.imageDownloader.downloadIssueImages(issue, workspace.path);
+            if (downloadResult.downloaded > 0) {
+              imageManifest = this.imageDownloader.generateImageManifest(downloadResult);
+            }
+          }
+        }
+        
         // Prepare initial prompt with token limit context
-        const initialPrompt = await this.buildInitialPrompt(issue, true);
+        const initialPrompt = await this.buildInitialPrompt(issue, true, imageManifest);
         
         // Get the history path (but don't clear it - we preserve the conversation history)
         const historyPath = workspace.getHistoryFilePath();
@@ -570,8 +594,28 @@ history are preserved. Please continue your work on the issue.]
       try {
         console.log(`Starting Claude session for issue ${issue.identifier}...`);
         
+        // Download images if ImageDownloader is available
+        let imageManifest = '';
+        if (this.imageDownloader) {
+          console.log('Checking for images in issue...');
+          const downloadResult = await this.imageDownloader.downloadIssueImages(issue, workspace.path);
+          
+          if (downloadResult.downloaded > 0) {
+            imageManifest = this.imageDownloader.generateImageManifest(downloadResult);
+            console.log(`Downloaded ${downloadResult.downloaded} images for issue ${issue.identifier}`);
+          }
+          
+          if (downloadResult.skipped > 0) {
+            // Post a warning comment about skipped images
+            await this.postResponseToLinear(
+              issue.id,
+              `[System] Found ${downloadResult.totalFound} images in this issue. Downloaded ${downloadResult.downloaded} images (hard limit: 10). Skipped ${downloadResult.skipped} images.`
+            );
+          }
+        }
+        
         // Prepare initial prompt using the template - await the async method
-        const initialPrompt = await this.buildInitialPrompt(issue);
+        const initialPrompt = await this.buildInitialPrompt(issue, false, imageManifest);
         
         // Get the history path
         const historyPath = workspace.getHistoryFilePath();

@@ -8,7 +8,15 @@ All notable changes to this project will be documented in this file.
 - CLI argument `--env-file`/`-e` to specify custom environment file
 - Default environment file changed from `.env` to `.env.secret-agents`
 - CLAUDE.md file with project conventions and guidelines for Claude Code assistant
+- Image download functionality for Linear issue attachments
+  - Automatically downloads images from issue descriptions and comments
+  - Supports Linear's authenticated file storage URLs
+  - Includes images in Claude Code prompt with local file paths
+  - Implements 10 image hard cap limit to prevent token overflow
+  - Posts warning to Linear when image limit is exceeded
 
 ### Changed
 - All entry points now support custom environment file paths
 - Updated documentation to reflect new environment file behavior
+- NodeClaudeService now downloads images before starting Claude sessions
+- Fresh sessions after token limit also include previously downloaded images
