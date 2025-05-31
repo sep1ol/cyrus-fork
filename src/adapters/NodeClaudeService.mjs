@@ -487,10 +487,17 @@ history are preserved. Please continue your work on the issue.]
       try {
         console.log(`Starting fresh Claude session for issue ${issue.identifier} after token limit error...`);
         
-        // Check if images were already downloaded (they should persist in the workspace)
+        // Check if images were already downloaded (they should persist in the home directory)
         let imageManifest = '';
         if (this.imageDownloader) {
-          const imagesDir = path.join(workspace.path, '.linear-images');
+          const homeDir = this.fileSystem.homedir();
+          const workspaceFolderName = this.fileSystem.basename(workspace.path);
+          const imagesDir = this.fileSystem.joinPath(
+            homeDir,
+            '.linearsecretagent',
+            workspaceFolderName,
+            'images'
+          );
           if (this.fileSystem.existsSync(imagesDir)) {
             // Images already exist, just regenerate the manifest
             console.log('Found existing downloaded images, regenerating manifest...');

@@ -30,3 +30,7 @@ All notable changes to this project will be documented in this file.
   - Only responds to comments without @ mentions (general conversation)
   - Always responds when directly @ mentioned (someone needs the agent!)
   - Politely ignores when other users are @ mentioned but not the agent (respecting private conversations)
+- Image storage location moved from project directory to home directory
+  - Images are now stored in `~/.linearsecretagent/<workspace>/images` instead of `.linear-images` in project
+  - Prevents workspace pollution and eliminates need to update `.gitignore`
+  - Follows same pattern as conversation history storage

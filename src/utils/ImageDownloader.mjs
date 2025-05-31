@@ -101,8 +101,15 @@ export class ImageDownloader {
     let imageCount = 0;
     let skippedCount = 0;
     
-    // Create images directory in workspace
-    const imagesDir = path.join(workspacePath, '.linear-images');
+    // Create images directory in home directory
+    const homeDir = this.fileSystem.homedir();
+    const workspaceFolderName = this.fileSystem.basename(workspacePath);
+    const imagesDir = this.fileSystem.joinPath(
+      homeDir,
+      '.linearsecretagent',
+      workspaceFolderName,
+      'images'
+    );
     
     // Extract URLs from issue description
     const descriptionUrls = this.extractImageUrls(issue.description);
@@ -180,7 +187,7 @@ export class ImageDownloader {
     }
     manifest += '.\n\n';
     
-    manifest += 'Images have been downloaded to the `.linear-images` directory:\n\n';
+    manifest += 'Images have been downloaded to the `~/.linearsecretagent/<workspace>/images` directory:\n\n';
     
     Object.entries(imageMap).forEach(([url, localPath], index) => {
       const filename = path.basename(localPath);

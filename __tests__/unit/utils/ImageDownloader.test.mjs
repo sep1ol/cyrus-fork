@@ -29,7 +29,10 @@ describe('ImageDownloader', () => {
     mockFileSystem = {
       ensureDir: jest.fn().mockResolvedValue(undefined),
       existsSync: jest.fn().mockReturnValue(false),
-      writeFile: jest.fn().mockResolvedValue(undefined)
+      writeFile: jest.fn().mockResolvedValue(undefined),
+      homedir: jest.fn().mockReturnValue('/home/user'),
+      basename: jest.fn().mockReturnValue('workspace'),
+      joinPath: jest.fn().mockImplementation((...args) => args.join('/'))
     };
 
     mockOAuthHelper = {
@@ -216,8 +219,8 @@ describe('ImageDownloader', () => {
       expect(result.totalFound).toBe(2);
       expect(result.skipped).toBe(0);
       expect(Object.keys(result.imageMap)).toHaveLength(2);
-      expect(result.imageMap['https://uploads.linear.app/12345/screenshot.png']).toMatch(/\.linear-images\/image_1\.png$/);
-      expect(result.imageMap['https://uploads.linear.app/67890/image.jpg']).toMatch(/\.linear-images\/image_2\.jpg$/);
+      expect(result.imageMap['https://uploads.linear.app/12345/screenshot.png']).toBe('/home/user/.linearsecretagent/workspace/images/image_1.png');
+      expect(result.imageMap['https://uploads.linear.app/67890/image.jpg']).toBe('/home/user/.linearsecretagent/workspace/images/image_2.jpg');
     });
 
     it('should respect the 10 image limit', async () => {
@@ -304,8 +307,8 @@ describe('ImageDownloader', () => {
     it('should generate manifest for downloaded images', () => {
       const downloadResult = {
         imageMap: {
-          'https://uploads.linear.app/12345/screenshot.png': '/workspace/.linear-images/image_1.png',
-          'https://uploads.linear.app/67890/diagram.jpg': '/workspace/.linear-images/image_2.jpg'
+          'https://uploads.linear.app/12345/screenshot.png': '/home/user/.linearsecretagent/workspace/images/image_1.png',
+          'https://uploads.linear.app/67890/diagram.jpg': '/home/user/.linearsecretagent/workspace/images/image_2.jpg'
         },
         totalFound: 2,
         downloaded: 2,
@@ -318,14 +321,15 @@ describe('ImageDownloader', () => {
       expect(manifest).toContain('Found 2 images. Downloaded 2');
       expect(manifest).toContain('image_1.png');
       expect(manifest).toContain('image_2.jpg');
+      expect(manifest).toContain('Images have been downloaded to the `~/.linearsecretagent/<workspace>/images` directory');
       expect(manifest).toContain('You can use the Read tool to view these images');
     });
 
     it('should mention skipped images in manifest', () => {
       const downloadResult = {
         imageMap: {
-          'https://uploads.linear.app/1/image1.png': '/workspace/.linear-images/image_1.png',
-          'https://uploads.linear.app/2/image2.png': '/workspace/.linear-images/image_2.png'
+          'https://uploads.linear.app/1/image1.png': '/home/user/.linearsecretagent/workspace/images/image_1.png',
+          'https://uploads.linear.app/2/image2.png': '/home/user/.linearsecretagent/workspace/images/image_2.png'
         },
         totalFound: 15,
         downloaded: 10,
