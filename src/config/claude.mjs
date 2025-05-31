@@ -56,9 +56,6 @@ export default {
         const workspaceName = path.basename(workspacePath);
         const attachmentPathPattern = `Read(${homeDir}/.linearsecretagent/${workspaceName}/attachments/*)`;
         modifiedTools.push(attachmentPathPattern);
-        // Also keep the old images path for backward compatibility
-        const imagePathPattern = `Read(${homeDir}/.linearsecretagent/${workspaceName}/images/*)`;
-        modifiedTools.push(imagePathPattern);
       }
       
       toolArgs.push('--allowedTools');

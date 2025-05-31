@@ -8,7 +8,7 @@ import {
   ExpressWebhookService 
 } from './adapters/index.mjs';
 import { SessionManager } from './services/index.mjs';
-import { FileSystem, ProcessManager, HttpServer, OAuthHelper, ImageDownloader, AttachmentDownloader } from './utils/index.mjs';
+import { FileSystem, ProcessManager, HttpServer, OAuthHelper, AttachmentDownloader } from './utils/index.mjs';
 
 /**
  * Simple dependency injection container
@@ -246,15 +246,6 @@ export function createContainer() {
       redirectUri: config.linear.oauthRedirectUri,
       tokenStoragePath: config.workspace.baseDir
     }, fileSystem);
-  });
-  
-  // Register image downloader (kept for backward compatibility)
-  container.register('imageDownloader', (c) => {
-    const linearClient = c.get('linearClient');
-    const fileSystem = c.get('fileSystem');
-    const oauthHelper = c.get('oauthHelper');
-    
-    return new ImageDownloader(linearClient, fileSystem, oauthHelper);
   });
   
   // Register attachment downloader
