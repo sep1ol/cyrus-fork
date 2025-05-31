@@ -54,7 +54,8 @@ export default {
         // This allows Claude to read attachments from ~/.linearsecretagent/<workspace>/attachments/*
         const homeDir = os.homedir();
         const workspaceName = path.basename(workspacePath);
-        const attachmentPathPattern = `Read(${homeDir}/.linearsecretagent/${workspaceName}/attachments/*)`;
+        // Quote the entire tool specification to prevent shell interpretation
+        const attachmentPathPattern = `'Read(${homeDir}/.linearsecretagent/${workspaceName}/attachments/*)'`;
         modifiedTools.push(attachmentPathPattern);
       }
       
