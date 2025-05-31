@@ -1,3 +1,6 @@
+import os from 'os';
+import path from 'path';
+
 /**
  * Claude configuration
  */
@@ -39,12 +42,24 @@ export default {
   /**
    * Get the appropriate CLI arguments based on allowed tools
    */
-  getToolsArgs(allowedTools) {
+  getToolsArgs(allowedTools, workspacePath = null) {
     // Convert array to flat CLI arguments format
     const toolArgs = [];
     if (allowedTools && allowedTools.length > 0) {
+      // If workspace path is provided and Read is in the allowed tools,
+      // add the image directory path pattern to allow Claude to read downloaded images
+      const modifiedTools = [...allowedTools];
+      if (workspacePath && allowedTools.includes('Read')) {
+        // Add Read with the image directory path pattern
+        // This allows Claude to read images from ~/.linearsecretagent/<workspace>/images/*
+        const homeDir = os.homedir();
+        const workspaceName = path.basename(workspacePath);
+        const imagePathPattern = `Read(${homeDir}/.linearsecretagent/${workspaceName}/images/*)`;
+        modifiedTools.push(imagePathPattern);
+      }
+      
       toolArgs.push('--allowedTools');
-      toolArgs.push(...allowedTools);
+      toolArgs.push(...modifiedTools);
     }
     return toolArgs;
   },
@@ -52,22 +67,22 @@ export default {
   /**
    * Default arguments for Claude CLI
    */
-  getDefaultArgs(allowedTools = []) {
+  getDefaultArgs(allowedTools = [], workspacePath = null) {
     return [
       '--print',
       '--verbose',
       '--output-format',
       'stream-json',
-      ...this.getToolsArgs(allowedTools)
+      ...this.getToolsArgs(allowedTools, workspacePath)
     ];
   },
   
   /**
    * Extended arguments for continuation mode
    */
-  getContinueArgs(allowedTools = []) {
+  getContinueArgs(allowedTools = [], workspacePath = null) {
     return [
-      ...this.getDefaultArgs(allowedTools),
+      ...this.getDefaultArgs(allowedTools, workspacePath),
       '--continue'
     ];
   }

@@ -533,7 +533,7 @@ history are preserved. Please continue your work on the issue.]
         }
         
         // Use default args (without --continue) for fresh start
-        const claudeArgs = claudeConfig.getDefaultArgs(allowedTools);
+        const claudeArgs = claudeConfig.getDefaultArgs(allowedTools, workspace.path);
         const claudeCmd = `${this.claudePath} ${claudeArgs.join(' ')}`;
         
         // Build the full command
@@ -660,8 +660,8 @@ history are preserved. Please continue your work on the issue.]
         // Get the arguments with the appropriate tool permissions
         // Use continue args if we have existing history, otherwise use default args
         const claudeArgs = hasExistingHistory 
-          ? claudeConfig.getContinueArgs(allowedTools)
-          : claudeConfig.getDefaultArgs(allowedTools);
+          ? claudeConfig.getContinueArgs(allowedTools, workspace.path)
+          : claudeConfig.getDefaultArgs(allowedTools, workspace.path);
         const claudeCmd = `${this.claudePath} ${claudeArgs.join(' ')}`;
         
         // Build the full command
@@ -834,7 +834,7 @@ CLAUDE_INPUT_EOF`;
         
         // Create a shell script to properly handle the continuation
         const escapedComment = commentText.replace(/'/g, "'\\''");
-        const claudeArgs = claudeConfig.getContinueArgs(allowedTools);
+        const claudeArgs = claudeConfig.getContinueArgs(allowedTools, workspace.path);
         
         // Log the arguments for debugging
         console.log(`Claude arguments: ${JSON.stringify(claudeArgs)}`);
