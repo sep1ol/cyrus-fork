@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import path from 'path';
+import { fileTypeFromBuffer } from 'file-type';
 
 /**
  * Utility class for downloading images from Linear with proper authentication
@@ -36,7 +37,7 @@ export class ImageDownloader {
    * Download an image from Linear with authentication
    * @param {string} imageUrl - The URL of the image to download
    * @param {string} destinationPath - Where to save the image
-   * @returns {Promise<boolean>} - Success status
+   * @returns {Promise<{success: boolean, fileType?: string}>} - Success status and detected file type
    */
   async downloadImage(imageUrl, destinationPath) {
     try {
@@ -74,6 +75,17 @@ export class ImageDownloader {
       
       const buffer = await response.buffer();
       
+      // Detect the file type from the buffer
+      const fileType = await fileTypeFromBuffer(buffer);
+      let detectedExtension = '.png'; // default
+      
+      if (fileType) {
+        detectedExtension = `.${fileType.ext}`;
+        console.log(`Detected file type: ${fileType.mime} (${fileType.ext})`);
+      } else {
+        console.log('Could not detect file type, defaulting to .png');
+      }
+      
       // Ensure the directory exists
       const dir = path.dirname(destinationPath);
       await this.fileSystem.ensureDir(dir);
@@ -82,10 +94,10 @@ export class ImageDownloader {
       await this.fileSystem.writeFile(destinationPath, buffer);
       
       console.log(`Successfully downloaded image to: ${destinationPath}`);
-      return true;
+      return { success: true, fileType: detectedExtension };
     } catch (error) {
       console.error(`Error downloading image from ${imageUrl}:`, error);
-      return false;
+      return { success: false };
     }
   }
 
@@ -139,15 +151,21 @@ export class ImageDownloader {
         continue;
       }
       
-      // Generate a filename based on the URL
-      const urlPath = new URL(url).pathname;
-      const filename = `image_${imageCount + 1}${path.extname(urlPath) || '.png'}`;
-      const localPath = path.join(imagesDir, filename);
+      // Generate a temporary filename (will be renamed after detecting type)
+      const tempFilename = `image_${imageCount + 1}.tmp`;
+      const tempPath = path.join(imagesDir, tempFilename);
       
-      const success = await this.downloadImage(url, localPath);
+      const result = await this.downloadImage(url, tempPath);
       
-      if (success) {
-        imageMap[url] = localPath;
+      if (result.success) {
+        // Rename the file with the correct extension
+        const finalFilename = `image_${imageCount + 1}${result.fileType}`;
+        const finalPath = path.join(imagesDir, finalFilename);
+        
+        // Rename the file to include the correct extension
+        await this.fileSystem.rename(tempPath, finalPath);
+        
+        imageMap[url] = finalPath;
         imageCount++;
       }
     }

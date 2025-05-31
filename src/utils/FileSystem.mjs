@@ -141,4 +141,14 @@ export class FileSystem {
   existsSync(filePath) {
     return fs.existsSync(filePath);
   }
+  
+  /**
+   * Rename/move a file
+   * @param {string} oldPath - Current file path
+   * @param {string} newPath - New file path
+   * @returns {Promise<void>}
+   */
+  async rename(oldPath, newPath) {
+    return fs.rename(oldPath, newPath);
+  }
 }

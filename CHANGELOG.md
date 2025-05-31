@@ -34,3 +34,7 @@ All notable changes to this project will be documented in this file.
   - Images are now stored in `~/.linearsecretagent/<workspace>/images` instead of `.linear-images` in project
   - Prevents workspace pollution and eliminates need to update `.gitignore`
   - Follows same pattern as conversation history storage
+- Image file type detection from content
+  - Automatically detects actual file type (png, jpg, gif, etc.) from downloaded content
+  - No longer relies on URL extensions which Linear doesn't provide
+  - Falls back to .png if file type cannot be determined
