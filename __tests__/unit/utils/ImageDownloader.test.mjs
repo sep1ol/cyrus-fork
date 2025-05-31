@@ -1,6 +1,14 @@
 import { jest } from '@jest/globals';
-import { ImageDownloader } from '../../../src/utils/ImageDownloader.mjs';
-import { Issue } from '../../../src/core/Issue.mjs';
+
+// Mock node-fetch before importing ImageDownloader
+jest.unstable_mockModule('node-fetch', () => ({
+  default: jest.fn()
+}));
+
+// Import modules after mocking
+const fetch = (await import('node-fetch')).default;
+const { ImageDownloader } = await import('../../../src/utils/ImageDownloader.mjs');
+const { Issue } = await import('../../../src/core/Issue.mjs');
 
 describe('ImageDownloader', () => {
   let imageDownloader;
@@ -11,6 +19,7 @@ describe('ImageDownloader', () => {
   beforeEach(() => {
     // Reset mocks
     jest.clearAllMocks();
+    fetch.mockClear();
 
     // Create mock dependencies
     mockLinearClient = {
@@ -76,13 +85,107 @@ describe('ImageDownloader', () => {
     });
   });
 
-  // Skip downloadImage tests as they require mocking node-fetch which is complex with ESM
-  describe.skip('downloadImage', () => {
-    // Tests skipped due to ESM module mocking limitations
+  describe('downloadImage', () => {
+    it('should download image with OAuth token', async () => {
+      const mockBuffer = Buffer.from('fake-image-data');
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        buffer: jest.fn().mockResolvedValue(mockBuffer)
+      });
+
+      const result = await imageDownloader.downloadImage(
+        'https://uploads.linear.app/12345/image.png',
+        '/workspace/images/image.png'
+      );
+
+      expect(result).toBe(true);
+      expect(fetch).toHaveBeenCalledWith(
+        'https://uploads.linear.app/12345/image.png',
+        {
+          headers: {
+            'Authorization': 'Bearer oauth-token-123'
+          }
+        }
+      );
+      expect(mockFileSystem.ensureDir).toHaveBeenCalledWith('/workspace/images');
+      expect(mockFileSystem.writeFile).toHaveBeenCalledWith('/workspace/images/image.png', mockBuffer);
+    });
+
+    it('should fall back to API token when OAuth is not available', async () => {
+      mockOAuthHelper.hasValidToken.mockResolvedValue(false);
+      process.env.LINEAR_API_TOKEN = 'api-token-456';
+
+      const mockBuffer = Buffer.from('fake-image-data');
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        buffer: jest.fn().mockResolvedValue(mockBuffer)
+      });
+
+      const result = await imageDownloader.downloadImage(
+        'https://uploads.linear.app/12345/image.png',
+        '/workspace/images/image.png'
+      );
+
+      expect(result).toBe(true);
+      expect(fetch).toHaveBeenCalledWith(
+        'https://uploads.linear.app/12345/image.png',
+        {
+          headers: {
+            'Authorization': 'api-token-456'
+          }
+        }
+      );
+
+      delete process.env.LINEAR_API_TOKEN;
+    });
+
+    it('should handle download failures', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found'
+      });
+
+      const result = await imageDownloader.downloadImage(
+        'https://uploads.linear.app/12345/missing.png',
+        '/workspace/images/missing.png'
+      );
+
+      expect(result).toBe(false);
+    });
+
+    it('should handle network errors', async () => {
+      fetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await imageDownloader.downloadImage(
+        'https://uploads.linear.app/12345/image.png',
+        '/workspace/images/image.png'
+      );
+
+      expect(result).toBe(false);
+    });
+
+    it('should throw error when no authentication is available', async () => {
+      mockOAuthHelper.hasValidToken.mockResolvedValue(false);
+      // Ensure no env variables are set
+      delete process.env.LINEAR_API_TOKEN;
+      delete process.env.LINEAR_PERSONAL_ACCESS_TOKEN;
+
+      const result = await imageDownloader.downloadImage(
+        'https://uploads.linear.app/12345/image.png',
+        '/workspace/images/image.png'
+      );
+
+      expect(result).toBe(false);
+    });
   });
 
-  describe('downloadIssueImages URL extraction', () => {
-    it('should extract URLs from issue description and comments', () => {
+  describe('downloadIssueImages', () => {
+    it('should download images from issue description and comments', async () => {
       const issue = new Issue({
         id: 'issue-123',
         identifier: 'TEST-123',
@@ -99,14 +202,53 @@ describe('ImageDownloader', () => {
         }
       });
 
-      // Test URL extraction without actually downloading
-      const descriptionUrls = imageDownloader.extractImageUrls(issue.description);
-      const commentUrls = imageDownloader.extractImageUrls(issue.comments.nodes[0].body);
-      
-      expect(descriptionUrls).toHaveLength(1);
-      expect(descriptionUrls[0]).toBe('https://uploads.linear.app/12345/screenshot.png');
-      expect(commentUrls).toHaveLength(1);
-      expect(commentUrls[0]).toBe('https://uploads.linear.app/67890/image.jpg');
+      const mockBuffer = Buffer.from('fake-image-data');
+      fetch.mockImplementation(() => Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        buffer: jest.fn().mockResolvedValue(mockBuffer)
+      }));
+
+      const result = await imageDownloader.downloadIssueImages(issue, '/workspace');
+
+      expect(result.downloaded).toBe(2);
+      expect(result.totalFound).toBe(2);
+      expect(result.skipped).toBe(0);
+      expect(Object.keys(result.imageMap)).toHaveLength(2);
+      expect(result.imageMap['https://uploads.linear.app/12345/screenshot.png']).toMatch(/\.linear-images\/image_1\.png$/);
+      expect(result.imageMap['https://uploads.linear.app/67890/image.jpg']).toMatch(/\.linear-images\/image_2\.jpg$/);
+    });
+
+    it('should respect the 10 image limit', async () => {
+      // Create an issue with 15 image URLs
+      const imageUrls = [];
+      for (let i = 1; i <= 15; i++) {
+        imageUrls.push(`https://uploads.linear.app/${i}/image${i}.png`);
+      }
+
+      const issue = new Issue({
+        id: 'issue-123',
+        identifier: 'TEST-123',
+        title: 'Test Issue',
+        description: imageUrls.join(' '),
+        comments: { nodes: [] }
+      });
+
+      const mockBuffer = Buffer.from('fake-image-data');
+      fetch.mockImplementation(() => Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        buffer: jest.fn().mockResolvedValue(mockBuffer)
+      }));
+
+      const result = await imageDownloader.downloadIssueImages(issue, '/workspace', 10);
+
+      expect(result.totalFound).toBe(15);
+      expect(result.downloaded).toBe(10);
+      expect(result.skipped).toBe(5);
+      expect(Object.keys(result.imageMap)).toHaveLength(10);
     });
 
     it('should handle issues with no images', async () => {
@@ -118,8 +260,43 @@ describe('ImageDownloader', () => {
         comments: { nodes: [] }
       });
 
-      const urls = imageDownloader.extractImageUrls(issue.description);
-      expect(urls).toHaveLength(0);
+      const result = await imageDownloader.downloadIssueImages(issue, '/workspace');
+
+      expect(result.downloaded).toBe(0);
+      expect(result.totalFound).toBe(0);
+      expect(result.skipped).toBe(0);
+      expect(Object.keys(result.imageMap)).toHaveLength(0);
+    });
+
+    it('should handle download failures gracefully', async () => {
+      const issue = new Issue({
+        id: 'issue-123',
+        identifier: 'TEST-123',
+        title: 'Test Issue',
+        description: 'Image 1: https://uploads.linear.app/1/image1.png Image 2: https://uploads.linear.app/2/image2.png',
+        comments: { nodes: [] }
+      });
+
+      // First download succeeds, second fails
+      fetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          buffer: jest.fn().mockResolvedValue(Buffer.from('image1-data'))
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found'
+        });
+
+      const result = await imageDownloader.downloadIssueImages(issue, '/workspace');
+
+      expect(result.totalFound).toBe(2);
+      expect(result.downloaded).toBe(1);
+      expect(result.skipped).toBe(0);
+      expect(Object.keys(result.imageMap)).toHaveLength(1);
     });
   });
 
