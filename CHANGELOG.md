@@ -89,3 +89,9 @@ All notable changes to this project will be documented in this file.
 - Fixed issue where all attachments were treated as images
   - Non-image attachments (like .jsonl files) no longer cause "Could not process image" errors
   - Attachment failures are now handled gracefully without stopping the agent
+- Fixed nested reply handling to comply with Linear API requirements
+  - When agent is mentioned in nested comments (replies to replies), the system now correctly finds the root comment of the thread
+  - Linear API requires parentId to point to a top-level comment, not another nested comment
+  - Added `findRootCommentId()` method to traverse comment hierarchies and locate thread roots
+  - Updated `handleAgentMention`, `handleAgentReply`, and `handleCommentEvent` to use root comment IDs for threading
+  - Prevents "Parent comment must be a top level comment" errors when replying to deeply nested comments
