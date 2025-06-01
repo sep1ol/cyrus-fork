@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Migrated from npm to pnpm package manager
+  - Replaced package-lock.json with pnpm-lock.yaml
+  - Updated all documentation to use pnpm commands
+  - Updated GitHub Actions workflow to use pnpm
+  - Added `packageManager` field to package.json for explicit pnpm version (10.11.0)
+- Renamed and simplified GitHub Actions workflow
+  - Renamed `tests.yml` to `ci.yml` to better reflect its purpose
+  - Simplified workflow configuration for clarity
+  - Updated badge reference in README.md
+  - Switched to `wyvox/action-setup-pnpm` for consistent dependency installation
+  - Added Node.js 22.x to the test matrix
+  - Refactored dependency installation into a reusable GitHub Action
+
 ### Added
 - Coverage folder to .gitignore to prevent test coverage reports from being tracked
 - AttachmentDownloader class to handle all types of Linear attachments (not just images)
