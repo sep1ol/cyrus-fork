@@ -18,16 +18,21 @@ All notable changes to this project will be documented in this file.
   - Replaces the previous ImageDownloader with a more comprehensive solution
 - Threaded comment reply support in Linear
   - Agent now creates proper threaded replies when responding to specific comments
-  - Tracks parent comment IDs from webhook notifications
-  - Replies to comments are posted as threaded replies maintaining conversation context
-  - New top-level comments are created for unrelated responses
-  - Added unit tests to verify threaded comment functionality
+
+### Fixed
+- Issue state selection when moving assigned issues to 'In Progress'
+  - Now correctly selects the 'started' state with the lowest position when multiple 'started' states exist
+  - Ensures issues move to "In Progress" rather than "In Review" when both have type 'started'
+  - Addresses CEA-54 where issues were incorrectly moving to higher-positioned started states
 - Enhanced threading behavior for Linear comments
   - Agent's first assignment comment is always a top-level comment
   - All subsequent agent messages are threaded under the first comment
   - When users comment, agent replies directly to their comments
   - When replying in existing threads, agent uses the same parentId to maintain thread structure
   - Session tracking for agentRootCommentId and currentParentId
+  - Tracks parent comment IDs from webhook notifications
+  - Replies to comments are posted as threaded replies maintaining conversation context
+  - New top-level comments are created for unrelated responses
   - Comprehensive test suite for all threading scenarios
 
 ### Removed

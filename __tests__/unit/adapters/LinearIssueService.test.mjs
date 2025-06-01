@@ -162,6 +162,36 @@ describe('LinearIssueService', () => {
       consoleLogSpy.mockRestore()
       delete process.env.DEBUG_LINEAR_API
     })
+
+    it('should pick the started state with lowest position when multiple exist', async () => {
+      // Mock the issue with a team that has multiple started states
+      const mockIssue = {
+        id: 'issue-123',
+        team: {
+          states: vi.fn().mockResolvedValue({
+            nodes: [
+              { id: 'state-1', name: 'Backlog', type: 'backlog', position: 1 },
+              { id: 'state-2', name: 'In Progress', type: 'started', position: 2 },
+              { id: 'state-3', name: 'In Review', type: 'started', position: 3 },
+              { id: 'state-4', name: 'Done', type: 'completed', position: 4 }
+            ]
+          })
+        }
+      }
+
+      mockLinearClient.issue.mockResolvedValue(mockIssue)
+      mockLinearClient.updateIssue.mockResolvedValue({ success: true })
+
+      // Call the method
+      await linearIssueService.moveIssueToInProgress('issue-123')
+
+      // Verify the correct calls were made - should pick "In Progress" (position 2) over "In Review" (position 3)
+      expect(mockLinearClient.issue).toHaveBeenCalledWith('issue-123')
+      expect(mockIssue.team.states).toHaveBeenCalled()
+      expect(mockLinearClient.updateIssue).toHaveBeenCalledWith('issue-123', {
+        stateId: 'state-2'  // "In Progress" should be selected, not "In Review"
+      })
+    })
   })
 
   describe('handleAgentAssignment', () => {
