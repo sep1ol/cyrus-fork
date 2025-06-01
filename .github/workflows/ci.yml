@@ -12,23 +12,21 @@ jobs:
     
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [18.x, 20.x, 22.x]
     
     steps:
     - uses: actions/checkout@v4
     
-    - uses: pnpm/action-setup@v4
-      with:
-        version: 9
-    
     - uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'pnpm'
     
-    - run: pnpm install --frozen-lockfile
+    - name: Install dependencies
+      uses: wyvox/action-setup-pnpm@v3
+      with:
+        pnpm-version: 10.11.0
     
-    - name: Create test environment
+    - name: Create .env file
       run: |
         cat > .env << EOF
         LINEAR_WEBHOOK_SECRET=test
