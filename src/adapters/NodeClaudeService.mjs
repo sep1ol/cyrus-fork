@@ -608,7 +608,8 @@ history are preserved. Please continue your work on the issue.]
           issue,
           workspace,
           process: claudeProcess,
-          startedAt: new Date()
+          startedAt: new Date(),
+          agentRootCommentId
         });
         
         resolve(session);
