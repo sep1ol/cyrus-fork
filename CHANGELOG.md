@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - Updated badge reference in README.md
   - Switched to `wyvox/action-setup-pnpm` for consistent dependency installation
   - Added Node.js 22.x to the test matrix
+  - Refactored dependency installation into a reusable GitHub Action
 
 ### Added
 - Coverage folder to .gitignore to prevent test coverage reports from being tracked
