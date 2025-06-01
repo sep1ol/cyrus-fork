@@ -6,9 +6,10 @@ export class ClaudeService {
    * Start a new Claude session for an issue
    * @param {Issue} issue - The issue to process
    * @param {Workspace} workspace - The workspace for the issue
+   * @param {string} agentRootCommentId - The first comment ID for threading
    * @returns {Promise<Session>} - The created session
    */
-  async startSession(issue, workspace) {
+  async startSession(issue, workspace, agentRootCommentId = null) {
     throw new Error('Not implemented');
   }
   

@@ -243,9 +243,12 @@ history are preserved. Please continue your work on the issue.]
                   
                   // Determine if we should thread the response
                   let parentId = null;
-                  if (session && session.lastCommentId && session.conversationContext === 'reply') {
-                    parentId = session.lastCommentId;
-                    console.log(`[CLAUDE JSON - ${issue.identifier}] Threading response to comment ${parentId}`);
+                  if (session) {
+                    // Use currentParentId if available, otherwise use agentRootCommentId
+                    parentId = session.currentParentId || session.agentRootCommentId;
+                    if (parentId) {
+                      console.log(`[CLAUDE JSON - ${issue.identifier}] Threading response to comment ${parentId}`);
+                    }
                   }
                   
                   this.postResponseToLinear(issue.id, lastAssistantResponseText, null, null, parentId);
@@ -268,9 +271,12 @@ history are preserved. Please continue your work on the issue.]
                   
                   // Determine if we should thread the response
                   let parentId = null;
-                  if (session && session.lastCommentId && session.conversationContext === 'reply') {
-                    parentId = session.lastCommentId;
-                    console.log(`[CLAUDE JSON - ${issue.identifier}] Threading final response to comment ${parentId}`);
+                  if (session) {
+                    // Use currentParentId if available, otherwise use agentRootCommentId
+                    parentId = session.currentParentId || session.agentRootCommentId;
+                    if (parentId) {
+                      console.log(`[CLAUDE JSON - ${issue.identifier}] Threading final response to comment ${parentId}`);
+                    }
                   }
                   
                   this.postResponseToLinear(issue.id, lastAssistantResponseText, null, null, parentId);
@@ -619,7 +625,7 @@ history are preserved. Please continue your work on the issue.]
   /**
    * @inheritdoc
    */
-  async startSession(issue, workspace) {
+  async startSession(issue, workspace, agentRootCommentId = null) {
     return new Promise(async (resolve, reject) => {
       try {
         console.log(`Starting Claude session for issue ${issue.identifier}...`);
@@ -756,6 +762,16 @@ CLAUDE_INPUT_EOF`;
           return;
         }
         
+        // Create the initial session for handler access
+        const session = new Session({
+          issue,
+          workspace,
+          process: claudeProcess,
+          startedAt: new Date(),
+          agentRootCommentId: agentRootCommentId || null,
+          currentParentId: agentRootCommentId || null // Initially thread under the first comment
+        });
+        
         // Set up common event handlers with token limit callback
         this._setupClaudeProcessHandlers(claudeProcess, issue, workspace, historyPath, async (issue, workspace) => {
           console.log(`Token limit reached for issue ${issue.identifier}. Starting fresh session...`);
@@ -787,15 +803,7 @@ CLAUDE_INPUT_EOF`;
               `[System Error] Failed to recover from token limit: ${error.message}`
             );
           }
-        }, null);
-        
-        // Create and resolve with a new Session object
-        const session = new Session({
-          issue,
-          workspace,
-          process: claudeProcess,
-          startedAt: new Date()
-        });
+        }, session);
         
         resolve(session);
       } catch (error) {

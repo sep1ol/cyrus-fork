@@ -177,9 +177,13 @@ export class LinearIssueService extends IssueService {
   }
   
   /**
-   * @inheritdoc
+   * Create a comment and return its ID
+   * @param {string} issueId - The issue ID
+   * @param {string} body - The comment body
+   * @param {string} parentId - Optional parent comment ID for threading
+   * @returns {Promise<{success: boolean, commentId?: string}>} - Result with comment ID if successful
    */
-  async createComment(issueId, body, parentId = null) {
+  async createCommentAndGetId(issueId, body, parentId = null) {
     // Calculate body length and create a preview for logging
     const bodyLength = body.length;
     const bodyPreview = bodyLength > 50 ? body.substring(0, 50) + '...' : body;
@@ -215,8 +219,60 @@ export class LinearIssueService extends IssueService {
         console.log(JSON.stringify(response, null, 2));
       }
       
+      // Extract comment ID from response
+      const commentId = response?.comment?.id || response?.commentCreate?.comment?.id;
+      
       console.log(`✅ Successfully created comment on issue ${issueId}`);
-      return true;
+      if (commentId) {
+        console.log(`Comment ID: ${commentId}`);
+      }
+      
+      return { success: true, commentId };
+    } catch (error) {
+      console.error(`Failed to create comment on issue ${issueId}:`, error);
+      
+      // Only log detailed error in debug mode
+      if (process.env.DEBUG_LINEAR_API === 'true') {
+        console.error('Error details:', JSON.stringify(error, null, 2));
+      }
+      
+      return { success: false };
+    }
+  }
+  
+  /**
+   * @inheritdoc
+   */
+  async createComment(issueId, body, parentId = null) {
+    // Calculate body length and create a preview for logging
+    const bodyLength = body.length;
+    const bodyPreview = bodyLength > 50 ? body.substring(0, 50) + '...' : body;
+    
+    console.log(`===== CREATING COMMENT ON ISSUE ${issueId} =====`);
+    console.log(`Comment length: ${bodyLength} characters, Preview: ${bodyPreview}`);
+    if (parentId) {
+      console.log(`Replying to parent comment: ${parentId}`);
+    }
+    
+    // Only log full comment body in debug mode
+    if (process.env.DEBUG_COMMENT_CONTENT === 'true') {
+      console.log('Full comment body:', body);
+    }
+    
+    try {
+      console.log('Sending comment to Linear API...');
+      const commentData = {
+        issueId,
+        body,
+      };
+      
+      // Add parentId if provided to create a threaded reply
+      if (parentId) {
+        commentData.parentId = parentId;
+      }
+      
+      const result = await this.createCommentAndGetId(issueId, body, parentId);
+      return result.success;
     } catch (error) {
       console.error(`Failed to create comment on issue ${issueId}:`, error);
       
@@ -233,8 +289,9 @@ export class LinearIssueService extends IssueService {
    * Initialize a session for an issue
    * @param {Issue} issue - The issue to initialize
    * @param {boolean} isStartupInit - Whether this is a system startup initialization
+   * @param {string} agentRootCommentId - Optional first comment ID for threading
    */
-  async initializeIssueSession(issue, isStartupInit = false) {
+  async initializeIssueSession(issue, isStartupInit = false, agentRootCommentId = null) {
     // Skip if we already have an active session
     if (this.sessionManager.hasSession(issue.id)) {
       console.log(`Already have an active session for issue ${issue.identifier}`);
@@ -251,7 +308,7 @@ export class LinearIssueService extends IssueService {
         
         // Start a Claude session for the new workspace
         console.log(`Starting Claude session for issue ${issue.identifier} with agent user ID: ${this.userId}`);
-        const session = await this.claudeService.startSession(issue, workspace);
+        const session = await this.claudeService.startSession(issue, workspace, agentRootCommentId);
         
         // Store session
         this.sessionManager.addSession(issue.id, session);
@@ -263,7 +320,7 @@ export class LinearIssueService extends IssueService {
         } else {
           // For comment/mention triggers, always start a session
           console.log(`Starting Claude session for issue ${issue.identifier} with existing workspace`);
-          const session = await this.claudeService.startSession(issue, workspace);
+          const session = await this.claudeService.startSession(issue, workspace, agentRootCommentId);
           this.sessionManager.addSession(issue.id, session);
         }
       }
@@ -535,7 +592,14 @@ export class LinearIssueService extends IssueService {
       if (session) {
         // Session exists, send the comment
         try {
-          // Store the comment ID in the session for threading
+          // Update threading context based on comment structure
+          if (commentData.parentId) {
+            // If the comment is already threaded, use the same parent
+            session.currentParentId = commentData.parentId;
+          } else {
+            // If it's a root comment from user, reply to this comment
+            session.currentParentId = commentData.id;
+          }
           session.lastCommentId = commentData.id;
           session.conversationContext = 'reply';
           
@@ -621,7 +685,15 @@ export class LinearIssueService extends IssueService {
         if (commentContent) {
           console.log(`Processing mention as a comment: ${commentContent.substring(0, 50)}${commentContent.length > 50 ? '...' : ''}`);
           
-          // Store the comment ID for threading
+          // Update threading context based on mention location
+          // For mentions, we need to check the comment data for parent info
+          if (data.comment?.parentId) {
+            // If the mention is in a threaded comment, use the same parent
+            session.currentParentId = data.comment.parentId;
+          } else {
+            // If it's a root comment mention, reply to this comment
+            session.currentParentId = commentId;
+          }
           session.lastCommentId = commentId;
           session.conversationContext = 'mention';
           
@@ -672,14 +744,19 @@ export class LinearIssueService extends IssueService {
       }
       
       // Best practice - Post an acknowledgement comment
-      await this.createComment(
+      const firstCommentResult = await this.createCommentAndGetId(
         issueId,
         `I'm now assigned to this issue and will start working on it right away.`
       );
       
-      // Initialize a session for this issue
-      console.log(`Starting work on issue ${issue.identifier}`);
-      await this.initializeIssueSession(issue);
+      // Initialize a session for this issue with the first comment ID
+      if (firstCommentResult?.success && firstCommentResult?.commentId) {
+        console.log(`Starting work on issue ${issue.identifier}`);
+        await this.initializeIssueSession(issue, false, firstCommentResult.commentId);
+      } else {
+        console.log(`Starting work on issue ${issue.identifier} (no comment ID available)`);
+        await this.initializeIssueSession(issue, false);
+      }
     } catch (error) {
       console.error('Error handling agent assignment:', error);
     }
@@ -728,7 +805,15 @@ export class LinearIssueService extends IssueService {
         if (commentContent) {
           console.log(`Processing reply as a comment`);
           
-          // Store the comment ID for threading - this is a direct reply
+          // Update threading context for replies
+          // For replies, check if this is a threaded reply
+          if (data.comment?.parentId) {
+            // If replying in a thread, use the same parent
+            session.currentParentId = data.comment.parentId;
+          } else {
+            // If it's a root comment reply, reply to this comment
+            session.currentParentId = commentId;
+          }
           session.lastCommentId = commentId;
           session.conversationContext = 'reply';
           

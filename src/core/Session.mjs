@@ -11,6 +11,10 @@ export class Session {
     exitedAt = null,
     stderrContent = '',
     lastAssistantResponse = '',
+    lastCommentId = null,
+    conversationContext = null,
+    agentRootCommentId = null,
+    currentParentId = null,
   }) {
     this.issue = issue;
     this.workspace = workspace;
@@ -20,6 +24,10 @@ export class Session {
     this.exitedAt = exitedAt instanceof Date ? exitedAt : exitedAt ? new Date(exitedAt) : null;
     this.stderrContent = stderrContent;
     this.lastAssistantResponse = lastAssistantResponse;
+    this.lastCommentId = lastCommentId;
+    this.conversationContext = conversationContext;
+    this.agentRootCommentId = agentRootCommentId; // First comment by agent on assignment
+    this.currentParentId = currentParentId; // Current parent ID for threading
   }
 
   /**
