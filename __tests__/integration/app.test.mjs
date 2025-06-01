@@ -49,8 +49,26 @@ vi.mock('../../src/container.mjs', () => {
     cleanupAllWorkspaces: vi.fn().mockResolvedValue()
   };
   
-  // Import the mocked config
-  const mockConfig = require('../../src/config/env.mjs').default;
+  // Use the mocked config directly
+  const mockConfig = {
+    linear: {
+      apiToken: 'mock-token',
+      userId: 'mock-user-id',
+      username: 'mock-username',
+      webhookSecret: 'mock-secret',
+    },
+    webhook: {
+      port: 3000,
+    },
+    claude: {
+      path: '/mock/claude',
+      promptTemplatePath: '/mock/prompt.txt',
+    },
+    workspace: {
+      baseDir: '/mock/workspace',
+    },
+    validate: vi.fn().mockReturnValue(true),
+  };
   
   const mockContainer = {
     get: vi.fn((name) => {
