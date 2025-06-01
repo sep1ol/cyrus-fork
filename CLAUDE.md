@@ -142,6 +142,14 @@ Each Linear issue gets its own:
 - Claude Code session
 - Isolated workspace directory
 
+## Linear State Management
+
+The agent automatically moves issues to the "started" state when assigned. Linear uses standardized state types:
+
+- **State Types Reference**: https://studio.apollographql.com/public/Linear-API/variant/current/schema/reference/enums/ProjectStatusType
+- **Standard Types**: `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`
+- **Issue Assignment Behavior**: When an issue is assigned to the agent, it automatically transitions to a state with `type === 'started'` (In Progress)
+
 ## Notes for Future Development
 
 - The project uses Linear's Agent API (Beta)

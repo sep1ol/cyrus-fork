@@ -893,9 +893,11 @@ export class LinearIssueService extends IssueService {
       const team = await issue.team;
       const states = await team.states();
       
-      // Find a state with type "started" (the standard type for in-progress work)
+      // Find all states with type "started" and pick the one with lowest position
+      // This ensures we pick "In Progress" over "In Review" when both have type "started"
       // Linear uses standardized state types: triage, backlog, unstarted, started, completed, canceled
-      const startedState = states.nodes.find(state => state.type === 'started');
+      const startedStates = states.nodes.filter(state => state.type === 'started');
+      const startedState = startedStates.sort((a, b) => a.position - b.position)[0];
       
       if (!startedState) {
         throw new Error('Could not find a state with type "started" for this team');
