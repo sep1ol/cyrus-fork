@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Vitest as the new test runner, replacing Jest
+  - Provides significantly faster test execution
+  - Maintains full compatibility with existing test APIs
+  - Includes built-in UI mode for test debugging with `pnpm run test:ui`
+  - Native ES modules support without experimental flags
+- Coverage folder to .gitignore to prevent test coverage reports from being tracked
+- AttachmentDownloader class to handle all types of Linear attachments (not just images)
+  - Supports downloading any file type from Linear's authenticated storage
+  - Automatically detects file types and categorizes them as images or other attachments
+  - Gracefully handles download failures with informative warnings
+  - Replaces the previous ImageDownloader with a more comprehensive solution
+
+### Removed
+- Jest test runner and related dependencies (@types/jest, jest-environment-node)
+- Jest configuration file (jest.config.mjs)
+- Coverage folder from git tracking (now properly ignored)
+- ImageDownloader class (replaced by AttachmentDownloader)
+  - All image handling functionality is now provided by AttachmentDownloader
+  - Removed ImageDownloader tests, exports, and container registration
+
 ### Changed
 - Migrated from npm to pnpm package manager
   - Replaced package-lock.json with pnpm-lock.yaml
@@ -17,22 +38,11 @@ All notable changes to this project will be documented in this file.
   - Switched to `wyvox/action-setup-pnpm` for consistent dependency installation
   - Added Node.js 22.x to the test matrix
   - Refactored dependency installation into a reusable GitHub Action
-
-### Added
-- Coverage folder to .gitignore to prevent test coverage reports from being tracked
-- AttachmentDownloader class to handle all types of Linear attachments (not just images)
-  - Supports downloading any file type from Linear's authenticated storage
-  - Automatically detects file types and categorizes them as images or other attachments
-  - Gracefully handles download failures with informative warnings
-  - Replaces the previous ImageDownloader with a more comprehensive solution
-
-### Removed
-- Coverage folder from git tracking (now properly ignored)
-- ImageDownloader class (replaced by AttachmentDownloader)
-  - All image handling functionality is now provided by AttachmentDownloader
-  - Removed ImageDownloader tests, exports, and container registration
-
-### Changed
+- Test runner from Jest to Vitest for improved performance
+  - All test files updated to import from 'vitest' instead of '@jest/globals'
+  - Mock functions migrated from `jest.*` to `vi.*` equivalents
+  - Updated package.json test scripts to use vitest commands
+  - Created vitest.config.mjs with minimal configuration using defaults
 - CLI argument `--env-file`/`-e` to specify custom environment file
 - Default environment file changed from `.env` to `.env.secret-agents`
 - CLAUDE.md file with project conventions and guidelines for Claude Code assistant
