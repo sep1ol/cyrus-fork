@@ -153,9 +153,10 @@ history are preserved. Please continue your work on the issue.]
    * @param {Workspace} workspace - The workspace
    * @param {string} historyPath - Path to history file
    * @param {Function} onTokenLimitError - Callback when token limit is reached
+   * @param {Session} session - The session object for tracking context
    * @returns {ChildProcess} - The Claude process with handlers attached
    */
-  _setupClaudeProcessHandlers(claudeProcess, issue, workspace, historyPath, onTokenLimitError = null) {
+  _setupClaudeProcessHandlers(claudeProcess, issue, workspace, historyPath, onTokenLimitError = null, session = null) {
     // Set up buffers to capture output
     let stderr = '';
     let lastAssistantResponseText = '';
@@ -239,7 +240,15 @@ history are preserved. Please continue your work on the issue.]
                 // Post the first complete response immediately
                 if (!firstResponsePosted) {
                   console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear.`);
-                  this.postResponseToLinear(issue.id, lastAssistantResponseText);
+                  
+                  // Determine if we should thread the response
+                  let parentId = null;
+                  if (session && session.lastCommentId && session.conversationContext === 'reply') {
+                    parentId = session.lastCommentId;
+                    console.log(`[CLAUDE JSON - ${issue.identifier}] Threading response to comment ${parentId}`);
+                  }
+                  
+                  this.postResponseToLinear(issue.id, lastAssistantResponseText, null, null, parentId);
                   // Store first response content in issue object for comparison
                   issue.firstResponseContent = lastAssistantResponseText.trim();
                   firstResponsePosted = true;
@@ -256,7 +265,15 @@ history are preserved. Please continue your work on the issue.]
                   console.log(
                     `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
                   );
-                  this.postResponseToLinear(issue.id, lastAssistantResponseText);
+                  
+                  // Determine if we should thread the response
+                  let parentId = null;
+                  if (session && session.lastCommentId && session.conversationContext === 'reply') {
+                    parentId = session.lastCommentId;
+                    console.log(`[CLAUDE JSON - ${issue.identifier}] Threading final response to comment ${parentId}`);
+                  }
+                  
+                  this.postResponseToLinear(issue.id, lastAssistantResponseText, null, null, parentId);
                 } else {
                   console.log(
                     `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but final response is identical to first response. Skipping duplicate post.`
@@ -578,7 +595,7 @@ history are preserved. Please continue your work on the issue.]
         }
         
         // Set up common event handlers
-        this._setupClaudeProcessHandlers(claudeProcess, issue, workspace, historyPath);
+        this._setupClaudeProcessHandlers(claudeProcess, issue, workspace, historyPath, null, null);
         
         // Create and resolve with a new Session object
         const session = new Session({
@@ -770,7 +787,7 @@ CLAUDE_INPUT_EOF`;
               `[System Error] Failed to recover from token limit: ${error.message}`
             );
           }
-        });
+        }, null);
         
         // Create and resolve with a new Session object
         const session = new Session({
@@ -908,7 +925,7 @@ CLAUDE_INPUT_EOF`;
               `[System Error] Failed to recover from token limit during continuation: ${error.message}`
             );
           }
-        });
+        }, session);
         
         console.log(
           `New Claude process started with PID: ${newClaudeProcess.pid}`
@@ -996,7 +1013,7 @@ CLAUDE_INPUT_EOF`;
   /**
    * @inheritdoc
    */
-  async postResponseToLinear(issueId, response, costUsd = null, durationMs = null) {
+  async postResponseToLinear(issueId, response, costUsd = null, durationMs = null, parentId = null) {
     try {
       // Calculate response length and truncate preview to reduce verbosity
       const responseLength = response.length;
@@ -1004,12 +1021,18 @@ CLAUDE_INPUT_EOF`;
       const responsePreview = response.substring(0, previewLength) + (responseLength > previewLength ? '...' : '');
       
       console.log(`[CLAUDE JSON - ${issueId}] Posting response to Linear.`);
+      if (parentId) {
+        console.log(`[CLAUDE JSON - ${issueId}] Replying to parent comment: ${parentId}`);
+      }
       
       // Only log full details in debug mode
       if (process.env.DEBUG_CLAUDE_RESPONSES === 'true') {
         console.log(`\n===== Posting Response to Linear for issue ${issueId} =====`);
         console.log(`Response length: ${responseLength} characters`);
         console.log(`Response preview: ${responsePreview}`);
+        if (parentId) {
+          console.log(`Parent comment ID: ${parentId}`);
+        }
         console.log(`================================================\n`);
       }
       
@@ -1022,8 +1045,8 @@ CLAUDE_INPUT_EOF`;
         formattedResponse += `\n*Last run cost: $${costUsd.toFixed(2)}, Duration: ${durationMs / 1000}s*`;
       }
       
-      // Create a comment on the issue
-      const success = await this.issueService.createComment(issueId, formattedResponse);
+      // Create a comment on the issue with optional parent ID for threading
+      const success = await this.issueService.createComment(issueId, formattedResponse, parentId);
       
       if (success) {
         console.log(`✅ Successfully posted response to Linear issue ${issueId}`);
