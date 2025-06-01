@@ -43,16 +43,12 @@ All notable changes to this project will be documented in this file.
   - Mock functions migrated from `jest.*` to `vi.*` equivalents
   - Updated package.json test scripts to use vitest commands
   - Created vitest.config.mjs with minimal configuration using defaults
-- CLI argument `--env-file`/`-e` to specify custom environment file
-- Default environment file changed from `.env` to `.env.secret-agents`
-- CLAUDE.md file with project conventions and guidelines for Claude Code assistant
-- Updated attachment handling to support all file types, not just images
-  - NodeClaudeService now uses AttachmentDownloader instead of ImageDownloader
-  - Attachments are stored in `~/.linearsecretagent/<workspace>/attachments` directory
-  - Claude configuration updated to allow reading from attachments directory only
-  - Error messages now indicate when non-image attachments fail to process
-- Branch naming now uses Linear's workspace-configured branch format
-  - Fetches `branchName` property from Linear API
+- Automatic state transition to "started" state when issues are assigned to the agent
+  - Issues now automatically move to "started" state type upon agent assignment
+  - Uses Linear's standardized state types (triage, backlog, unstarted, started, completed, canceled) instead of matching state names
+  - Works consistently across all teams regardless of custom state naming
+  - Gracefully continues processing even if state transition fails
+  - Provides clear logging of state transitions for debugging
   - Respects workspace settings for branch naming conventions
   - Falls back to lowercase identifier if API value not available
 - All entry points now support custom environment file paths

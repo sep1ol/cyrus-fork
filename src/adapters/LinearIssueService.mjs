@@ -643,6 +643,15 @@ export class LinearIssueService extends IssueService {
       // Fetch the issue to get full context (detailed debug logs are in fetchIssue)
       const issue = await this.fetchIssue(issueId);
       
+      // Move the issue to "In Progress" state
+      try {
+        await this.moveIssueToInProgress(issueId);
+        console.log(`✅ Moved issue ${issue.identifier} to "In Progress"`);
+      } catch (stateError) {
+        console.error(`Failed to move issue to "In Progress": ${stateError.message}`);
+        // Continue processing even if state change fails
+      }
+      
       // Best practice - Post an acknowledgement comment
       await this.createComment(
         issueId,
@@ -754,6 +763,63 @@ export class LinearIssueService extends IssueService {
       console.log('Successfully processed agent unassignment');
     } catch (error) {
       console.error('Error handling agent unassignment:', error);
+    }
+  }
+  
+  /**
+   * Move an issue to "In Progress" state
+   * @param {string} issueId - The ID of the issue to update
+   * @returns {Promise<void>}
+   */
+  async moveIssueToInProgress(issueId) {
+    try {
+      // First, fetch the issue to get its team ID
+      const issue = await this.linearClient.issue(issueId);
+      
+      if (!issue || !issue.team) {
+        throw new Error('Could not fetch issue or issue has no team');
+      }
+      
+      // Get the team's workflow states
+      const team = await issue.team;
+      const states = await team.states();
+      
+      // Find the "In Progress" state
+      const inProgressState = states.nodes.find(state => 
+        state.name === 'In Progress' || 
+        state.name === 'In progress' ||
+        state.name === 'in progress'
+      );
+      
+      if (!inProgressState) {
+        // If no "In Progress" state found, look for similar states
+        const alternativeState = states.nodes.find(state => 
+          state.name.toLowerCase().includes('progress') ||
+          state.name.toLowerCase().includes('doing') ||
+          state.name.toLowerCase().includes('started')
+        );
+        
+        if (!alternativeState) {
+          throw new Error('Could not find "In Progress" or similar state for this team');
+        }
+        
+        console.log(`Using alternative state: ${alternativeState.name}`);
+        await this.linearClient.updateIssue(issueId, {
+          stateId: alternativeState.id
+        });
+      } else {
+        // Update the issue state to "In Progress"
+        await this.linearClient.updateIssue(issueId, {
+          stateId: inProgressState.id
+        });
+      }
+      
+      if (process.env.DEBUG_LINEAR_API === 'true') {
+        console.log(`Successfully updated issue ${issueId} to "In Progress" state`);
+      }
+    } catch (error) {
+      console.error(`Error moving issue to "In Progress": ${error.message}`);
+      throw error;
     }
   }
 }
