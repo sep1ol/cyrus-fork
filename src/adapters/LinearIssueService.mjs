@@ -295,6 +295,50 @@ export class LinearIssueService extends IssueService {
   }
   
   /**
+   * Update an existing comment
+   * @param {string} commentId - The comment ID to update
+   * @param {string} body - The new comment body
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateComment(commentId, body) {
+    // Calculate body length and create a preview for logging
+    const bodyLength = body.length;
+    const bodyPreview = bodyLength > 50 ? body.substring(0, 50) + '...' : body;
+    
+    console.log(`===== UPDATING COMMENT ${commentId} =====`);
+    console.log(`Comment length: ${bodyLength} characters, Preview: ${bodyPreview}`);
+    
+    // Only log full comment body in debug mode
+    if (process.env.DEBUG_COMMENT_CONTENT === 'true') {
+      console.log('Full comment body:', body);
+    }
+    
+    try {
+      console.log('Sending comment update to Linear API...');
+      
+      const response = await this.linearClient.updateComment(commentId, { body });
+      
+      // Only log detailed API response in debug mode
+      if (process.env.DEBUG_LINEAR_API === 'true') {
+        console.log('Linear API response for updateComment:');
+        console.log(JSON.stringify(response, null, 2));
+      }
+      
+      console.log(`✅ Successfully updated comment ${commentId}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to update comment ${commentId}:`, error);
+      
+      // Only log detailed error in debug mode
+      if (process.env.DEBUG_LINEAR_API === 'true') {
+        console.error('Error details:', JSON.stringify(error, null, 2));
+      }
+      
+      return false;
+    }
+  }
+
+  /**
    * @inheritdoc
    */
   async createComment(issueId, body, parentId = null) {

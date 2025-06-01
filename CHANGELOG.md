@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Real-time streaming updates to Linear comments during Claude Code execution
+  - Agent now immediately posts "Getting to work..." comment when starting a new session
+  - This initial comment is updated in real-time with progress synthesis as Claude executes
+  - Shows tool calls performed and current focus of the agent
+  - Final response is posted as a separate comment when Claude completes
+  - When no final content is available, posts helpful message directing users to last progress update
 - Vitest as the new test runner, replacing Jest
   - Provides significantly faster test execution
   - Maintains full compatibility with existing test APIs

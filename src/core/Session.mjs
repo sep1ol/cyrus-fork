@@ -15,6 +15,9 @@ export class Session {
     conversationContext = null,
     agentRootCommentId = null,
     currentParentId = null,
+    streamingCommentId = null,
+    streamingSynthesis = null,
+    toolCallsSeen = [],
   }) {
     this.issue = issue;
     this.workspace = workspace;
@@ -28,6 +31,9 @@ export class Session {
     this.conversationContext = conversationContext;
     this.agentRootCommentId = agentRootCommentId; // First comment by agent on assignment
     this.currentParentId = currentParentId; // Current parent ID for threading
+    this.streamingCommentId = streamingCommentId; // ID of "Getting to work..." comment for updates
+    this.streamingSynthesis = streamingSynthesis; // Current synthesized progress message
+    this.toolCallsSeen = toolCallsSeen; // Array of tool calls seen in current run
   }
 
   /**
@@ -64,5 +70,58 @@ export class Session {
     }
     
     return errorMessage;
+  }
+
+  /**
+   * Add a tool call to the tracking list
+   * @param {string} toolName - Name of the tool called
+   */
+  addToolCall(toolName) {
+    if (!this.toolCallsSeen.includes(toolName)) {
+      this.toolCallsSeen.push(toolName);
+    }
+  }
+
+  /**
+   * Update the streaming synthesis based on current progress
+   * @param {string} currentMessage - Current assistant message content
+   */
+  updateStreamingSynthesis(currentMessage) {
+    const synthesis = ['Getting to work...'];
+    
+    if (this.toolCallsSeen.length > 0) {
+      const toolCount = this.toolCallsSeen.length;
+      const toolList = this.toolCallsSeen.join(', ');
+      synthesis.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}: ${toolList}`);
+    }
+    
+    // Extract meaningful parts from the current message for synthesis
+    if (currentMessage) {
+      const lines = currentMessage.split('\n').filter(line => line.trim());
+      const meaningfulLines = lines.filter(line => {
+        const trimmed = line.trim();
+        return trimmed.length > 10 && 
+               !trimmed.startsWith('```') && 
+               !trimmed.match(/^#+\s/) && // Skip headers
+               trimmed.indexOf('I will') === 0 ||
+               trimmed.indexOf('I need') === 0 ||
+               trimmed.indexOf('Now I') === 0 ||
+               trimmed.indexOf('Let me') === 0;
+      });
+      
+      if (meaningfulLines.length > 0) {
+        synthesis.push(`Current focus: ${meaningfulLines[0].substring(0, 100)}${meaningfulLines[0].length > 100 ? '...' : ''}`);
+      }
+    }
+    
+    this.streamingSynthesis = synthesis.join('\n\n');
+  }
+
+  /**
+   * Reset streaming state for a new run
+   */
+  resetStreamingState() {
+    this.toolCallsSeen = [];
+    this.streamingSynthesis = 'Getting to work...';
   }
 }
