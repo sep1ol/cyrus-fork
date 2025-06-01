@@ -5,7 +5,7 @@
     <img src="https://img.shields.io/badge/Built%20by-Ceedar.ai-b8ec83?style=for-the-badge&logoColor=black&labelColor=333333" alt="Built by Ceedar.ai">
   </a>
   <a href="https://github.com/ceedario/secret-agents/actions">
-    <img src="https://github.com/ceedario/secret-agents/actions/workflows/tests.yml/badge.svg" alt="Tests">
+    <img src="https://github.com/ceedario/secret-agents/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
 </p>
 

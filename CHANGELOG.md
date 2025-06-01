@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
   - Updated all documentation to use pnpm commands
   - Updated GitHub Actions workflow to use pnpm
   - Configured pnpm with proper caching in CI
+- Renamed and simplified GitHub Actions workflow
+  - Renamed `tests.yml` to `ci.yml` to better reflect its purpose
+  - Simplified workflow configuration for clarity
+  - Updated badge reference in README.md
 
 ### Added
 - Coverage folder to .gitignore to prevent test coverage reports from being tracked
