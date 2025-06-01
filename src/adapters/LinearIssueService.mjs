@@ -643,6 +643,15 @@ export class LinearIssueService extends IssueService {
       // Fetch the issue to get full context (detailed debug logs are in fetchIssue)
       const issue = await this.fetchIssue(issueId);
       
+      // Move the issue to "started" state (In Progress)
+      try {
+        await this.moveIssueToInProgress(issueId);
+        console.log(`✅ Moved issue ${issue.identifier} to "started" state`);
+      } catch (stateError) {
+        console.error(`Failed to move issue to "started" state: ${stateError.message}`);
+        // Continue processing even if state change fails
+      }
+      
       // Best practice - Post an acknowledgement comment
       await this.createComment(
         issueId,
@@ -754,6 +763,46 @@ export class LinearIssueService extends IssueService {
       console.log('Successfully processed agent unassignment');
     } catch (error) {
       console.error('Error handling agent unassignment:', error);
+    }
+  }
+  
+  /**
+   * Move an issue to "In Progress" state
+   * @param {string} issueId - The ID of the issue to update
+   * @returns {Promise<void>}
+   */
+  async moveIssueToInProgress(issueId) {
+    try {
+      // First, fetch the issue to get its team ID
+      const issue = await this.linearClient.issue(issueId);
+      
+      if (!issue || !issue.team) {
+        throw new Error('Could not fetch issue or issue has no team');
+      }
+      
+      // Get the team's workflow states
+      const team = await issue.team;
+      const states = await team.states();
+      
+      // Find a state with type "started" (the standard type for in-progress work)
+      // Linear uses standardized state types: triage, backlog, unstarted, started, completed, canceled
+      const startedState = states.nodes.find(state => state.type === 'started');
+      
+      if (!startedState) {
+        throw new Error('Could not find a state with type "started" for this team');
+      }
+      
+      // Update the issue state to the "started" state
+      await this.linearClient.updateIssue(issueId, {
+        stateId: startedState.id
+      });
+      
+      if (process.env.DEBUG_LINEAR_API === 'true') {
+        console.log(`Successfully updated issue ${issueId} to "${startedState.name}" state (type: started)`);
+      }
+    } catch (error) {
+      console.error(`Error moving issue to "In Progress": ${error.message}`);
+      throw error;
     }
   }
 }
