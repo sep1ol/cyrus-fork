@@ -29,11 +29,18 @@ describe('Linear Threading Behavior', () => {
     
     // Create real instances
     sessionManager = new SessionManager()
+    
+    // Mock the file system to avoid template loading errors in tests
+    const mockFileSystem = {
+      existsSync: jest.fn().mockReturnValue(true),
+      readFile: jest.fn().mockResolvedValue('mock template content')
+    }
+    
     claudeService = new NodeClaudeService(
       '/usr/local/bin/claude',
-      'testagent',
+      '/fake/template/path',  // promptTemplatePath
       mockIssueService,
-      null,
+      mockFileSystem,
       null
     )
     
