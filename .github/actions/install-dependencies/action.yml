@@ -18,3 +18,4 @@ runs:
       uses: wyvox/action-setup-pnpm@v3
       with:
         pnpm-version: ${{ env.PNPM_VERSION }}
+        args: --frozen-lockfile --strict-peer-dependencies
