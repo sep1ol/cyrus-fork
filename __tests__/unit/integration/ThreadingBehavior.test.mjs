@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals'
+import { vi } from 'vitest'
 import { LinearIssueService } from '../../../src/adapters/LinearIssueService.mjs'
 import { NodeClaudeService } from '../../../src/adapters/NodeClaudeService.mjs'
 import { SessionManager } from '../../../src/services/SessionManager.mjs'
@@ -16,7 +16,7 @@ describe('Linear Threading Behavior', () => {
   beforeEach(() => {
     // Mock Linear client
     mockLinearClient = {
-      createComment: jest.fn().mockResolvedValue({ 
+      createComment: vi.fn().mockResolvedValue({ 
         success: true,
         comment: { id: 'new-comment-id' }
       })
@@ -24,7 +24,7 @@ describe('Linear Threading Behavior', () => {
     
     // Mock issue service for Claude
     mockIssueService = {
-      createComment: jest.fn().mockResolvedValue(true)
+      createComment: vi.fn().mockResolvedValue(true)
     }
     
     // Create real instances
@@ -32,8 +32,8 @@ describe('Linear Threading Behavior', () => {
     
     // Mock the file system to avoid template loading errors in tests
     const mockFileSystem = {
-      existsSync: jest.fn().mockReturnValue(true),
-      readFile: jest.fn().mockResolvedValue('mock template content')
+      existsSync: vi.fn().mockReturnValue(true),
+      readFile: vi.fn().mockResolvedValue('mock template content')
     }
     
     claudeService = new NodeClaudeService(

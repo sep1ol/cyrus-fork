@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals'
+import { vi } from 'vitest'
 import { LinearIssueService } from '../../../src/adapters/LinearIssueService.mjs'
 
 describe('Threaded Comments Integration', () => {
@@ -8,7 +8,7 @@ describe('Threaded Comments Integration', () => {
   beforeEach(() => {
     // Create a minimal mock Linear client
     mockLinearClient = {
-      createComment: jest.fn().mockResolvedValue({ success: true })
+      createComment: vi.fn().mockResolvedValue({ success: true })
     }
     
     // Create the service with minimal dependencies
