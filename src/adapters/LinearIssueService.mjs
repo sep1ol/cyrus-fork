@@ -643,12 +643,12 @@ export class LinearIssueService extends IssueService {
       // Fetch the issue to get full context (detailed debug logs are in fetchIssue)
       const issue = await this.fetchIssue(issueId);
       
-      // Move the issue to "In Progress" state
+      // Move the issue to "started" state (In Progress)
       try {
         await this.moveIssueToInProgress(issueId);
-        console.log(`✅ Moved issue ${issue.identifier} to "In Progress"`);
+        console.log(`✅ Moved issue ${issue.identifier} to "started" state`);
       } catch (stateError) {
-        console.error(`Failed to move issue to "In Progress": ${stateError.message}`);
+        console.error(`Failed to move issue to "started" state: ${stateError.message}`);
         // Continue processing even if state change fails
       }
       
@@ -784,38 +784,21 @@ export class LinearIssueService extends IssueService {
       const team = await issue.team;
       const states = await team.states();
       
-      // Find the "In Progress" state
-      const inProgressState = states.nodes.find(state => 
-        state.name === 'In Progress' || 
-        state.name === 'In progress' ||
-        state.name === 'in progress'
-      );
+      // Find a state with type "started" (the standard type for in-progress work)
+      // Linear uses standardized state types: triage, backlog, unstarted, started, completed, canceled
+      const startedState = states.nodes.find(state => state.type === 'started');
       
-      if (!inProgressState) {
-        // If no "In Progress" state found, look for similar states
-        const alternativeState = states.nodes.find(state => 
-          state.name.toLowerCase().includes('progress') ||
-          state.name.toLowerCase().includes('doing') ||
-          state.name.toLowerCase().includes('started')
-        );
-        
-        if (!alternativeState) {
-          throw new Error('Could not find "In Progress" or similar state for this team');
-        }
-        
-        console.log(`Using alternative state: ${alternativeState.name}`);
-        await this.linearClient.updateIssue(issueId, {
-          stateId: alternativeState.id
-        });
-      } else {
-        // Update the issue state to "In Progress"
-        await this.linearClient.updateIssue(issueId, {
-          stateId: inProgressState.id
-        });
+      if (!startedState) {
+        throw new Error('Could not find a state with type "started" for this team');
       }
       
+      // Update the issue state to the "started" state
+      await this.linearClient.updateIssue(issueId, {
+        stateId: startedState.id
+      });
+      
       if (process.env.DEBUG_LINEAR_API === 'true') {
-        console.log(`Successfully updated issue ${issueId} to "In Progress" state`);
+        console.log(`Successfully updated issue ${issueId} to "${startedState.name}" state (type: started)`);
       }
     } catch (error) {
       console.error(`Error moving issue to "In Progress": ${error.message}`);
