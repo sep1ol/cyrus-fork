@@ -1,5 +1,5 @@
 import { LinearIssueService } from '../../../src/adapters/LinearIssueService.mjs'
-import { jest } from '@jest/globals'
+import { vi } from 'vitest'
 
 describe('LinearIssueService', () => {
   let linearIssueService
@@ -11,30 +11,30 @@ describe('LinearIssueService', () => {
   beforeEach(() => {
     // Create mock Linear client
     mockLinearClient = {
-      issue: jest.fn(),
-      issues: jest.fn(),
-      updateIssue: jest.fn(),
-      createComment: jest.fn(),
-      issueComments: jest.fn()
+      issue: vi.fn(),
+      issues: vi.fn(),
+      updateIssue: vi.fn(),
+      createComment: vi.fn(),
+      issueComments: vi.fn()
     }
 
     // Create mock services
     mockSessionManager = {
-      hasSession: jest.fn().mockReturnValue(false),
-      getSession: jest.fn(),
-      addSession: jest.fn(),
-      updateSession: jest.fn(),
-      removeSession: jest.fn()
+      hasSession: vi.fn().mockReturnValue(false),
+      getSession: vi.fn(),
+      addSession: vi.fn(),
+      updateSession: vi.fn(),
+      removeSession: vi.fn()
     }
 
     mockClaudeService = {
-      startSession: jest.fn(),
-      sendComment: jest.fn()
+      startSession: vi.fn(),
+      sendComment: vi.fn()
     }
 
     mockWorkspaceService = {
-      getWorkspaceForIssue: jest.fn(),
-      createWorkspace: jest.fn()
+      getWorkspaceForIssue: vi.fn(),
+      createWorkspace: vi.fn()
     }
 
     // Create service instance
@@ -53,7 +53,7 @@ describe('LinearIssueService', () => {
       const mockIssue = {
         id: 'issue-123',
         team: {
-          states: jest.fn().mockResolvedValue({
+          states: vi.fn().mockResolvedValue({
             nodes: [
               { id: 'state-1', name: 'Backlog', type: 'backlog' },
               { id: 'state-2', name: 'In Progress', type: 'started' },
@@ -82,7 +82,7 @@ describe('LinearIssueService', () => {
       const mockIssue = {
         id: 'issue-123',
         team: {
-          states: jest.fn().mockResolvedValue({
+          states: vi.fn().mockResolvedValue({
             nodes: [
               { id: 'state-1', name: 'Backlog', type: 'backlog' },
               { id: 'state-3', name: 'Done', type: 'completed' }
@@ -133,13 +133,13 @@ describe('LinearIssueService', () => {
       process.env.DEBUG_LINEAR_API = 'true'
       
       // Spy on console.log
-      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation()
 
       // Mock the issue with a team
       const mockIssue = {
         id: 'issue-123',
         team: {
-          states: jest.fn().mockResolvedValue({
+          states: vi.fn().mockResolvedValue({
             nodes: [
               { id: 'state-2', name: 'In Progress', type: 'started' }
             ]
@@ -177,10 +177,10 @@ describe('LinearIssueService', () => {
         identifier: 'TEST-456',
         assigneeId: 'test-user-id'
       }
-      jest.spyOn(linearIssueService, 'fetchIssue').mockResolvedValue(mockIssue)
+      vi.spyOn(linearIssueService, 'fetchIssue').mockResolvedValue(mockIssue)
       
       // Mock moveIssueToInProgress
-      jest.spyOn(linearIssueService, 'moveIssueToInProgress').mockResolvedValue()
+      vi.spyOn(linearIssueService, 'moveIssueToInProgress').mockResolvedValue()
       
       // Mock workspace service
       mockWorkspaceService.getWorkspaceForIssue.mockResolvedValue(null)
@@ -190,7 +190,7 @@ describe('LinearIssueService', () => {
       mockClaudeService.startSession.mockResolvedValue({ issue: mockIssue })
       
       // Spy on console.log to verify output
-      const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation()
+      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation()
 
       // Call handleAgentAssignment
       await linearIssueService.handleAgentAssignment(assignmentData)
@@ -219,10 +219,10 @@ describe('LinearIssueService', () => {
         identifier: 'TEST-789',
         assigneeId: 'test-user-id'
       }
-      jest.spyOn(linearIssueService, 'fetchIssue').mockResolvedValue(mockIssue)
+      vi.spyOn(linearIssueService, 'fetchIssue').mockResolvedValue(mockIssue)
       
       // Mock moveIssueToInProgress to throw an error
-      jest.spyOn(linearIssueService, 'moveIssueToInProgress')
+      vi.spyOn(linearIssueService, 'moveIssueToInProgress')
         .mockRejectedValue(new Error('State change failed'))
       
       // Mock workspace service
@@ -233,7 +233,7 @@ describe('LinearIssueService', () => {
       mockClaudeService.startSession.mockResolvedValue({ issue: mockIssue })
       
       // Spy on console.error to verify error message
-      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation()
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation()
 
       // Call handleAgentAssignment
       await linearIssueService.handleAgentAssignment(assignmentData)
