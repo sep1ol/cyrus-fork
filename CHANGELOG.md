@@ -28,6 +28,11 @@ All notable changes to this project will be documented in this file.
   - Agent's first assignment comment is always a top-level comment
   - All subsequent agent messages are threaded under the first comment
   - When users comment, agent replies directly to their comments
+- Comment threading issues with Linear API
+  - Fixed session initialization to properly pass agentRootCommentId to Session constructor
+  - Fixed nested reply threading logic to find correct root comment ID when replying to threaded comments
+  - Ensures compliance with Linear API requirement that parentId must be a top-level comment
+  - Addresses CEA-57 threading scenarios: assignment response threading and nested reply errors
   - When replying in existing threads, agent uses the same parentId to maintain thread structure
   - Session tracking for agentRootCommentId and currentParentId
   - Tracks parent comment IDs from webhook notifications

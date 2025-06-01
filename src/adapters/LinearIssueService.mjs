@@ -650,7 +650,7 @@ export class LinearIssueService extends IssueService {
           if (commentData.parentId) {
             // If the comment is already threaded, find the root of that thread
             // Linear API requires parentId to be a top-level comment
-            const rootCommentId = await this.findRootCommentId(issueId, commentData.parentId);
+            const rootCommentId = await this.findRootCommentId(issueId, commentData.id);
             session.currentParentId = rootCommentId || commentData.parentId;
           } else {
             // If it's a root comment from user, reply to this comment
@@ -746,7 +746,7 @@ export class LinearIssueService extends IssueService {
           if (data.comment?.parentId) {
             // If the mention is in a threaded comment, find the root of that thread
             // Linear API requires parentId to be a top-level comment
-            const rootCommentId = await this.findRootCommentId(issueId, data.comment.parentId);
+            const rootCommentId = await this.findRootCommentId(issueId, commentId);
             session.currentParentId = rootCommentId || data.comment.parentId;
           } else {
             // If it's a root comment mention, reply to this comment
@@ -868,7 +868,7 @@ export class LinearIssueService extends IssueService {
           if (data.comment?.parentId) {
             // If replying in a thread, find the root of that thread
             // Linear API requires parentId to be a top-level comment
-            const rootCommentId = await this.findRootCommentId(issueId, data.comment.parentId);
+            const rootCommentId = await this.findRootCommentId(issueId, commentId);
             session.currentParentId = rootCommentId || data.comment.parentId;
           } else {
             // If it's a root comment reply, reply to this comment
