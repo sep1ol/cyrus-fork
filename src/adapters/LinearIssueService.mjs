@@ -177,6 +177,60 @@ export class LinearIssueService extends IssueService {
   }
   
   /**
+   * Find the root comment of a thread
+   * @param {string} issueId - The issue ID
+   * @param {string} commentId - The comment ID to find the root for
+   * @returns {Promise<string|null>} - Root comment ID or null if not found/error
+   */
+  async findRootCommentId(issueId, commentId) {
+    try {
+      // Fetch comments for the issue
+      const commentsResponse = await this.linearClient.issueComments(issueId);
+      const comments = commentsResponse?.comments?.nodes || [];
+      
+      if (!comments.length) {
+        return null;
+      }
+      
+      // Find the comment we're looking for
+      const targetComment = comments.find(c => c.id === commentId);
+      if (!targetComment) {
+        return null;
+      }
+      
+      // If it has no parent, it's already a root comment
+      if (!targetComment.parent?.id) {
+        return commentId;
+      }
+      
+      // Walk up the chain to find the root
+      let currentComment = targetComment;
+      const visited = new Set([commentId]); // Prevent infinite loops
+      
+      while (currentComment.parent?.id && !visited.has(currentComment.parent.id)) {
+        visited.add(currentComment.parent.id);
+        currentComment = comments.find(c => c.id === currentComment.parent.id);
+        
+        if (!currentComment) {
+          // Parent not found in the comments list, return the last known comment
+          break;
+        }
+        
+        // If this comment has no parent, it's the root
+        if (!currentComment.parent?.id) {
+          return currentComment.id;
+        }
+      }
+      
+      // If we got here, either we found the root or hit a loop/missing parent
+      return currentComment?.id || null;
+    } catch (error) {
+      console.error(`Error finding root comment for ${commentId} in issue ${issueId}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Create a comment and return its ID
    * @param {string} issueId - The issue ID
    * @param {string} body - The comment body
@@ -594,8 +648,10 @@ export class LinearIssueService extends IssueService {
         try {
           // Update threading context based on comment structure
           if (commentData.parentId) {
-            // If the comment is already threaded, use the same parent
-            session.currentParentId = commentData.parentId;
+            // If the comment is already threaded, find the root of that thread
+            // Linear API requires parentId to be a top-level comment
+            const rootCommentId = await this.findRootCommentId(issueId, commentData.parentId);
+            session.currentParentId = rootCommentId || commentData.parentId;
           } else {
             // If it's a root comment from user, reply to this comment
             session.currentParentId = commentData.id;
@@ -688,8 +744,10 @@ export class LinearIssueService extends IssueService {
           // Update threading context based on mention location
           // For mentions, we need to check the comment data for parent info
           if (data.comment?.parentId) {
-            // If the mention is in a threaded comment, use the same parent
-            session.currentParentId = data.comment.parentId;
+            // If the mention is in a threaded comment, find the root of that thread
+            // Linear API requires parentId to be a top-level comment
+            const rootCommentId = await this.findRootCommentId(issueId, data.comment.parentId);
+            session.currentParentId = rootCommentId || data.comment.parentId;
           } else {
             // If it's a root comment mention, reply to this comment
             session.currentParentId = commentId;
@@ -808,8 +866,10 @@ export class LinearIssueService extends IssueService {
           // Update threading context for replies
           // For replies, check if this is a threaded reply
           if (data.comment?.parentId) {
-            // If replying in a thread, use the same parent
-            session.currentParentId = data.comment.parentId;
+            // If replying in a thread, find the root of that thread
+            // Linear API requires parentId to be a top-level comment
+            const rootCommentId = await this.findRootCommentId(issueId, data.comment.parentId);
+            session.currentParentId = rootCommentId || data.comment.parentId;
           } else {
             // If it's a root comment reply, reply to this comment
             session.currentParentId = commentId;
