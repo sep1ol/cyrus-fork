@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Migrated from npm to pnpm package manager
+  - Replaced package-lock.json with pnpm-lock.yaml
+  - Updated all documentation to use pnpm commands
+  - Updated GitHub Actions workflow to use pnpm
+  - Configured pnpm with proper caching in CI
+
 ### Added
 - Coverage folder to .gitignore to prevent test coverage reports from being tracked
 - AttachmentDownloader class to handle all types of Linear attachments (not just images)
