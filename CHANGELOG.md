@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
   - Shows tool calls performed and current focus of the agent
   - Final response is posted as a separate comment when Claude completes
   - When no final content is available, posts helpful message directing users to last progress update
+  - Fixed timing issues where streaming comments were created after Claude process started
+  - Added throttling (2 second minimum interval) to prevent overwhelming Linear's API
+  - Improved logging and error handling for streaming comment updates
 - Vitest as the new test runner, replacing Jest
   - Provides significantly faster test execution
   - Maintains full compatibility with existing test APIs

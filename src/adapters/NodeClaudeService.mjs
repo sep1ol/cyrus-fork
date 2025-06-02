@@ -254,9 +254,18 @@ history are preserved. Please continue your work on the issue.]
                 
                 // NEW STREAMING BEHAVIOR: Update streaming comment instead of posting first response
                 if (session && session.streamingCommentId) {
-                  // Update the synthesis and streaming comment
+                  // Update the synthesis and streaming comment with throttling
                   session.updateStreamingSynthesis(currentResponseText);
-                  await this.updateStreamingComment(issue.id, session.streamingCommentId, session.streamingSynthesis);
+                  console.log(`[STREAMING - ${issue.identifier}] Synthesis updated: ${session.streamingSynthesis.substring(0, 100)}...`);
+                  
+                  // Throttle updates to avoid overwhelming Linear API (max once per 2 seconds)
+                  const now = Date.now();
+                  if (!session.lastStreamingUpdate || (now - session.lastStreamingUpdate) > 2000) {
+                    session.lastStreamingUpdate = now;
+                    await this.updateStreamingComment(issue.id, session.streamingCommentId, session.streamingSynthesis);
+                  } else {
+                    console.log(`[STREAMING - ${issue.identifier}] Throttling update (last update was ${now - session.lastStreamingUpdate}ms ago)`);
+                  }
                 } else if (!firstResponsePosted) {
                   // Fallback to old behavior if no streaming comment is set up
                   console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear (fallback).`);
@@ -281,6 +290,12 @@ history are preserved. Please continue your work on the issue.]
             
             // Check for end_turn in the message
             if (message.stop_reason === 'end_turn') {
+              // Ensure final streaming update happens before posting final response
+              if (session && session.streamingCommentId && session.streamingSynthesis) {
+                console.log(`[STREAMING - ${issue.identifier}] Final streaming update before end_turn`);
+                await this.updateStreamingComment(issue.id, session.streamingCommentId, session.streamingSynthesis);
+              }
+              
               // NEW STREAMING BEHAVIOR: Always post final response as separate comment
               if (lastAssistantResponseText.trim().length > 0 && lastAssistantResponseText !== 'Prompt is too long') {
                 console.log(
@@ -688,6 +703,21 @@ history are preserved. Please continue your work on the issue.]
         // Prepare initial prompt using the template - await the async method
         const initialPrompt = await this.buildInitialPrompt(issue, false, attachmentManifest);
         
+        // Create the initial streaming comment immediately BEFORE starting Claude process
+        let streamingCommentId = null;
+        const parentId = agentRootCommentId || null;
+        
+        try {
+          streamingCommentId = await this.createStreamingComment(issue.id, parentId);
+          if (streamingCommentId) {
+            console.log(`[STREAMING - ${issue.identifier}] Created streaming comment ${streamingCommentId}`);
+          } else {
+            console.error(`[STREAMING - ${issue.identifier}] Failed to create streaming comment, falling back to old behavior`);
+          }
+        } catch (error) {
+          console.error(`[STREAMING - ${issue.identifier}] Error creating streaming comment:`, error);
+        }
+
         // Get the history path
         const historyPath = workspace.getHistoryFilePath();
         
@@ -789,21 +819,6 @@ CLAUDE_INPUT_EOF`;
           return;
         }
         
-        // Create the initial streaming comment immediately
-        let streamingCommentId = null;
-        const parentId = agentRootCommentId || null;
-        
-        try {
-          streamingCommentId = await this.createStreamingComment(issue.id, parentId);
-          if (streamingCommentId) {
-            console.log(`[STREAMING - ${issue.identifier}] Created streaming comment ${streamingCommentId}`);
-          } else {
-            console.error(`[STREAMING - ${issue.identifier}] Failed to create streaming comment, falling back to old behavior`);
-          }
-        } catch (error) {
-          console.error(`[STREAMING - ${issue.identifier}] Error creating streaming comment:`, error);
-        }
-
         // Create the initial session for handler access
         const session = new Session({
           issue,
@@ -814,7 +829,8 @@ CLAUDE_INPUT_EOF`;
           currentParentId: agentRootCommentId || null, // Initially thread under the first comment
           streamingCommentId: streamingCommentId,
           streamingSynthesis: 'Getting to work...',
-          toolCallsSeen: []
+          toolCallsSeen: [],
+          lastStreamingUpdate: null
         });
         
         // Set up common event handlers with token limit callback
@@ -884,6 +900,21 @@ CLAUDE_INPUT_EOF`;
         
         console.log(`Input length: ${commentText.length} characters`);
         
+        // Create a new streaming comment for the continuation BEFORE starting Claude process
+        let streamingCommentId = null;
+        const parentId = session.currentParentId || session.agentRootCommentId;
+        
+        try {
+          streamingCommentId = await this.createStreamingComment(issue.id, parentId);
+          if (streamingCommentId) {
+            console.log(`[STREAMING - ${issue.identifier}] Created new streaming comment for continuation: ${streamingCommentId}`);
+          } else {
+            console.error(`[STREAMING - ${issue.identifier}] Failed to create streaming comment for continuation`);
+          }
+        } catch (error) {
+          console.error(`[STREAMING - ${issue.identifier}] Error creating streaming comment for continuation:`, error);
+        }
+        
         // Log new input marker to history file
         try {
           await this.fileSystem.appendFile(
@@ -947,21 +978,6 @@ CLAUDE_INPUT_EOF`;
           reject(err);
         });
         
-        // Create a new streaming comment for the continuation
-        let streamingCommentId = null;
-        const parentId = session.currentParentId || session.agentRootCommentId;
-        
-        try {
-          streamingCommentId = await this.createStreamingComment(issue.id, parentId);
-          if (streamingCommentId) {
-            console.log(`[STREAMING - ${issue.identifier}] Created new streaming comment for continuation: ${streamingCommentId}`);
-          } else {
-            console.error(`[STREAMING - ${issue.identifier}] Failed to create streaming comment for continuation`);
-          }
-        } catch (error) {
-          console.error(`[STREAMING - ${issue.identifier}] Error creating streaming comment for continuation:`, error);
-        }
-
         // Set up handlers and resolve with new session with token limit callback
         this._setupClaudeProcessHandlers(newClaudeProcess, issue, workspace, historyPath, async (issue, workspace) => {
           console.log(`Token limit reached while continuing issue ${issue.identifier}. Starting fresh session...`);
@@ -1005,7 +1021,8 @@ CLAUDE_INPUT_EOF`;
           process: newClaudeProcess,
           streamingCommentId: streamingCommentId,
           streamingSynthesis: 'Getting to work...',
-          toolCallsSeen: []
+          toolCallsSeen: [],
+          lastStreamingUpdate: null
         });
         
         resolve(newSession);

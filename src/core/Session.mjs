@@ -18,6 +18,7 @@ export class Session {
     streamingCommentId = null,
     streamingSynthesis = null,
     toolCallsSeen = [],
+    lastStreamingUpdate = null,
   }) {
     this.issue = issue;
     this.workspace = workspace;
@@ -34,6 +35,7 @@ export class Session {
     this.streamingCommentId = streamingCommentId; // ID of "Getting to work..." comment for updates
     this.streamingSynthesis = streamingSynthesis; // Current synthesized progress message
     this.toolCallsSeen = toolCallsSeen; // Array of tool calls seen in current run
+    this.lastStreamingUpdate = lastStreamingUpdate; // Timestamp of last streaming comment update
   }
 
   /**
