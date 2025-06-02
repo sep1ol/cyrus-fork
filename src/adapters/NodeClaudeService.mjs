@@ -254,18 +254,12 @@ history are preserved. Please continue your work on the issue.]
                 
                 // NEW STREAMING BEHAVIOR: Update streaming comment instead of posting first response
                 if (session && session.streamingCommentId) {
-                  // Update the synthesis and streaming comment with throttling
-                  session.updateStreamingSynthesis(currentResponseText);
+                  // Add text snippet to narrative and update synthesis
+                  session.addTextSnippet(currentResponseText);
                   console.log(`[STREAMING - ${issue.identifier}] Synthesis updated: ${session.streamingSynthesis.substring(0, 100)}...`);
                   
-                  // Throttle updates to avoid overwhelming Linear API (max once per 2 seconds)
-                  const now = Date.now();
-                  if (!session.lastStreamingUpdate || (now - session.lastStreamingUpdate) > 2000) {
-                    session.lastStreamingUpdate = now;
-                    await this.updateStreamingComment(issue.id, session.streamingCommentId, session.streamingSynthesis);
-                  } else {
-                    console.log(`[STREAMING - ${issue.identifier}] Throttling update (last update was ${now - session.lastStreamingUpdate}ms ago)`);
-                  }
+                  // Update streaming comment immediately
+                  await this.updateStreamingComment(issue.id, session.streamingCommentId, session.streamingSynthesis);
                 } else if (!firstResponsePosted) {
                   // Fallback to old behavior if no streaming comment is set up
                   console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear (fallback).`);
@@ -829,8 +823,7 @@ CLAUDE_INPUT_EOF`;
           currentParentId: agentRootCommentId || null, // Initially thread under the first comment
           streamingCommentId: streamingCommentId,
           streamingSynthesis: 'Getting to work...',
-          toolCallsSeen: [],
-          lastStreamingUpdate: null
+          streamingNarrative: []
         });
         
         // Set up common event handlers with token limit callback
@@ -1021,8 +1014,7 @@ CLAUDE_INPUT_EOF`;
           process: newClaudeProcess,
           streamingCommentId: streamingCommentId,
           streamingSynthesis: 'Getting to work...',
-          toolCallsSeen: [],
-          lastStreamingUpdate: null
+          streamingNarrative: []
         });
         
         resolve(newSession);

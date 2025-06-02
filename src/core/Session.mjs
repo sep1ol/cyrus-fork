@@ -17,8 +17,7 @@ export class Session {
     currentParentId = null,
     streamingCommentId = null,
     streamingSynthesis = null,
-    toolCallsSeen = [],
-    lastStreamingUpdate = null,
+    streamingNarrative = [],
   }) {
     this.issue = issue;
     this.workspace = workspace;
@@ -34,8 +33,7 @@ export class Session {
     this.currentParentId = currentParentId; // Current parent ID for threading
     this.streamingCommentId = streamingCommentId; // ID of "Getting to work..." comment for updates
     this.streamingSynthesis = streamingSynthesis; // Current synthesized progress message
-    this.toolCallsSeen = toolCallsSeen; // Array of tool calls seen in current run
-    this.lastStreamingUpdate = lastStreamingUpdate; // Timestamp of last streaming comment update
+    this.streamingNarrative = streamingNarrative; // Chronological list of text snippets and tool calls
   }
 
   /**
@@ -75,55 +73,118 @@ export class Session {
   }
 
   /**
-   * Add a tool call to the tracking list
+   * Add a tool call to the narrative
    * @param {string} toolName - Name of the tool called
    */
   addToolCall(toolName) {
-    if (!this.toolCallsSeen.includes(toolName)) {
-      this.toolCallsSeen.push(toolName);
+    this.streamingNarrative.push({
+      type: 'tool_call',
+      tool: toolName,
+      timestamp: Date.now()
+    });
+    this.updateStreamingSynthesis();
+  }
+
+  /**
+   * Add a text snippet to the narrative
+   * @param {string} text - Text content from assistant message
+   */
+  addTextSnippet(text) {
+    // Extract meaningful statements that show intent/progress
+    const meaningfulStatements = this.extractMeaningfulStatements(text);
+    
+    for (const statement of meaningfulStatements) {
+      this.streamingNarrative.push({
+        type: 'text',
+        content: statement,
+        timestamp: Date.now()
+      });
+    }
+    
+    if (meaningfulStatements.length > 0) {
+      this.updateStreamingSynthesis();
     }
   }
 
   /**
-   * Update the streaming synthesis based on current progress
-   * @param {string} currentMessage - Current assistant message content
+   * Extract meaningful statements from assistant text
+   * @param {string} text - Raw text content
+   * @returns {string[]} - Array of meaningful statements
    */
-  updateStreamingSynthesis(currentMessage) {
-    const synthesis = ['Getting to work...'];
+  extractMeaningfulStatements(text) {
+    if (!text || typeof text !== 'string') return [];
     
-    if (this.toolCallsSeen.length > 0) {
-      const toolCount = this.toolCallsSeen.length;
-      const toolList = this.toolCallsSeen.join(', ');
-      synthesis.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}: ${toolList}`);
-    }
+    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    const meaningful = [];
     
-    // Extract meaningful parts from the current message for synthesis
-    if (currentMessage) {
-      const lines = currentMessage.split('\n').filter(line => line.trim());
-      const meaningfulLines = lines.filter(line => {
-        const trimmed = line.trim();
-        return trimmed.length > 10 && 
-               !trimmed.startsWith('```') && 
-               !trimmed.match(/^#+\s/) && // Skip headers
-               trimmed.indexOf('I will') === 0 ||
-               trimmed.indexOf('I need') === 0 ||
-               trimmed.indexOf('Now I') === 0 ||
-               trimmed.indexOf('Let me') === 0;
-      });
+    for (const line of lines) {
+      // Skip code blocks, headers, and short lines
+      if (line.startsWith('```') || line.match(/^#+\s/) || line.length < 15) {
+        continue;
+      }
       
-      if (meaningfulLines.length > 0) {
-        synthesis.push(`Current focus: ${meaningfulLines[0].substring(0, 100)}${meaningfulLines[0].length > 100 ? '...' : ''}`);
+      // Look for statements that show intent, action, or progress
+      if (
+        line.match(/^(I will|I'll|I need|I'm going to|Let me|Now I|First I|Next|Then)/i) ||
+        line.match(/^(Looking|Checking|Searching|Creating|Building|Setting up|Implementing)/i) ||
+        line.match(/^(Based on|After|Once|To)/i)
+      ) {
+        // Truncate very long statements
+        const truncated = line.length > 120 ? line.substring(0, 117) + '...' : line;
+        meaningful.push(truncated);
+        
+        // Only take the first 2 meaningful statements per update to avoid spam
+        if (meaningful.length >= 2) break;
       }
     }
     
-    this.streamingSynthesis = synthesis.join('\n\n');
+    return meaningful;
+  }
+
+  /**
+   * Update the streaming synthesis based on chronological narrative
+   */
+  updateStreamingSynthesis() {
+    const narrative = ['Getting to work...'];
+    
+    // Process all narrative items in chronological order
+    for (const item of this.streamingNarrative) {
+      if (item.type === 'text') {
+        narrative.push(item.content);
+      } else if (item.type === 'tool_call') {
+        // Find consecutive tool calls to group them
+        const consecutiveTools = [item.tool];
+        const currentIndex = this.streamingNarrative.indexOf(item);
+        
+        // Look ahead for more tool calls
+        for (let i = currentIndex + 1; i < this.streamingNarrative.length; i++) {
+          const nextItem = this.streamingNarrative[i];
+          if (nextItem.type === 'tool_call' && !consecutiveTools.includes(nextItem.tool)) {
+            consecutiveTools.push(nextItem.tool);
+          } else if (nextItem.type === 'text') {
+            break; // Stop at next text
+          }
+        }
+        
+        // Only add tool summary if this is the first occurrence
+        if (item === this.streamingNarrative.find(n => n.type === 'tool_call' && n.tool === item.tool)) {
+          const toolCount = consecutiveTools.length;
+          const toolList = consecutiveTools.join(', ');
+          narrative.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}: ${toolList}`);
+        }
+      }
+    }
+    
+    // Keep only the last 8 items to prevent the comment from getting too long
+    const recentNarrative = narrative.slice(-8);
+    this.streamingSynthesis = recentNarrative.join('\n\n');
   }
 
   /**
    * Reset streaming state for a new run
    */
   resetStreamingState() {
-    this.toolCallsSeen = [];
+    this.streamingNarrative = [];
     this.streamingSynthesis = 'Getting to work...';
   }
 }

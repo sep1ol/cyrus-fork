@@ -273,8 +273,8 @@ export class LinearIssueService extends IssueService {
         console.log(JSON.stringify(response, null, 2));
       }
       
-      // Extract comment ID from response
-      const commentId = response?.comment?.id || response?.commentCreate?.comment?.id;
+      // Extract comment ID from response - Linear API returns it in _comment.id
+      const commentId = response?._comment?.id || response?.comment?.id || response?.commentCreate?.comment?.id;
       
       console.log(`✅ Successfully created comment on issue ${issueId}`);
       if (commentId) {
@@ -733,8 +733,10 @@ export class LinearIssueService extends IssueService {
           `Could not find valid session for the issue ${issueId}. Reinitializing...`
         );
         
-        // Try to initialize a new session
-        await this.initializeIssueSession(issue);
+        // Try to initialize a new session with the user's comment as threading context
+        // If it's a root comment from user, we should thread agent responses under it
+        const agentRootCommentId = commentData.parentId ? null : commentData.id;
+        await this.initializeIssueSession(issue, false, agentRootCommentId);
       }
     } catch (error) {
       console.error('Error handling comment event:', error);
@@ -806,7 +808,10 @@ export class LinearIssueService extends IssueService {
       } else {
         // Initialize a new session for this issue
         console.log(`No existing session for issue ${issue.identifier}, initializing new session`);
-        await this.initializeIssueSession(issue);
+        
+        // If it's a root comment mention, thread agent responses under it
+        const agentRootCommentId = data.comment?.parentId ? null : commentId;
+        await this.initializeIssueSession(issue, false, agentRootCommentId);
       }
       
       console.log('Successfully processed agent mention');
@@ -927,7 +932,10 @@ export class LinearIssueService extends IssueService {
       } else {
         // Initialize a new session for this issue
         console.log(`No existing session for issue ${issue.identifier}, initializing new session`);
-        await this.initializeIssueSession(issue);
+        
+        // If it's a root comment reply, thread agent responses under it
+        const agentRootCommentId = data.comment?.parentId ? null : commentId;
+        await this.initializeIssueSession(issue, false, agentRootCommentId);
       }
       
       console.log('Successfully processed agent reply');
