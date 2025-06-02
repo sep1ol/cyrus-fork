@@ -147,31 +147,36 @@ export class Session {
   updateStreamingSynthesis() {
     const narrative = ['Getting to work...'];
     
-    // Process all narrative items in chronological order
-    for (const item of this.streamingNarrative) {
+    // Group consecutive items and process chronologically
+    let i = 0;
+    while (i < this.streamingNarrative.length) {
+      const item = this.streamingNarrative[i];
+      
       if (item.type === 'text') {
         narrative.push(item.content);
+        i++;
       } else if (item.type === 'tool_call') {
-        // Find consecutive tool calls to group them
-        const consecutiveTools = [item.tool];
-        const currentIndex = this.streamingNarrative.indexOf(item);
+        // Collect all consecutive tool calls
+        const consecutiveTools = [];
+        let j = i;
         
-        // Look ahead for more tool calls
-        for (let i = currentIndex + 1; i < this.streamingNarrative.length; i++) {
-          const nextItem = this.streamingNarrative[i];
-          if (nextItem.type === 'tool_call' && !consecutiveTools.includes(nextItem.tool)) {
-            consecutiveTools.push(nextItem.tool);
-          } else if (nextItem.type === 'text') {
-            break; // Stop at next text
+        while (j < this.streamingNarrative.length && this.streamingNarrative[j].type === 'tool_call') {
+          const toolName = this.streamingNarrative[j].tool;
+          if (!consecutiveTools.includes(toolName)) {
+            consecutiveTools.push(toolName);
           }
+          j++;
         }
         
-        // Only add tool summary if this is the first occurrence
-        if (item === this.streamingNarrative.find(n => n.type === 'tool_call' && n.tool === item.tool)) {
-          const toolCount = consecutiveTools.length;
-          const toolList = consecutiveTools.join(', ');
-          narrative.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}: ${toolList}`);
-        }
+        // Add grouped tool call summary
+        const toolCount = consecutiveTools.length;
+        const toolList = consecutiveTools.join(', ');
+        narrative.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}: ${toolList}`);
+        
+        // Move index to the next non-tool-call item
+        i = j;
+      } else {
+        i++;
       }
     }
     
