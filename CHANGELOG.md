@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Duplicate information in streaming comment updates
+  - Fixed tool call grouping logic that was causing duplication in JSON stream synthesis
+  - Improved chronological processing to properly separate consecutive tool calls from intervening text messages
+  - Tool calls are now grouped correctly and displayed once per consecutive sequence
+
 ### Added
 - Real-time streaming updates to Linear comments during Claude Code execution
   - Agent now immediately posts "Getting to work..." comment when starting a new session
