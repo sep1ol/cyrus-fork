@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Real-time streaming updates to Linear comments during Claude Code execution
+  - Agent now immediately posts "Getting to work..." comment when starting a new session
+  - This initial comment is updated in real-time with progress synthesis as Claude executes
+  - Shows tool calls performed and current focus of the agent
+  - Final response is posted as a separate comment when Claude completes
+  - When no final content is available, posts helpful message directing users to last progress update
+  - Fixed timing issues where streaming comments were created after Claude process started
+  - Added throttling (2 second minimum interval) to prevent overwhelming Linear's API
+  - Improved logging and error handling for streaming comment updates
+- Version flag support for linear-claude-agent executable
+  - Added `--version` and `-v` command line flags to display current version
+  - Version information is automatically read from package.json
+  - Updated help text to include version option
 - Vitest as the new test runner, replacing Jest
   - Provides significantly faster test execution
   - Maintains full compatibility with existing test APIs

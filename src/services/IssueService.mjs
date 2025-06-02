@@ -31,6 +31,27 @@ export class IssueService {
   }
   
   /**
+   * Create a comment and return its ID
+   * @param {string} issueId - The ID of the issue
+   * @param {string} body - The body of the comment
+   * @param {string|null} parentId - The ID of the parent comment for threaded replies
+   * @returns {Promise<{success: boolean, commentId?: string}>} - Result with comment ID if successful
+   */
+  async createCommentAndGetId(issueId, body, parentId = null) {
+    throw new Error('Not implemented');
+  }
+  
+  /**
+   * Update an existing comment
+   * @param {string} commentId - The comment ID to update
+   * @param {string} body - The new comment body
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateComment(commentId, body) {
+    throw new Error('Not implemented');
+  }
+  
+  /**
    * Handle an issue creation event
    * @param {Object} issueData - Raw issue data from webhook
    * @returns {Promise<void>}

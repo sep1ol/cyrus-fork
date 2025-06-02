@@ -188,6 +188,21 @@ history are preserved. Please continue your work on the issue.]
               `Failed to update conversation history (${historyPath}): ${err.message}`
             );
           }
+
+          // Handle tool use events to track tool calls
+          if (jsonResponse.type === 'assistant' && jsonResponse.message) {
+            const message = jsonResponse.message;
+            
+            // Check for tool use in content
+            if (message.content && Array.isArray(message.content)) {
+              for (const content of message.content) {
+                if (content.type === 'tool_use' && content.name && session) {
+                  console.log(`[STREAMING - ${issue.identifier}] Tool call detected: ${content.name}`);
+                  session.addToolCall(content.name);
+                }
+              }
+            }
+          }
           
           // Process the jsonResponse based on new format
           // Handle assistant messages wrapped in message object
@@ -237,9 +252,17 @@ history are preserved. Please continue your work on the issue.]
               if (currentResponseText !== 'Prompt is too long') {
                 lastAssistantResponseText = currentResponseText;
                 
-                // Post the first complete response immediately
-                if (!firstResponsePosted) {
-                  console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear.`);
+                // NEW STREAMING BEHAVIOR: Update streaming comment instead of posting first response
+                if (session && session.streamingCommentId) {
+                  // Add text snippet to narrative and update synthesis
+                  session.addTextSnippet(currentResponseText);
+                  console.log(`[STREAMING - ${issue.identifier}] Synthesis updated: ${session.streamingSynthesis.substring(0, 100)}...`);
+                  
+                  // Update streaming comment immediately
+                  await this.updateStreamingComment(issue.id, session.streamingCommentId, session.streamingSynthesis);
+                } else if (!firstResponsePosted) {
+                  // Fallback to old behavior if no streaming comment is set up
+                  console.log(`[CLAUDE JSON - ${issue.identifier}] Posting first response to Linear (fallback).`);
                   
                   // Determine if we should thread the response
                   let parentId = null;
@@ -261,34 +284,46 @@ history are preserved. Please continue your work on the issue.]
             
             // Check for end_turn in the message
             if (message.stop_reason === 'end_turn') {
-              // Post the final response if there's content to post
+              // Ensure final streaming update happens before posting final response
+              if (session && session.streamingCommentId && session.streamingSynthesis) {
+                console.log(`[STREAMING - ${issue.identifier}] Final streaming update before end_turn`);
+                await this.updateStreamingComment(issue.id, session.streamingCommentId, session.streamingSynthesis);
+              }
+              
+              // NEW STREAMING BEHAVIOR: Always post final response as separate comment
               if (lastAssistantResponseText.trim().length > 0 && lastAssistantResponseText !== 'Prompt is too long') {
-                // Only post the final response if it differs from the first response
-                if (!firstResponsePosted || this._isContentChanged(issue.firstResponseContent, lastAssistantResponseText)) {
-                  console.log(
-                    `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
-                  );
-                  
-                  // Determine if we should thread the response
-                  let parentId = null;
-                  if (session) {
-                    // Use currentParentId if available, otherwise use agentRootCommentId
-                    parentId = session.currentParentId || session.agentRootCommentId;
-                    if (parentId) {
-                      console.log(`[CLAUDE JSON - ${issue.identifier}] Threading final response to comment ${parentId}`);
-                    }
+                console.log(
+                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn. Posting final response.`
+                );
+                
+                // Determine if we should thread the response
+                let parentId = null;
+                if (session) {
+                  // Use currentParentId if available, otherwise use agentRootCommentId
+                  parentId = session.currentParentId || session.agentRootCommentId;
+                  if (parentId) {
+                    console.log(`[CLAUDE JSON - ${issue.identifier}] Threading final response to comment ${parentId}`);
                   }
-                  
-                  this.postResponseToLinear(issue.id, lastAssistantResponseText, null, null, parentId);
-                } else {
-                  console.log(
-                    `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but final response is identical to first response. Skipping duplicate post.`
-                  );
                 }
+                
+                this.postResponseToLinear(issue.id, lastAssistantResponseText, null, null, parentId);
                 lastAssistantResponseText = '';
               } else {
+                // Post a message indicating no final content
                 console.log(
-                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but no content to post.`
+                  `[CLAUDE JSON - ${issue.identifier}] Detected stop_reason: end_turn, but no final content. Posting notice.`
+                );
+                
+                // Determine if we should thread the response
+                let parentId = null;
+                if (session) {
+                  parentId = session.currentParentId || session.agentRootCommentId;
+                }
+                
+                this.postResponseToLinear(
+                  issue.id, 
+                  `I had no final comment, see my last comment to see where I left off`,
+                  null, null, parentId
                 );
               }
             }
@@ -662,6 +697,21 @@ history are preserved. Please continue your work on the issue.]
         // Prepare initial prompt using the template - await the async method
         const initialPrompt = await this.buildInitialPrompt(issue, false, attachmentManifest);
         
+        // Create the initial streaming comment immediately BEFORE starting Claude process
+        let streamingCommentId = null;
+        const parentId = agentRootCommentId || null;
+        
+        try {
+          streamingCommentId = await this.createStreamingComment(issue.id, parentId);
+          if (streamingCommentId) {
+            console.log(`[STREAMING - ${issue.identifier}] Created streaming comment ${streamingCommentId}`);
+          } else {
+            console.error(`[STREAMING - ${issue.identifier}] Failed to create streaming comment, falling back to old behavior`);
+          }
+        } catch (error) {
+          console.error(`[STREAMING - ${issue.identifier}] Error creating streaming comment:`, error);
+        }
+
         // Get the history path
         const historyPath = workspace.getHistoryFilePath();
         
@@ -770,7 +820,10 @@ CLAUDE_INPUT_EOF`;
           process: claudeProcess,
           startedAt: new Date(),
           agentRootCommentId: agentRootCommentId || null,
-          currentParentId: agentRootCommentId || null // Initially thread under the first comment
+          currentParentId: agentRootCommentId || null, // Initially thread under the first comment
+          streamingCommentId: streamingCommentId,
+          streamingSynthesis: 'Getting to work...',
+          streamingNarrative: []
         });
         
         // Set up common event handlers with token limit callback
@@ -839,6 +892,21 @@ CLAUDE_INPUT_EOF`;
         }
         
         console.log(`Input length: ${commentText.length} characters`);
+        
+        // Create a new streaming comment for the continuation BEFORE starting Claude process
+        let streamingCommentId = null;
+        const parentId = session.currentParentId || session.agentRootCommentId;
+        
+        try {
+          streamingCommentId = await this.createStreamingComment(issue.id, parentId);
+          if (streamingCommentId) {
+            console.log(`[STREAMING - ${issue.identifier}] Created new streaming comment for continuation: ${streamingCommentId}`);
+          } else {
+            console.error(`[STREAMING - ${issue.identifier}] Failed to create streaming comment for continuation`);
+          }
+        } catch (error) {
+          console.error(`[STREAMING - ${issue.identifier}] Error creating streaming comment for continuation:`, error);
+        }
         
         // Log new input marker to history file
         try {
@@ -940,10 +1008,13 @@ CLAUDE_INPUT_EOF`;
           `New Claude process started with PID: ${newClaudeProcess.pid}`
         );
         
-        // Create new session with updated process
+        // Create new session with updated process and reset streaming state
         const newSession = new Session({
           ...session,
-          process: newClaudeProcess
+          process: newClaudeProcess,
+          streamingCommentId: streamingCommentId,
+          streamingSynthesis: 'Getting to work...',
+          streamingNarrative: []
         });
         
         resolve(newSession);
@@ -1017,6 +1088,60 @@ CLAUDE_INPUT_EOF`;
 
     // Compare content after normalization (trim whitespace)
     return firstResponse.trim() !== finalResponse.trim();
+  }
+
+  /**
+   * Create and track the initial "Getting to work..." comment
+   * @param {string} issueId - The issue ID
+   * @param {string} parentId - Optional parent comment ID for threading
+   * @returns {Promise<string|null>} - The streaming comment ID if successful
+   */
+  async createStreamingComment(issueId, parentId = null) {
+    try {
+      console.log(`[STREAMING - ${issueId}] Creating initial streaming comment`);
+      
+      const result = await this.issueService.createCommentAndGetId(
+        issueId, 
+        'Getting to work...', 
+        parentId
+      );
+      
+      if (result.success && result.commentId) {
+        console.log(`[STREAMING - ${issueId}] Created streaming comment: ${result.commentId}`);
+        return result.commentId;
+      } else {
+        console.error(`[STREAMING - ${issueId}] Failed to create streaming comment`);
+        return null;
+      }
+    } catch (error) {
+      console.error(`[STREAMING - ${issueId}] Error creating streaming comment:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Update the streaming comment with synthesis
+   * @param {string} issueId - The issue ID
+   * @param {string} commentId - The streaming comment ID
+   * @param {string} synthesis - The synthesized progress message
+   */
+  async updateStreamingComment(issueId, commentId, synthesis) {
+    try {
+      console.log(`[STREAMING - ${issueId}] Updating streaming comment ${commentId}`);
+      
+      const success = await this.issueService.updateComment(commentId, synthesis);
+      
+      if (success) {
+        console.log(`[STREAMING - ${issueId}] Successfully updated streaming comment`);
+      } else {
+        console.error(`[STREAMING - ${issueId}] Failed to update streaming comment`);
+      }
+      
+      return success;
+    } catch (error) {
+      console.error(`[STREAMING - ${issueId}] Error updating streaming comment:`, error);
+      return false;
+    }
   }
 
   /**

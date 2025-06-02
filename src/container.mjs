@@ -379,7 +379,9 @@ export function createContainer() {
       config.claude.path,
       config.claude.promptTemplatePath,
       {
-        createComment: (...args) => issueService.createComment(...args)
+        createComment: (...args) => issueService.createComment(...args),
+        createCommentAndGetId: (...args) => issueService.createCommentAndGetId(...args),
+        updateComment: (...args) => issueService.updateComment(...args)
       },
       fileSystem,
       processManager,
