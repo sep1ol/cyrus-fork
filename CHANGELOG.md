@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Streaming updates posting to wrong comment on subsequent interactions
+  - Fixed session management bug where new streaming comment ID wasn't being passed to Claude process handlers
+  - Session creation now happens before handler setup to ensure correct comment ID is used for updates
 - Duplicate information in streaming comment updates
   - Fixed tool call grouping logic that was causing duplication in JSON stream synthesis
   - Improved chronological processing to properly separate consecutive tool calls from intervening text messages
