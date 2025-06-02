@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import { parseArgs } from 'node:util';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// Get package.json for version info
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8'));
 
 // Parse command line arguments first to get env file path
 const options = {
@@ -14,6 +22,11 @@ const options = {
     type: 'boolean',
     short: 'h',
     description: 'Show help'
+  },
+  version: {
+    type: 'boolean',
+    short: 'v',
+    description: 'Show version'
   }
 };
 
@@ -26,6 +39,12 @@ try {
   process.exit(1);
 }
 
+// Show version if requested
+if (values.version) {
+  console.log(`${packageJson.name} v${packageJson.version}`);
+  process.exit(0);
+}
+
 // Show help if requested
 if (values.help) {
   console.log(`
@@ -34,6 +53,7 @@ Usage: linear-claude-agent [options]
 Options:
   -e, --env-file <path>    Path to the environment file (default: .env.secret-agents)
   -h, --help               Show help
+  -v, --version            Show version
 `);
   process.exit(0);
 }

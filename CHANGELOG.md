@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
   - Fixed timing issues where streaming comments were created after Claude process started
   - Added throttling (2 second minimum interval) to prevent overwhelming Linear's API
   - Improved logging and error handling for streaming comment updates
+- Version flag support for linear-claude-agent executable
+  - Added `--version` and `-v` command line flags to display current version
+  - Version information is automatically read from package.json
+  - Updated help text to include version option
 - Vitest as the new test runner, replacing Jest
   - Provides significantly faster test execution
   - Maintains full compatibility with existing test APIs
