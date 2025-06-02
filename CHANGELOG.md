@@ -12,6 +12,11 @@ All notable changes to this project will be documented in this file.
   - Fixed tool call grouping logic that was causing duplication in JSON stream synthesis
   - Improved chronological processing to properly separate consecutive tool calls from intervening text messages
   - Tool calls are now grouped correctly and displayed once per consecutive sequence
+- Streaming comment duplication and weird formatting issue (CEA-64)
+  - Completely redesigned streaming synthesis to show chronological timeline of ALL messages without duplication
+  - Fixed text processing to create concise previews instead of extracting potentially repetitive "meaningful statements"
+  - Eliminated truncation to 8 items - now shows complete chronological synthesis of Claude's work
+  - Text snippets are now processed into short previews (first sentence or truncated at 80 chars) to maintain readability
 
 ### Added
 - Real-time streaming updates to Linear comments during Claude Code execution

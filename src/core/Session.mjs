@@ -90,70 +90,56 @@ export class Session {
    * @param {string} text - Text content from assistant message
    */
   addTextSnippet(text) {
-    // Extract meaningful statements that show intent/progress
-    const meaningfulStatements = this.extractMeaningfulStatements(text);
+    // Add the raw text snippet to narrative with timestamp
+    // We'll process all narrative items chronologically in updateStreamingSynthesis
+    this.streamingNarrative.push({
+      type: 'text',
+      content: text,
+      timestamp: Date.now()
+    });
     
-    for (const statement of meaningfulStatements) {
-      this.streamingNarrative.push({
-        type: 'text',
-        content: statement,
-        timestamp: Date.now()
-      });
-    }
-    
-    if (meaningfulStatements.length > 0) {
-      this.updateStreamingSynthesis();
-    }
+    this.updateStreamingSynthesis();
   }
 
   /**
-   * Extract meaningful statements from assistant text
+   * Extract a short preview from text content
    * @param {string} text - Raw text content
-   * @returns {string[]} - Array of meaningful statements
+   * @returns {string} - Short preview of the text
    */
-  extractMeaningfulStatements(text) {
-    if (!text || typeof text !== 'string') return [];
+  extractTextPreview(text) {
+    if (!text || typeof text !== 'string') return '';
     
-    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-    const meaningful = [];
+    // Remove extra whitespace and newlines
+    const cleaned = text.replace(/\s+/g, ' ').trim();
     
-    for (const line of lines) {
-      // Skip code blocks, headers, and short lines
-      if (line.startsWith('```') || line.match(/^#+\s/) || line.length < 15) {
-        continue;
-      }
-      
-      // Look for statements that show intent, action, or progress
-      if (
-        line.match(/^(I will|I'll|I need|I'm going to|Let me|Now I|First I|Next|Then)/i) ||
-        line.match(/^(Looking|Checking|Searching|Creating|Building|Setting up|Implementing)/i) ||
-        line.match(/^(Based on|After|Once|To)/i)
-      ) {
-        // Truncate very long statements
-        const truncated = line.length > 120 ? line.substring(0, 117) + '...' : line;
-        meaningful.push(truncated);
-        
-        // Only take the first 2 meaningful statements per update to avoid spam
-        if (meaningful.length >= 2) break;
-      }
+    // Return first meaningful sentence or truncate at reasonable length
+    const firstSentence = cleaned.match(/^[^.!?]*[.!?]/);
+    if (firstSentence && firstSentence[0].length <= 100) {
+      return firstSentence[0];
     }
     
-    return meaningful;
+    // Truncate to reasonable length
+    return cleaned.length > 80 ? cleaned.substring(0, 77) + '...' : cleaned;
   }
 
   /**
    * Update the streaming synthesis based on chronological narrative
+   * Creates a chronological timeline of all messages with tool calls grouped
    */
   updateStreamingSynthesis() {
-    const narrative = ['Getting to work...'];
+    const entries = [];
     
-    // Group consecutive items and process chronologically
+    // Process all narrative items chronologically
     let i = 0;
     while (i < this.streamingNarrative.length) {
       const item = this.streamingNarrative[i];
       
       if (item.type === 'text') {
-        narrative.push(item.content);
+        // Extract preview and add as entry
+        const preview = this.extractTextPreview(item.content);
+        if (preview) {
+          entries.push(preview);
+        }
         i++;
       } else if (item.type === 'tool_call') {
         // Collect all consecutive tool calls
@@ -171,7 +157,7 @@ export class Session {
         // Add grouped tool call summary
         const toolCount = consecutiveTools.length;
         const toolList = consecutiveTools.join(', ');
-        narrative.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}: ${toolList}`);
+        entries.push(`${toolCount} tool call${toolCount > 1 ? 's' : ''}: ${toolList}`);
         
         // Move index to the next non-tool-call item
         i = j;
@@ -180,9 +166,15 @@ export class Session {
       }
     }
     
-    // Keep only the last 8 items to prevent the comment from getting too long
-    const recentNarrative = narrative.slice(-8);
-    this.streamingSynthesis = recentNarrative.join('\n\n');
+    // Build chronological synthesis showing all entries
+    const synthesis = ['Getting to work...'];
+    
+    // Add all entries (don't truncate to show complete chronology)
+    for (const entry of entries) {
+      synthesis.push(entry);
+    }
+    
+    this.streamingSynthesis = synthesis.join('\n\n');
   }
 
   /**
