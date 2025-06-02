@@ -971,7 +971,20 @@ CLAUDE_INPUT_EOF`;
           reject(err);
         });
         
-        // Set up handlers and resolve with new session with token limit callback
+        // Create new session with updated process and reset streaming state first
+        const newSession = new Session({
+          ...session,
+          process: newClaudeProcess,
+          streamingCommentId: streamingCommentId,
+          streamingSynthesis: 'Getting to work...',
+          streamingNarrative: []
+        });
+        
+        console.log(
+          `New Claude process started with PID: ${newClaudeProcess.pid}`
+        );
+        
+        // Set up handlers with the new session that has the correct streamingCommentId
         this._setupClaudeProcessHandlers(newClaudeProcess, issue, workspace, historyPath, async (issue, workspace) => {
           console.log(`Token limit reached while continuing issue ${issue.identifier}. Starting fresh session...`);
           
@@ -1002,20 +1015,7 @@ CLAUDE_INPUT_EOF`;
               `[System Error] Failed to recover from token limit during continuation: ${error.message}`
             );
           }
-        }, session);
-        
-        console.log(
-          `New Claude process started with PID: ${newClaudeProcess.pid}`
-        );
-        
-        // Create new session with updated process and reset streaming state
-        const newSession = new Session({
-          ...session,
-          process: newClaudeProcess,
-          streamingCommentId: streamingCommentId,
-          streamingSynthesis: 'Getting to work...',
-          streamingNarrative: []
-        });
+        }, newSession);
         
         resolve(newSession);
       } catch (error) {
