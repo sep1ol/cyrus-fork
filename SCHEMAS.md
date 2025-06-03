@@ -63,10 +63,6 @@ Top-level schemas for the entire webhook payload:
     "actorId": "c4678d48-c096-480c-9080-0a520e8051e8",
     "externalUserActorId": null,
     "userId": "6ee0d291-4995-4a40-b02c-2381ccb6eaf8",
-    "readAt": null,
-    "emailedAt": null,
-    "snoozedUntilAt": null,
-    "unsnoozedAt": null,
     "actor": {
       "id": "c4678d48-c096-480c-9080-0a520e8051e8",
       "name": "Connor Turland",
@@ -98,10 +94,6 @@ Top-level schemas for the entire webhook payload:
     "actorId": "c4678d48-c096-480c-9080-0a520e8051e8",
     "externalUserActorId": null,
     "userId": "6ee0d291-4995-4a40-b02c-2381ccb6eaf8",
-    "readAt": null,
-    "emailedAt": null,
-    "snoozedUntilAt": null,
-    "unsnoozedAt": null,
     "issueId": "c540335e-b092-4095-806e-87a2e42b79f2",
     "issue": {
       "id": "c540335e-b092-4095-806e-87a2e42b79f2",
@@ -146,10 +138,7 @@ Top-level schemas for the entire webhook payload:
     "actorId": "c4678d48-c096-480c-9080-0a520e8051e8",
     "externalUserActorId": null,
     "userId": "6ee0d291-4995-4a40-b02c-2381ccb6eaf8",
-    "readAt": null,
-    "emailedAt": null,
-    "snoozedUntilAt": null,
-    "unsnoozedAt": null,
+
     "issueId": "c540335e-b092-4095-806e-87a2e42b79f2",
     "issue": {
       "id": "c540335e-b092-4095-806e-87a2e42b79f2",
@@ -246,7 +235,7 @@ if (validationResult.success) {
   const validatedPayload = validationResult.data;
   // Process the validated payload
 } else {
-  console.error('Validation failed:', validationResult.error.format());
+  console.error("Validation failed:", validationResult.error.format());
 }
 ```
 
