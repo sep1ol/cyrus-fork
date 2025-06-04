@@ -8,15 +8,15 @@
   },
   "type": "module",
   "scripts": {
-    "start": "node index.mjs",
-    "dev": "nodemon index.mjs",
+    "start": "node edge.mjs",
+    "edge": "node edge.mjs",
+    "proxy": "node scripts/start-proxy.mjs",
+    "dev:edge": "nodemon edge.mjs",
+    "dev:proxy": "nodemon scripts/start-proxy.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage",
-    "oauth:server": "node scripts/start-auth-server.mjs",
-    "oauth:reset": "node scripts/reset-oauth.mjs",
-    "proxy": "node scripts/start-proxy.mjs"
+    "test:coverage": "vitest run --coverage"
   },
   "packageManager": "pnpm@10.11.0",
   "keywords": [

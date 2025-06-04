@@ -120,6 +120,9 @@ export class OAuthService {
         
         console.log('OAuth flow completed successfully')
         
+        // Store token info for edge setup
+        this.latestTokenInfo = tokenInfo
+        
         // Call success callback if provided
         if (this.onAuthSuccess) {
           try {
@@ -210,6 +213,67 @@ export class OAuthService {
           authenticated: false,
           error: error.message
         })
+      }
+    })
+    
+    // Edge setup endpoint - provides configuration for edge workers
+    app.get('/setup/start', async (req, res) => {
+      try {
+        // Check if we have valid OAuth tokens
+        const hasValidToken = await this.oauthHelper.hasValidToken()
+        if (!hasValidToken) {
+          // Redirect to OAuth flow
+          return res.redirect('/oauth/authorize')
+        }
+        
+        // Get the current OAuth token
+        const tokenInfo = await this.oauthHelper.getAccessToken()
+        
+        // Generate edge token (for now, just use a simple token)
+        const edgeToken = `edge_${Date.now()}_${Math.random().toString(36).substring(7)}`
+        
+        // Return setup page with configuration
+        const html = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Edge Setup - Cyrus</title>
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; line-height: 1.6; }
+                h1 { color: #333; }
+                .config { background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                .code { font-family: monospace; background: #282c34; color: #abb2bf; padding: 15px; border-radius: 3px; overflow-x: auto; }
+                .btn { display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; 
+                       text-decoration: none; border-radius: 4px; font-weight: bold; }
+              </style>
+            </head>
+            <body>
+              <h1>Edge Worker Setup</h1>
+              <p>Your Cyrus proxy is authenticated and ready. Set up your edge worker with this configuration:</p>
+              
+              <div class="config">
+                <h3>1. Create .env.edge file:</h3>
+                <div class="code">PROXY_URL=${req.protocol}://${req.get('host')}
+EDGE_TOKEN=${edgeToken}
+LINEAR_OAUTH_TOKEN=${tokenInfo}
+WORKSPACE_BASE_DIR=./workspaces
+CLAUDE_PATH=/usr/local/bin/claude</div>
+              </div>
+              
+              <div class="config">
+                <h3>2. Start your edge worker:</h3>
+                <div class="code">npm run edge</div>
+              </div>
+              
+              <a class="btn" href="/">Back to Dashboard</a>
+            </body>
+          </html>
+        `
+        
+        res.send(html)
+      } catch (error) {
+        console.error('Error in edge setup:', error)
+        res.status(500).send('Setup error: ' + error.message)
       }
     })
   }
