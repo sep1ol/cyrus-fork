@@ -15,7 +15,8 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
     "oauth:server": "node scripts/start-auth-server.mjs",
-    "oauth:reset": "node scripts/reset-oauth.mjs"
+    "oauth:reset": "node scripts/reset-oauth.mjs",
+    "proxy": "node scripts/start-proxy.mjs"
   },
   "packageManager": "pnpm@10.11.0",
   "keywords": [
