@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Edge-proxy architecture separating OAuth/webhooks from Claude processing
+- Standalone OAuth service extracted from ExpressWebhookService
+- NDJSON streaming for real-time event forwarding from proxy to edge workers
+- Edge worker client with automatic reconnection and exponential backoff
+- Proxy server for centralized webhook and OAuth handling
+- Integration tests for edge-proxy communication
+- Comprehensive PRD documentation for the new architecture
+- Edge setup flow that provides OAuth tokens from proxy
+
+### Changed
+- Complete rewrite to edge-only mode (removed backward compatibility)
+- Updated package.json scripts for edge/proxy split
+- OAuth tokens now provided by proxy during edge setup instead of using API keys
+- Main entry point changed from index.mjs to edge.mjs for edge workers
+
+### Technical Details
+- Created modular proxy services (OAuthService, WebhookReceiver, EventStreamer)
+- Implemented EdgeClient with NDJSON streaming support
+- Added EventProcessor to bridge webhooks with existing issue processing
+- Edge workers use OAuth tokens from proxy for Linear API access
+- Proxy handles all OAuth flow and webhook verification
+- Edge workers connect via persistent NDJSON stream with heartbeat
+
 ### Fixed
 - Streaming updates posting to wrong comment on subsequent interactions
   - Fixed session management bug where new streaming comment ID wasn't being passed to Claude process handlers
