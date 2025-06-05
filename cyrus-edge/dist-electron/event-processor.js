@@ -5,10 +5,11 @@ const events_1 = require("events");
 const child_process_1 = require("child_process");
 const path_1 = require("path");
 const promises_1 = require("fs/promises");
+const core_1 = require("@cyrus/core");
 class EventProcessor extends events_1.EventEmitter {
     constructor(config) {
         super();
-        this.activeSessions = new Map();
+        this.sessionManager = new core_1.SessionManager();
         this.config = config;
     }
     async processEvent(event) {
@@ -48,15 +49,29 @@ class EventProcessor extends events_1.EventEmitter {
             console.log('Unhandled webhook type:', webhook.type);
         }
     }
-    async handleIssueAssigned(issue) {
-        if (!issue) {
+    async handleIssueAssigned(issueData) {
+        if (!issueData) {
             console.error('No issue data provided to handleIssueAssigned');
             return;
         }
-        console.log('Handling issue assigned:', issue.identifier, issue.title);
+        console.log('Handling issue assigned:', issueData.identifier, issueData.title);
         // Create workspace directory
-        const workspaceDir = (0, path_1.join)(this.config.workspaceBaseDir, `issue-${issue.id}`);
+        const workspaceDir = (0, path_1.join)(this.config.workspaceBaseDir, `issue-${issueData.id}`);
         await (0, promises_1.mkdir)(workspaceDir, { recursive: true });
+        // Create Issue object that implements the interface
+        const issue = {
+            id: issueData.id,
+            identifier: issueData.identifier,
+            title: issueData.title,
+            description: issueData.description,
+            getBranchName: () => `${issueData.identifier.toLowerCase()}-${issueData.title.toLowerCase().replace(/\s+/g, '-').slice(0, 30)}`
+        };
+        // Create Workspace object
+        const workspace = {
+            path: workspaceDir,
+            isGitWorktree: false,
+            historyPath: (0, path_1.join)(workspaceDir, 'conversation-history.jsonl')
+        };
         // Create a prompt file for Claude
         const prompt = `
 You are working on Linear issue ${issue.identifier}: ${issue.title}
@@ -75,27 +90,37 @@ Please help solve this issue.
                 LINEAR_TOKEN: this.config.linearToken
             }
         });
-        this.activeSessions.set(issue.id, {
+        // Create Session object
+        const session = new core_1.Session({
+            issue,
+            workspace,
             process: claudeProcess,
-            workspaceDir
+            startedAt: new Date()
         });
+        this.sessionManager.addSession(issue.id, session);
         // Emit status updates
         this.emit('session-started', {
             issueId: issue.id,
             identifier: issue.identifier,
-            title: issue.title
+            title: issue.title,
+            isLive: true
         });
         claudeProcess.on('exit', (code) => {
+            const session = this.sessionManager.getSession(issue.id);
+            if (session) {
+                session.exitCode = code;
+                session.exitedAt = new Date();
+            }
             this.emit('session-ended', {
                 issueId: issue.id,
-                code
+                code,
+                isLive: false
             });
-            this.activeSessions.delete(issue.id);
         });
     }
     async handleComment(data) {
         const { issue, comment } = data;
-        const session = this.activeSessions.get(issue.id);
+        const session = this.sessionManager.getSession(issue.id);
         if (!session) {
             console.log('No active session for issue:', issue.id);
             return;
@@ -105,9 +130,9 @@ Please help solve this issue.
         console.log('New comment on', issue.identifier, ':', comment.body);
     }
     getActiveSessions() {
-        return Array.from(this.activeSessions.entries()).map(([issueId, session]) => ({
+        return Array.from(this.sessionManager.getAllSessions().entries()).map(([issueId, session]) => ({
             issueId,
-            workspaceDir: session.workspaceDir
+            workspaceDir: session.workspace.path
         }));
     }
 }

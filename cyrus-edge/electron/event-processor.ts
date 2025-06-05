@@ -2,6 +2,7 @@ import { EventEmitter } from 'events'
 import { spawn } from 'child_process'
 import { join } from 'path'
 import { mkdir, writeFile } from 'fs/promises'
+import { Session, SessionManager, type Issue, type Workspace } from '@cyrus/core'
 
 interface ProcessorConfig {
   linearToken: string
@@ -11,7 +12,7 @@ interface ProcessorConfig {
 
 export class EventProcessor extends EventEmitter {
   private config: ProcessorConfig
-  private activeSessions: Map<string, any> = new Map()
+  private sessionManager = new SessionManager()
 
   constructor(config: ProcessorConfig) {
     super()
@@ -60,17 +61,33 @@ export class EventProcessor extends EventEmitter {
     }
   }
 
-  private async handleIssueAssigned(issue: any): Promise<void> {
-    if (!issue) {
+  private async handleIssueAssigned(issueData: any): Promise<void> {
+    if (!issueData) {
       console.error('No issue data provided to handleIssueAssigned')
       return
     }
 
-    console.log('Handling issue assigned:', issue.identifier, issue.title)
+    console.log('Handling issue assigned:', issueData.identifier, issueData.title)
     
     // Create workspace directory
-    const workspaceDir = join(this.config.workspaceBaseDir, `issue-${issue.id}`)
+    const workspaceDir = join(this.config.workspaceBaseDir, `issue-${issueData.id}`)
     await mkdir(workspaceDir, { recursive: true })
+
+    // Create Issue object that implements the interface
+    const issue: Issue = {
+      id: issueData.id,
+      identifier: issueData.identifier,
+      title: issueData.title,
+      description: issueData.description,
+      getBranchName: () => `${issueData.identifier.toLowerCase()}-${issueData.title.toLowerCase().replace(/\s+/g, '-').slice(0, 30)}`
+    }
+
+    // Create Workspace object
+    const workspace: Workspace = {
+      path: workspaceDir,
+      isGitWorktree: false,
+      historyPath: join(workspaceDir, 'conversation-history.jsonl')
+    }
 
     // Create a prompt file for Claude
     const prompt = `
@@ -93,30 +110,42 @@ Please help solve this issue.
       }
     })
 
-    this.activeSessions.set(issue.id, {
+    // Create Session object
+    const session = new Session({
+      issue,
+      workspace,
       process: claudeProcess,
-      workspaceDir
+      startedAt: new Date()
     })
+
+    this.sessionManager.addSession(issue.id, session)
 
     // Emit status updates
     this.emit('session-started', {
       issueId: issue.id,
       identifier: issue.identifier,
-      title: issue.title
+      title: issue.title,
+      isLive: true
     })
 
     claudeProcess.on('exit', (code) => {
+      const session = this.sessionManager.getSession(issue.id)
+      if (session) {
+        session.exitCode = code
+        session.exitedAt = new Date()
+      }
+      
       this.emit('session-ended', {
         issueId: issue.id,
-        code
+        code,
+        isLive: false
       })
-      this.activeSessions.delete(issue.id)
     })
   }
 
   private async handleComment(data: any): Promise<void> {
     const { issue, comment } = data
-    const session = this.activeSessions.get(issue.id)
+    const session = this.sessionManager.getSession(issue.id)
 
     if (!session) {
       console.log('No active session for issue:', issue.id)
@@ -129,9 +158,9 @@ Please help solve this issue.
   }
 
   getActiveSessions(): Array<{issueId: string, workspaceDir: string}> {
-    return Array.from(this.activeSessions.entries()).map(([issueId, session]) => ({
+    return Array.from(this.sessionManager.getAllSessions().entries()).map(([issueId, session]) => ({
       issueId,
-      workspaceDir: session.workspaceDir
+      workspaceDir: session.workspace.path
     }))
   }
 }

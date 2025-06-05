@@ -16,7 +16,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "build:packages": "pnpm -r build",
+    "dev:packages": "pnpm -r --parallel dev",
+    "test:packages": "pnpm -r test:run",
+    "typecheck": "pnpm -r typecheck"
   },
   "packageManager": "pnpm@10.11.0",
   "keywords": [
