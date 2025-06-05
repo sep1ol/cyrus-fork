@@ -17,70 +17,32 @@ export class OAuthService {
    * @param {Express} app - Express application instance
    */
   registerRoutes(app) {
-    // Dashboard showing authentication status
+    // Minimal public dashboard - no authentication status exposed
     app.get('/', async (req, res) => {
       try {
-        const authStatus = await this.oauthHelper.hasValidToken()
-        
-        let html = `
+        const html = `
           <!DOCTYPE html>
           <html>
             <head>
-              <title>Cyrus Proxy Dashboard</title>
+              <title>Cyrus Proxy</title>
               <style>
                 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; line-height: 1.6; }
                 h1 { color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px; }
-                .status { margin: 20px 0; padding: 15px; border-radius: 5px; }
-                .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-                .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-                .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-                .action { margin: 20px 0; }
-                .btn { display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; 
-                       text-decoration: none; border-radius: 4px; font-weight: bold; }
-                .btn-reset { background-color: #6c757d; }
-                .code { font-family: monospace; background-color: #f5f5f5; padding: 10px; border-radius: 3px; }
+                .info { margin: 20px 0; padding: 15px; border-radius: 5px; background-color: #f5f5f5; }
+                .code { font-family: monospace; background-color: #282c34; color: #abb2bf; padding: 15px; border-radius: 3px; }
               </style>
             </head>
             <body>
-              <h1>Cyrus Proxy Dashboard</h1>
-        `
-        
-        // Authentication status box
-        if (authStatus) {
-          html += `
-            <div class="status success">
-              <h2>✅ Authentication Status: Authenticated</h2>
-              <p>Your Cyrus proxy is successfully authenticated with Linear.</p>
-            </div>
-            <div class="action">
-              <a class="btn" href="/health">Check Health</a>
-              <a class="btn btn-reset" href="/oauth/reset">Reset Authentication</a>
-            </div>
-          `
-        } else {
-          html += `
-            <div class="status error">
-              <h2>❌ Authentication Status: Not Authenticated</h2>
-              <p>You need to authenticate with Linear to use Cyrus.</p>
-            </div>
-            <div class="action">
-              <a class="btn" href="/oauth/authorize">Authenticate with Linear</a>
-            </div>
-          `
-        }
-        
-        // Add edge worker information
-        html += `
-          <h2>Edge Worker Setup</h2>
-          <p>To connect an edge worker to this proxy:</p>
-          <div class="code">
-            <p>1. Install Cyrus edge client on your local machine</p>
-            <p>2. Run: <strong>cyrus setup</strong></p>
-            <p>3. The edge client will automatically connect to this proxy</p>
-          </div>
-        `
-        
-        html += `
+              <h1>Cyrus Proxy</h1>
+              <div class="info">
+                <p>This is a Cyrus proxy server for routing Linear webhooks to edge workers.</p>
+              </div>
+              
+              <h2>For Administrators</h2>
+              <p>If you're setting up this proxy, visit <code>/setup/start</code> to begin.</p>
+              
+              <h2>For Developers</h2>
+              <p>Get your edge configuration from your administrator.</p>
             </body>
           </html>
         `
@@ -88,7 +50,7 @@ export class OAuthService {
         res.send(html)
       } catch (error) {
         console.error('Error rendering dashboard:', error)
-        res.status(500).send('Error rendering dashboard: ' + error.message)
+        res.status(500).send('Service unavailable')
       }
     })
     
@@ -123,6 +85,12 @@ export class OAuthService {
         // Store token info for edge setup
         this.latestTokenInfo = tokenInfo
         
+        // Generate edge token (for now, just use a simple token)
+        const edgeToken = `edge_${Date.now()}_${Math.random().toString(36).substring(7)}`
+        
+        // Store the edge token for later use
+        this.latestEdgeToken = edgeToken
+        
         // Call success callback if provided
         if (this.onAuthSuccess) {
           try {
@@ -132,24 +100,55 @@ export class OAuthService {
           }
         }
         
-        // HTML response with auto-redirect to dashboard
+        // Build cyrus:// URL with parameters
+        // Use HTTPS for all non-localhost URLs
+        const host = req.get('host')
+        const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? req.protocol : 'https'
+        
+        const params = new URLSearchParams({
+          proxyUrl: `${protocol}://${host}`,
+          edgeToken: edgeToken,
+          linearToken: tokenInfo.access_token,
+          workspaceId: 'default', // TODO: Get actual workspace ID
+          timestamp: Date.now().toString()
+        })
+        
+        const cyrusUrl = `cyrus://setup?${params.toString()}`
+        
+        // HTML response that redirects to cyrus:// URL
         const html = `
           <!DOCTYPE html>
           <html>
             <head>
               <title>Authentication Successful</title>
-              <meta http-equiv="refresh" content="3;url=/" />
+              <meta http-equiv="refresh" content="0;url=${cyrusUrl}" />
               <style>
                 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; line-height: 1.6; text-align: center; }
                 .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 20px; border-radius: 5px; }
+                .manual { display: none; margin-top: 20px; padding: 20px; background: #f5f5f5; border-radius: 5px; }
+                .code { font-family: monospace; background: #282c34; color: #abb2bf; padding: 10px; border-radius: 3px; word-break: break-all; }
               </style>
+              <script>
+                window.location.href = '${cyrusUrl}';
+                setTimeout(() => {
+                  document.getElementById('manual').style.display = 'block';
+                }, 2000);
+              </script>
             </head>
             <body>
               <div class="success">
                 <h1>✅ Authentication Successful!</h1>
-                <p>You have successfully authenticated with Linear.</p>
-                <p>Redirecting to dashboard in 3 seconds...</p>
-                <p><a href="/">Click here if you are not redirected automatically</a></p>
+                <p>Opening Cyrus app...</p>
+                <div id="manual" class="manual">
+                  <p>If Cyrus doesn't open automatically:</p>
+                  <a href="${cyrusUrl}" class="btn">Click here to open Cyrus</a>
+                  <p style="margin-top: 15px;">Or manually configure your edge worker:</p>
+                  <div class="code">
+                    PROXY_URL=${req.protocol}://${req.get('host')}<br>
+                    EDGE_TOKEN=${edgeToken}<br>
+                    LINEAR_OAUTH_TOKEN=${tokenInfo}
+                  </div>
+                </div>
               </div>
             </body>
           </html>
@@ -199,22 +198,7 @@ export class OAuthService {
       }
     })
     
-    // OAuth status endpoint - check if we have valid tokens
-    app.get('/oauth/status', async (req, res) => {
-      try {
-        const hasValidToken = await this.oauthHelper.hasValidToken()
-        res.json({
-          authenticated: hasValidToken,
-          authType: hasValidToken ? 'oauth' : 'none'
-        })
-      } catch (error) {
-        console.error('Error checking OAuth status:', error)
-        res.status(500).json({
-          authenticated: false,
-          error: error.message
-        })
-      }
-    })
+    // Remove public OAuth status endpoint - don't expose authentication state
     
     // Edge setup endpoint - provides configuration for edge workers
     app.get('/setup/start', async (req, res) => {

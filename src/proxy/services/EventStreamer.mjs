@@ -34,8 +34,12 @@ export class EventStreamer {
         'Content-Type': 'application/x-ndjson',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no' // Disable Nginx buffering
+        'X-Accel-Buffering': 'no', // Disable Nginx buffering
+        'Transfer-Encoding': 'chunked'
       })
+      
+      // Prevent Express from ending the response
+      res.flushHeaders()
 
       // Store connection
       this.connections.set(edgeId, {
@@ -44,11 +48,13 @@ export class EventStreamer {
         lastSeen: new Date()
       })
 
-      // Send initial connection event
-      this.sendToEdge(edgeId, {
-        type: 'connection',
-        status: 'connected',
-        timestamp: new Date().toISOString()
+      // Send initial connection event after a small delay to ensure response is ready
+      setImmediate(() => {
+        this.sendToEdge(edgeId, {
+          type: 'connection',
+          status: 'connected',
+          timestamp: new Date().toISOString()
+        })
       })
 
       // Set up heartbeat
@@ -64,16 +70,26 @@ export class EventStreamer {
       }, 30000) // 30 second heartbeat
 
       // Handle connection close
-      res.on('close', () => {
-        console.log(`Edge worker ${edgeId} disconnected`)
-        this.connections.delete(edgeId)
-        clearInterval(heartbeatInterval)
+      const cleanup = () => {
+        if (this.connections.has(edgeId)) {
+          console.log(`Edge worker ${edgeId} disconnected`)
+          this.connections.delete(edgeId)
+          clearInterval(heartbeatInterval)
+        }
+      }
+      
+      // Only clean up when the response actually finishes
+      res.on('finish', cleanup)
+      res.on('close', cleanup)
+      
+      // Handle errors
+      req.on('error', (err) => {
+        console.error('Request error:', err)
+        cleanup()
       })
-
-      // Keep connection alive
-      req.on('close', () => {
-        this.connections.delete(edgeId)
-        clearInterval(heartbeatInterval)
+      res.on('error', (err) => {
+        console.error('Response error:', err)
+        cleanup()
       })
     })
 
@@ -117,6 +133,7 @@ export class EventStreamer {
       return true
     } catch (error) {
       console.error(`Failed to send event to edge ${edgeId}:`, error)
+      console.error('Error details:', error.message, error.stack)
       this.connections.delete(edgeId)
       return false
     }

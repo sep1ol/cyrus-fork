@@ -1,4 +1,8 @@
-# Linear Claude Agent
+# Linear Claude Agent (Cyrus)
+
+> **🚧 ARCHITECTURE CHANGE IN PROGRESS**: This project is transitioning to an edge-proxy architecture. 
+> 
+> **[>>> READ THE EDGE-PROXY MASTER DOCUMENTATION <<<](./EDGE-PROXY-MASTER.md)** for current development status and next steps.
 
 <p align="center">
   <a href="https://ceedar.ai">
@@ -8,6 +12,10 @@
     <img src="https://github.com/ceedario/secret-agents/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
 </p>
+
+## ⚠️ Legacy Documentation Below
+
+The documentation below describes the original monolithic architecture. For the new edge-proxy architecture, see the master documentation linked above.
 
 A JavaScript application that integrates Linear with Claude Code to automate issue processing. This agent uses Linear's Agent API to assist with software development tasks by providing AI-powered responses in Linear issues.
 

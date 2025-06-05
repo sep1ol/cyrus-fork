@@ -4,7 +4,8 @@ import dotenv from 'dotenv'
 import { ProxyServer } from '../src/proxy/ProxyServer.mjs'
 
 // Load environment variables
-dotenv.config({ path: '.env.secret-agents' })
+dotenv.config({ path: '.env.proxy' })
+dotenv.config({ path: '.env.secret-agents' }) // Fallback to original
 
 // Validate required environment variables
 const requiredVars = [
@@ -16,6 +17,7 @@ const requiredVars = [
 for (const varName of requiredVars) {
   if (!process.env[varName]) {
     console.error(`Missing required environment variable: ${varName}`)
+    console.error('Please create .env.proxy file with your Linear credentials')
     process.exit(1)
   }
 }

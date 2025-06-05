@@ -1,5 +1,6 @@
 import { HttpServer } from '../utils/HttpServer.mjs'
 import { OAuthHelper } from '../utils/OAuthHelper.mjs'
+import { FileSystem } from '../utils/FileSystem.mjs'
 import { OAuthService } from './services/OAuthService.mjs'
 import { WebhookReceiver } from './services/WebhookReceiver.mjs'
 import { EventStreamer } from './services/EventStreamer.mjs'
@@ -14,12 +15,13 @@ export class ProxyServer {
     this.server = null
     
     // Initialize services
-    this.oauthHelper = new OAuthHelper(
-      config.LINEAR_CLIENT_ID,
-      config.LINEAR_CLIENT_SECRET,
-      config.OAUTH_REDIRECT_URI,
-      config.WORKSPACE_BASE_DIR || './oauth'
-    )
+    this.fileSystem = new FileSystem()
+    this.oauthHelper = new OAuthHelper({
+      clientId: config.LINEAR_CLIENT_ID,
+      clientSecret: config.LINEAR_CLIENT_SECRET,
+      redirectUri: config.OAUTH_REDIRECT_URI,
+      tokenStoragePath: config.WORKSPACE_BASE_DIR || './oauth'
+    }, this.fileSystem)
     
     this.oauthService = new OAuthService(
       this.oauthHelper,
