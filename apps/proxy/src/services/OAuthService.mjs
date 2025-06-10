@@ -122,19 +122,13 @@ export class OAuthService {
         let workspaceName = 'Your Workspace'
         
         try {
-          console.log('TokenInfo received from OAuth:', JSON.stringify(tokenInfo, null, 2))
-          console.log('Access token to use:', typeof tokenInfo.access_token, tokenInfo.access_token ? 'present' : 'missing')
-          
           const workspaceInfo = await this.getWorkspaceInfo(tokenInfo.access_token)
           if (workspaceInfo) {
             workspaceId = workspaceInfo.id
             workspaceName = workspaceInfo.name
-            console.log(`Successfully retrieved workspace info: ${workspaceName} (${workspaceId})`)
-          } else {
-            console.log('No workspace info returned from getWorkspaceInfo')
           }
         } catch (error) {
-          console.error('Failed to retrieve workspace info for edge callback:', error)
+          console.error('Failed to retrieve workspace info:', error)
         }
         
         // If this is from an edge worker, redirect back with token
@@ -337,8 +331,6 @@ CLAUDE_PATH=/usr/local/bin/claude</div>
    */
   async getWorkspaceInfo(accessToken) {
     try {
-      console.log('getWorkspaceInfo called with token:', accessToken ? `${accessToken.substring(0, 20)}...` : 'missing')
-      
       const response = await fetch('https://api.linear.app/graphql', {
         method: 'POST',
         headers: {
@@ -362,12 +354,8 @@ CLAUDE_PATH=/usr/local/bin/claude</div>
         })
       })
       
-      console.log('GraphQL response status:', response.status)
-      
       if (!response.ok) {
         console.error('Failed to fetch workspace info:', response.status, response.statusText)
-        const errorBody = await response.text()
-        console.error('Error response body:', errorBody)
         return null
       }
       
