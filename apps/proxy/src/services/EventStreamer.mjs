@@ -6,6 +6,88 @@ export class EventStreamer {
     // Map of edgeId -> { response, metadata }
     this.connections = new Map()
     this.eventCounter = 0
+    // Map of workspaceId -> Set of edgeIds
+    this.workspaceToEdges = new Map()
+  }
+
+  /**
+   * Validate Linear token and get workspace access
+   * @param {string} token - Linear OAuth token
+   * @returns {Promise<string[]>} - Array of workspace IDs
+   */
+  async validateTokenAndGetWorkspaces(token) {
+    try {
+      const response = await fetch('https://api.linear.app/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          query: `
+            query {
+              viewer {
+                id
+                name
+                organization {
+                  id
+                  name
+                  urlKey
+                  teams {
+                    nodes {
+                      id
+                      key
+                      name
+                    }
+                  }
+                }
+              }
+            }
+          `
+        })
+      })
+      
+      if (!response.ok) {
+        console.error('Failed to validate token:', response.status)
+        return []
+      }
+      
+      const data = await response.json()
+      
+      if (data.errors) {
+        console.error('GraphQL errors:', data.errors)
+        return []
+      }
+      
+      // Extract workspace IDs (organization ID and all team IDs)
+      const workspaceIds = []
+      const workspaceInfo = []
+      
+      if (data.data?.viewer?.organization) {
+        const org = data.data.viewer.organization
+        workspaceIds.push(org.id)
+        workspaceInfo.push({ id: org.id, name: org.name, type: 'organization' })
+        
+        // Add all team IDs
+        if (org.teams?.nodes) {
+          for (const team of org.teams.nodes) {
+            workspaceIds.push(team.id)
+            workspaceInfo.push({ id: team.id, name: team.name, key: team.key, type: 'team' })
+          }
+        }
+      }
+      
+      // Store workspace info for logging
+      this.workspaceInfo = this.workspaceInfo || new Map()
+      for (const info of workspaceInfo) {
+        this.workspaceInfo.set(info.id, info)
+      }
+      
+      return workspaceIds
+    } catch (error) {
+      console.error('Error validating token:', error)
+      return []
+    }
   }
 
   /**
@@ -23,13 +105,32 @@ export class EventStreamer {
 
       const edgeToken = authHeader.substring(7)
       
-      // TODO: Validate edge token and extract metadata
-      // For now, use token as edgeId
+      // Validate token and get workspace access
+      const workspaceIds = await this.validateTokenAndGetWorkspaces(edgeToken)
+      
+      if (workspaceIds.length === 0) {
+        return res.status(401).json({ error: 'Invalid token or no workspace access' })
+      }
+      
+      // Use token as edgeId (it's unique per edge connection)
       const edgeId = edgeToken
       
       // Obscure token for logging (show first 10 chars only)
       const obscuredId = edgeToken.substring(0, 10) + '...' + edgeToken.substring(edgeToken.length - 4)
-      console.log(`Edge worker ${obscuredId} connected for streaming`)
+      console.log(`Edge worker ${obscuredId} connected for streaming with access to ${workspaceIds.length} workspace(s)`)
+      
+      // Log workspace details if debug mode or multiple workspaces
+      if (process.env.DEBUG_EDGE === 'true' || workspaceIds.length > 1) {
+        console.log('Workspace access:')
+        for (const id of workspaceIds) {
+          const info = this.workspaceInfo?.get(id)
+          if (info) {
+            console.log(`  - ${info.name} (${info.type}${info.key ? ` - ${info.key}` : ''}) [${id}]`)
+          } else {
+            console.log(`  - ${id}`)
+          }
+        }
+      }
 
       // Set up NDJSON streaming response
       res.writeHead(200, {
@@ -43,12 +144,21 @@ export class EventStreamer {
       // Prevent Express from ending the response
       res.flushHeaders()
 
-      // Store connection
+      // Store connection with workspace information
       this.connections.set(edgeId, {
         response: res,
         connectedAt: new Date(),
-        lastSeen: new Date()
+        lastSeen: new Date(),
+        workspaceIds: workspaceIds
       })
+      
+      // Update workspace to edge mappings
+      for (const workspaceId of workspaceIds) {
+        if (!this.workspaceToEdges.has(workspaceId)) {
+          this.workspaceToEdges.set(workspaceId, new Set())
+        }
+        this.workspaceToEdges.get(workspaceId).add(edgeId)
+      }
 
       // Send initial connection event after a small delay to ensure response is ready
       setImmediate(() => {
@@ -75,6 +185,21 @@ export class EventStreamer {
       const cleanup = () => {
         if (this.connections.has(edgeId)) {
           console.log(`Edge worker ${obscuredId} disconnected`)
+          
+          // Remove from workspace mappings
+          const connection = this.connections.get(edgeId)
+          if (connection?.workspaceIds) {
+            for (const workspaceId of connection.workspaceIds) {
+              const edges = this.workspaceToEdges.get(workspaceId)
+              if (edges) {
+                edges.delete(edgeId)
+                if (edges.size === 0) {
+                  this.workspaceToEdges.delete(workspaceId)
+                }
+              }
+            }
+          }
+          
           this.connections.delete(edgeId)
           clearInterval(heartbeatInterval)
         }
@@ -141,6 +266,35 @@ export class EventStreamer {
       this.connections.delete(edgeId)
       return false
     }
+  }
+
+  /**
+   * Broadcast event to edges based on workspace
+   * @param {object} event - Event to broadcast
+   * @param {string} workspaceId - Organization/workspace ID from webhook
+   * @returns {number} - Number of edges that received the event
+   */
+  broadcastToWorkspace(event, workspaceId) {
+    let successCount = 0
+    
+    if (!workspaceId) {
+      console.log('No workspace ID found in webhook, cannot route')
+      return 0
+    }
+    
+    const edgeIds = this.workspaceToEdges.get(workspaceId)
+    if (!edgeIds || edgeIds.size === 0) {
+      console.log(`No edges connected for workspace ${workspaceId}`)
+      return 0
+    }
+    
+    for (const edgeId of edgeIds) {
+      if (this.sendToEdge(edgeId, event)) {
+        successCount++
+      }
+    }
+    
+    return successCount
   }
 
   /**

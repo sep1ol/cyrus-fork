@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@linear/sdk':
-        specifier: ^39.0.0
-        version: 39.0.0(encoding@0.1.13)
     devDependencies:
       typescript:
         specifier: ^5.3.3

@@ -52,12 +52,20 @@ export class ProxyServer {
   async handleWebhook(webhook) {
     console.log(`Received webhook: ${webhook.type}/${webhook.action || webhook.notification?.type}`)
     
+    // Extract workspace ID from webhook
+    const workspaceId = webhook.organizationId
+    
+    if (!workspaceId) {
+      console.error('No organizationId in webhook, cannot route to edges')
+      return
+    }
+    
     // Transform webhook to event
     const event = this.eventStreamer.transformWebhookToEvent(webhook)
     
-    // Broadcast to all connected edges
-    const edgeCount = this.eventStreamer.broadcast(event)
-    console.log(`Webhook forwarded to ${edgeCount} edge worker(s)`)
+    // Broadcast to edges that have access to this workspace
+    const edgeCount = this.eventStreamer.broadcastToWorkspace(event, workspaceId)
+    console.log(`Webhook for workspace ${workspaceId} forwarded to ${edgeCount} edge worker(s)`)
   }
 
   /**

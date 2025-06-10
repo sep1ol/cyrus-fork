@@ -1,0 +1,16 @@
+{
+  "ignore": [
+    "oauth-tokens/*",
+    "*.log",
+    "*.tmp",
+    ".git",
+    "node_modules/**/node_modules"
+  ],
+  "watch": [
+    "src/**/*"
+  ],
+  "ext": "js,mjs,json",
+  "env": {
+    "NODE_ENV": "development"
+  }
+}

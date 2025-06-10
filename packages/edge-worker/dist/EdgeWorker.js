@@ -485,7 +485,8 @@ Please analyze this issue and help implement a solution.`;
         }
         catch (error) {
             console.error(`Failed to create comment on issue ${issueId}:`, error);
-            throw error;
+            // Don't re-throw - just log the error so the edge worker doesn't crash
+            // TODO: Implement retry logic or token refresh
         }
     }
 }

@@ -37,12 +37,6 @@ export class OAuthService {
               <div class="info">
                 <p>This is a Cyrus proxy server for routing Linear webhooks to edge workers.</p>
               </div>
-              
-              <h2>For Administrators</h2>
-              <p>If you're setting up this proxy, visit <code>/setup/start</code> to begin.</p>
-              
-              <h2>For Developers</h2>
-              <p>Get your edge configuration from your administrator.</p>
             </body>
           </html>
         `

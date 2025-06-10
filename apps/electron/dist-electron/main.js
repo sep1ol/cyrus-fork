@@ -117,6 +117,7 @@ function handleCyrusProtocol(url) {
                 edgeToken: params.get('edgeToken'),
                 linearToken: params.get('linearToken'),
                 workspaceId: params.get('workspaceId'),
+                workspaceName: params.get('workspaceName'),
                 timestamp: parseInt(params.get('timestamp') || '0')
             };
             // Validate timestamp (5 minute expiry)
@@ -129,11 +130,13 @@ function handleCyrusProtocol(url) {
             store.set('edgeToken', config.edgeToken);
             store.set('linearToken', config.linearToken);
             store.set('workspaceId', config.workspaceId);
+            store.set('workspaceName', config.workspaceName);
             // Connect to proxy
             connectToProxy();
             // Notify renderer
             mainWindow?.webContents.send('setup-complete', {
-                workspaceId: config.workspaceId
+                workspaceId: config.workspaceId,
+                workspaceName: config.workspaceName
             });
         }
     }
