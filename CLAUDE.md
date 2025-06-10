@@ -1,146 +1,117 @@
-# Claude Code Assistant Guidelines
+# CLAUDE.md
 
-This document contains important information and conventions for Claude Code when working on the Linear Claude Agent project.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-Linear Claude Agent is a JavaScript application that integrates Linear's issue tracking with Anthropic's Claude Code to automate software development tasks. The agent:
+Cyrus (Linear Claude Agent) is a monorepo JavaScript/TypeScript application that integrates Linear's issue tracking with Anthropic's Claude Code to automate software development tasks. The project is transitioning to an edge-proxy architecture that separates OAuth/webhook handling (proxy) from Claude processing (edge workers).
+
+**Key capabilities:**
 - Monitors Linear issues assigned to a specific user
 - Creates isolated Git worktrees for each issue
 - Runs Claude Code sessions to process issues
 - Posts responses back to Linear as comments
 - Maintains conversation continuity using the `--continue` flag
+- Supports edge worker mode for distributed processing
 
-## Architecture
+## Architecture Overview
 
-The project follows a layered architecture with clear separation of concerns:
+The codebase follows a pnpm monorepo structure:
 
-- **Core Domain**: `src/core/` - Business logic entities (Issue, Session, Workspace, Comment)
-- **Services**: `src/services/` - Application services (SessionManager, IssueService, etc.)
-- **Adapters**: `src/adapters/` - External integrations (Linear API, Claude CLI, Express webhooks)
-- **Utils**: `src/utils/` - Shared utilities (FileSystem, ProcessManager, etc.)
-- **Config**: `src/config/` - Configuration management
-
-## Code Conventions
-
-### JavaScript/ES Modules
-- Use ES modules (`.mjs` files) exclusively
-- Import with full file extensions: `import { foo } from './bar.mjs'`
-- Prefer named exports over default exports
-- Use JSDoc comments for functions and classes
-
-### Code Style
-- No semicolons (except where required by AST)
-- Single quotes for strings
-- 2-space indentation
-- Descriptive variable and function names
-- Keep functions small and focused
-
-### Error Handling
-- Always handle errors gracefully
-- Log errors with appropriate context
-- Use try-catch blocks for async operations
-- Throw meaningful error messages
-
-### Testing
-- Write tests for new functionality
-- Place tests in `__tests__/` directory
-- Use Jest for testing framework
-- Follow existing test patterns
-
-## Important Files and Their Purpose
-
-- `agent-prompt-template.md`: Template for Claude's initial prompts
-- `.env.secret-agents`: Default environment configuration file
-- `CHANGELOG.md`: Document all notable changes
-- `package.json`: Project dependencies and scripts
-
-## Development Workflow
-
-### Working on Issues
-1. Check current branch status: `git diff main...HEAD`
-2. Check for existing PRs: `gh pr list --head <branch-name>`
-3. Make changes following code conventions
-4. Run tests: `pnpm test`
-5. Update CHANGELOG.md with your changes
-6. Commit with descriptive messages
-7. Create PR with adequate description
-
-### Pull Request Requirements
-
-**IMPORTANT**: Every pull request MUST include an entry in `CHANGELOG.md` describing the changes made. This helps maintain a clear history of project evolution.
-
-Format for CHANGELOG entries:
-```markdown
-### Added
-- Description of new features
-
-### Changed
-- Description of modifications
-
-### Fixed
-- Description of bug fixes
-
-### Removed
-- Description of removed features
+```
+cyrus/
+├── apps/
+│   ├── cli/          # Main CLI application
+│   ├── electron/     # Future Electron GUI (in development)
+│   └── proxy/        # Edge proxy server for OAuth/webhooks
+└── packages/
+    ├── core/         # Shared types and session management
+    ├── claude-parser/# Claude stdout parsing with jq
+    ├── claude-runner/# Claude CLI execution wrapper
+    ├── edge-worker/  # Edge worker client implementation
+    └── ndjson-client/# NDJSON streaming client
 ```
 
-### Commit Messages
-- Use conventional commit format when possible
-- Be descriptive about what changed and why
-- Reference Linear issue IDs where applicable
+## Common Commands
 
-## Environment Variables
+### Monorepo-wide Commands (run from root)
+```bash
+# Install dependencies for all packages
+pnpm install
 
-Key environment variables to be aware of:
-- `LINEAR_WEBHOOK_SECRET`: Webhook verification
-- `CLAUDE_PATH`: Path to Claude CLI
-- `WORKSPACE_BASE_DIR`: Where issue workspaces are created
-- `PROMPT_TEMPLATE_PATH`: Path to agent prompt template
-- `DEBUG_*`: Various debug flags for troubleshooting
+# Build all packages
+pnpm build
 
-## Security Considerations
+# Run tests across all packages
+pnpm test
 
-- Never commit secrets or API keys
-- Always validate webhook signatures
-- Use environment variables for sensitive data
-- Follow OAuth best practices for authentication
+# Run tests only in packages directory
+pnpm test:packages
 
-## Testing Commands
+# Run TypeScript type checking
+pnpm typecheck
 
-- Run all tests: `pnpm test`
-- Run specific test: `pnpm test -- path/to/test.mjs`
-- Development mode: `pnpm run dev`
+# Development mode (watch all packages)
+pnpm dev
+```
 
-## Debugging
+### App-specific Commands
 
-Enable debug flags in `.env.secret-agents` for detailed logging:
-- `DEBUG_WEBHOOKS=true`: Webhook event details
-- `DEBUG_LINEAR_API=true`: Linear API interactions
-- `DEBUG_CLAUDE_RESPONSES=true`: Claude response content
-- `DEBUG_COMMENT_CONTENT=true`: Comment posting details
+#### CLI App (`apps/cli/`)
+```bash
+# Start the agent
+pnpm start
 
-## Common Patterns
+# Development mode with auto-restart
+pnpm dev
 
-### Service Dependencies
-Services are injected via the container pattern in `src/container.mjs`. When adding new services:
-1. Create the service class
-2. Register it in the container
-3. Use dependency injection in constructors
+# Run tests
+pnpm test
+pnpm test:watch  # Watch mode
+```
 
-### Webhook Handling
-Webhook events follow this flow:
-1. Express server receives webhook
-2. Signature verification
-3. Event parsing and validation
-4. Delegation to appropriate handler
-5. Response posting back to Linear
+#### Electron App (`apps/electron/`)
+```bash
+# Run linting
+pnpm lint
 
-### Session Management
-Each Linear issue gets its own:
-- Git worktree (if in a Git repo)
-- Claude Code session
-- Isolated workspace directory
+# Development mode
+pnpm dev
+
+# Build for production
+pnpm build:all
+
+# Run electron in dev mode
+pnpm electron:dev
+```
+
+#### Proxy App (`apps/proxy/`)
+```bash
+# Start proxy server
+pnpm start
+
+# Development mode with auto-restart
+pnpm dev
+
+# Run tests
+pnpm test
+```
+
+### Package Commands (all packages follow same pattern)
+```bash
+# Build the package
+pnpm build
+
+# TypeScript type checking
+pnpm typecheck
+
+# Run tests
+pnpm test        # Watch mode
+pnpm test:run    # Run once
+
+# Development mode (TypeScript watch)
+pnpm dev
+```
 
 ## Linear State Management
 
@@ -150,10 +121,24 @@ The agent automatically moves issues to the "started" state when assigned. Linea
 - **Standard Types**: `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`
 - **Issue Assignment Behavior**: When an issue is assigned to the agent, it automatically transitions to a state with `type === 'started'` (In Progress)
 
-## Notes for Future Development
+## Important Development Notes
 
-- The project uses Linear's Agent API (Beta)
-- OAuth flow is preferred over API tokens
-- Webhook server runs even if Linear auth fails (for OAuth setup)
-- The `--continue` flag maintains conversation context efficiently
-- Consider rate limits when interacting with external APIs
+1. **Edge-Proxy Architecture**: The project is transitioning to separate OAuth/webhook handling from Claude processing. See `EDGE-PROXY-MASTER.md` for current status.
+
+2. **Dependencies**: 
+   - The claude-parser package requires `jq` to be installed on the system
+   - Uses pnpm as package manager (v10.11.0)
+   - TypeScript for all new packages
+
+3. **Git Worktrees**: When processing issues, the agent creates separate git worktrees. If a `secretagentsetup.sh` script exists in the repository root, it's executed in new worktrees for project-specific initialization.
+
+4. **Testing**: Uses Vitest for all packages. Run tests before committing changes.
+
+## Key Code Paths
+
+- **Linear Integration**: `apps/cli/services/LinearIssueService.mjs`
+- **Claude Execution**: `packages/claude-runner/src/ClaudeRunner.ts`
+- **Session Management**: `packages/core/src/session/`
+- **Edge Worker**: `packages/edge-worker/src/EdgeWorker.ts`
+- **OAuth Flow**: `apps/proxy/src/services/OAuthService.mjs`
+
