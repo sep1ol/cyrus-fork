@@ -29,6 +29,11 @@ All notable changes to this project will be documented in this file.
 - Edge workers connect via persistent NDJSON stream with heartbeat
 
 ### Fixed
+- OAuth callback now retrieves actual workspace ID from Linear API instead of using hardcoded 'default'
+  - Added `getWorkspaceInfo` method to OAuthService that queries Linear GraphQL API for organization details
+  - Workspace ID and name are now properly fetched after OAuth token exchange
+  - Updated both the main OAuth callback flow and edge worker callback to include real workspace info
+  - Edge setup page now displays the actual workspace name and includes workspace ID/name in configuration
 - Streaming updates posting to wrong comment on subsequent interactions
   - Fixed session management bug where new streaming comment ID wasn't being passed to Claude process handlers
   - Session creation now happens before handler setup to ensure correct comment ID is used for updates

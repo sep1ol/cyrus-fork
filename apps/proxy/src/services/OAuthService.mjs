@@ -117,17 +117,38 @@ export class OAuthService {
           }
         }
         
+        // Get workspace information
+        let workspaceId = 'default'
+        let workspaceName = 'Your Workspace'
+        
+        try {
+          console.log('TokenInfo received from OAuth:', JSON.stringify(tokenInfo, null, 2))
+          console.log('Access token to use:', typeof tokenInfo.access_token, tokenInfo.access_token ? 'present' : 'missing')
+          
+          const workspaceInfo = await this.getWorkspaceInfo(tokenInfo.access_token)
+          if (workspaceInfo) {
+            workspaceId = workspaceInfo.id
+            workspaceName = workspaceInfo.name
+            console.log(`Successfully retrieved workspace info: ${workspaceName} (${workspaceId})`)
+          } else {
+            console.log('No workspace info returned from getWorkspaceInfo')
+          }
+        } catch (error) {
+          console.error('Failed to retrieve workspace info for edge callback:', error)
+        }
+        
         // If this is from an edge worker, redirect back with token
         if (edgeCallback) {
           const params = new URLSearchParams({
             token: tokenInfo.access_token,
-            workspaceId: tokenInfo.workspaceId || 'default',
-            workspaceName: tokenInfo.workspaceName || 'Your Workspace'
+            workspaceId: workspaceId,
+            workspaceName: workspaceName
           })
           
           const redirectUrl = `${edgeCallback}?${params.toString()}`
           return res.redirect(redirectUrl)
         }
+        
         
         // Build cyrus:// URL with parameters
         // Use HTTPS for all non-localhost URLs
@@ -138,7 +159,8 @@ export class OAuthService {
           proxyUrl: `${protocol}://${host}`,
           edgeToken: edgeToken,
           linearToken: tokenInfo.access_token,
-          workspaceId: 'default', // TODO: Get actual workspace ID
+          workspaceId: workspaceId,
+          workspaceName: workspaceName,
           timestamp: Date.now().toString()
         })
         
@@ -242,6 +264,20 @@ export class OAuthService {
         // Get the current OAuth token
         const tokenInfo = await this.oauthHelper.getAccessToken()
         
+        // Get workspace information
+        let workspaceId = 'default'
+        let workspaceName = 'Your Workspace'
+        
+        try {
+          const workspaceInfo = await this.getWorkspaceInfo(tokenInfo)
+          if (workspaceInfo) {
+            workspaceId = workspaceInfo.id
+            workspaceName = workspaceInfo.name
+          }
+        } catch (error) {
+          console.error('Failed to retrieve workspace info for setup:', error)
+        }
+        
         // Generate edge token (for now, just use a simple token)
         const edgeToken = `edge_${Date.now()}_${Math.random().toString(36).substring(7)}`
         
@@ -262,13 +298,16 @@ export class OAuthService {
             </head>
             <body>
               <h1>Edge Worker Setup</h1>
-              <p>Your Cyrus proxy is authenticated and ready. Set up your edge worker with this configuration:</p>
+              <p>Your Cyrus proxy is authenticated and ready for <strong>${workspaceName}</strong>.</p>
+              <p>Set up your edge worker with this configuration:</p>
               
               <div class="config">
                 <h3>1. Create .env.edge file:</h3>
                 <div class="code">PROXY_URL=${req.protocol}://${req.get('host')}
 EDGE_TOKEN=${edgeToken}
 LINEAR_OAUTH_TOKEN=${tokenInfo}
+LINEAR_WORKSPACE_ID=${workspaceId}
+LINEAR_WORKSPACE_NAME=${workspaceName}
 WORKSPACE_BASE_DIR=./workspaces
 CLAUDE_PATH=/usr/local/bin/claude</div>
               </div>
@@ -289,5 +328,70 @@ CLAUDE_PATH=/usr/local/bin/claude</div>
         res.status(500).send('Setup error: ' + error.message)
       }
     })
+  }
+  
+  /**
+   * Get workspace information from Linear API
+   * @param {string} accessToken - Linear access token
+   * @returns {Promise<Object|null>} - Workspace info with id and name
+   */
+  async getWorkspaceInfo(accessToken) {
+    try {
+      console.log('getWorkspaceInfo called with token:', accessToken ? `${accessToken.substring(0, 20)}...` : 'missing')
+      
+      const response = await fetch('https://api.linear.app/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          query: `
+            query {
+              viewer {
+                id
+                name
+                organization {
+                  id
+                  name
+                  urlKey
+                }
+              }
+            }
+          `
+        })
+      })
+      
+      console.log('GraphQL response status:', response.status)
+      
+      if (!response.ok) {
+        console.error('Failed to fetch workspace info:', response.status, response.statusText)
+        const errorBody = await response.text()
+        console.error('Error response body:', errorBody)
+        return null
+      }
+      
+      const data = await response.json()
+      
+      if (data.errors) {
+        console.error('GraphQL errors:', data.errors)
+        return null
+      }
+      
+      if (data.data?.viewer?.organization) {
+        const org = data.data.viewer.organization
+        console.log(`Retrieved workspace info: ${org.name} (${org.id})`)
+        return {
+          id: org.id,
+          name: org.name,
+          urlKey: org.urlKey
+        }
+      }
+      
+      return null
+    } catch (error) {
+      console.error('Error fetching workspace info:', error)
+      return null
+    }
   }
 }

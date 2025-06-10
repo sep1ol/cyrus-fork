@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events'
 import { spawn, type ChildProcess } from 'child_process'
+import { mkdirSync } from 'fs'
 import { StdoutParser, type ClaudeEvent, type ErrorEvent, type ToolErrorEvent } from '@cyrus/claude-parser'
 import type { ClaudeRunnerConfig, ClaudeRunnerEvents, ClaudeProcessInfo } from './types.js'
 
@@ -38,6 +39,21 @@ export class ClaudeRunner extends EventEmitter {
     // Build command arguments
     const args = this.buildArgs()
     const command = `${this.config.claudePath} ${args.join(' ')} | jq -c .`
+    
+    // Debug logging
+    console.error('[ClaudeRunner] Spawning command:', command)
+    console.error('[ClaudeRunner] Working directory:', this.config.workingDirectory)
+    console.error('[ClaudeRunner] Claude path:', this.config.claudePath)
+
+    // Ensure working directory exists
+    if (this.config.workingDirectory) {
+      try {
+        mkdirSync(this.config.workingDirectory, { recursive: true })
+        console.error('[ClaudeRunner] Created working directory')
+      } catch (err) {
+        console.error('[ClaudeRunner] Failed to create working directory:', err)
+      }
+    }
 
     // Spawn the process
     this.process = spawn('sh', ['-c', command], {
