@@ -9,11 +9,7 @@
   "type": "module",
   "scripts": {
     "start": "node app.mjs",
-    "edge": "node edge/app.mjs",
-    "proxy": "node proxy/app.mjs",
     "dev": "nodemon app.mjs",
-    "dev:edge": "nodemon edge/app.mjs",
-    "dev:proxy": "nodemon proxy/app.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

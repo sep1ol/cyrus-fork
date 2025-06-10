@@ -246,7 +246,7 @@ export const WebhookPayloadSchema = z.discriminatedUnion("type", [
  * Type definitions are available via JSDoc annotations
  *
  * Example usage in JSDoc:
- * @typedef {import('../utils/schemas.mjs').TeamType} TeamType
+ * @typedef {import('./schemas.mjs').TeamType} TeamType
  *
  * These are not exported directly since we're using ES modules without TypeScript
  */

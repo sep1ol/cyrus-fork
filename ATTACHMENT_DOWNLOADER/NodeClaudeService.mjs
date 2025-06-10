@@ -1,7 +1,7 @@
-import { ClaudeService } from '../services/ClaudeService.mjs';
-import { Session } from '../core/Session.mjs';
-import { claudeConfig, env } from '../config/index.mjs';
-import { FileSystem, ProcessManager } from '../utils/index.mjs';
+import { ClaudeService } from '../apps/cli/services/ClaudeService.mjs';
+import { Session } from '../apps/cli/core/Session.mjs';
+import { claudeConfig, env } from '../apps/cli/config/index.mjs';
+import { FileSystem, ProcessManager } from '../apps/cli/utils/index.mjs';
 import path from 'path';
 
 /**
