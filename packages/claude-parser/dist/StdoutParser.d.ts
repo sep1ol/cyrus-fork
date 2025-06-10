@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { ClaudeEvent, AssistantEvent, ResultEvent, ErrorEvent, ParserOptions } from './types';
+import type { ClaudeEvent, AssistantEvent, ResultEvent, ErrorEvent, ToolErrorEvent, ParserOptions } from './types.js';
 export interface StdoutParserEvents {
     'message': (event: ClaudeEvent) => void;
     'assistant': (event: AssistantEvent) => void;
@@ -7,7 +7,7 @@ export interface StdoutParserEvents {
     'text': (text: string) => void;
     'end-turn': (lastText: string) => void;
     'result': (event: ResultEvent) => void;
-    'error': (error: Error | ErrorEvent) => void;
+    'error': (error: Error | ErrorEvent | ToolErrorEvent) => void;
     'token-limit': () => void;
     'line': (line: string) => void;
 }

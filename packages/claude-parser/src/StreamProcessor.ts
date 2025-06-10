@@ -1,6 +1,6 @@
 import { Transform, TransformCallback } from 'stream'
-import { StdoutParser } from './StdoutParser'
-import type { ClaudeEvent, ParserOptions } from './types'
+import { StdoutParser } from './StdoutParser.js'
+import type { ClaudeEvent, ParserOptions, ErrorEvent, ToolErrorEvent } from './types.js'
 
 /**
  * Transform stream that processes Claude stdout and emits parsed events
@@ -18,12 +18,12 @@ export class StreamProcessor extends Transform {
     })
 
     // Handle errors
-    this.parser.on('error', (error: Error) => {
+    this.parser.on('error', (error: Error | ErrorEvent | ToolErrorEvent) => {
       this.emit('error', error)
     })
   }
 
-  _transform(chunk: any, encoding: BufferEncoding, callback: TransformCallback): void {
+  _transform(chunk: any, _encoding: BufferEncoding, callback: TransformCallback): void {
     try {
       this.parser.processData(chunk)
       callback()

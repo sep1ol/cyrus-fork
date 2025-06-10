@@ -1,6 +1,6 @@
-export { StdoutParser } from './StdoutParser'
-export { StreamProcessor } from './StreamProcessor'
-export * from './types'
+export { StdoutParser } from './StdoutParser.js'
+export { StreamProcessor } from './StreamProcessor.js'
+export * from './types.js'
 
 // Re-export commonly used types for convenience
 export type {
@@ -17,4 +17,4 @@ export type {
   AssistantMessage,
   UserMessage,
   ParserOptions
-} from './types'
+} from './types.js'

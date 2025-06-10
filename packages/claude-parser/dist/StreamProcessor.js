@@ -1,5 +1,5 @@
 import { Transform } from 'stream';
-import { StdoutParser } from './StdoutParser';
+import { StdoutParser } from './StdoutParser.js';
 /**
  * Transform stream that processes Claude stdout and emits parsed events
  */
@@ -17,7 +17,7 @@ export class StreamProcessor extends Transform {
             this.emit('error', error);
         });
     }
-    _transform(chunk, encoding, callback) {
+    _transform(chunk, _encoding, callback) {
         try {
             this.parser.processData(chunk);
             callback();

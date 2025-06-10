@@ -8,7 +8,7 @@ import type {
   TextContent,
   ToolUseContent,
   ParserOptions 
-} from './types'
+} from './types.js'
 
 export interface StdoutParserEvents {
   'message': (event: ClaudeEvent) => void

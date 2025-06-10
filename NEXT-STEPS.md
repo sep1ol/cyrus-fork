@@ -1,18 +1,20 @@
 # Next Steps for Cyrus Monorepo Migration
 
-## Super-Immediate Next Steps (In Progress)
+## ✅ Completed (Phase 3)
 
-1. **Fix remaining TypeScript errors in claude-parser package**
-   - Fix the StreamProcessor error handler type issue
-   - Remove unused 'encoding' parameter warning
-   - Build the package successfully
+1. **Fixed TypeScript errors in claude-parser package**
+   - ✅ Fixed the StreamProcessor error handler type issue
+   - ✅ Removed unused 'encoding' parameter warning
+   - ✅ Built the package successfully
 
-2. **Complete claude-parser package**
-   - Install dependencies for claude-parser
-   - Verify the build output
-   - Update MONOREPO-TODOS.md to mark Phase 3 tasks as complete
+2. **Completed claude-parser package**
+   - ✅ Installed dependencies for claude-parser
+   - ✅ Verified the build output
+   - ✅ Updated MONOREPO-TODOS.md to mark Phase 3 tasks as complete
+   - ✅ Added README documenting jq requirement
+   - ✅ Updated edge worker to use jq processing
 
-## Next Steps After That
+## Next Steps
 
 ### Phase 4: Create Linear Client Package
 1. **Setup @cyrus/linear-client package**
@@ -50,7 +52,7 @@
 - ✅ Core package created and working
 - ✅ Session and SessionManager ported to TypeScript
 - ✅ Electron app successfully using @cyrus/core
-- 🚧 Claude parser package structure created, fixing build errors
-- ⏳ Linear client package pending
-- ⏳ History stream package pending
-- ⏳ Edge worker refactoring pending
+- ✅ Claude parser package completed and building successfully
+- ⏳ Linear client package pending (Phase 4 - Next)
+- ⏳ History stream package pending (Phase 5)
+- ⏳ Edge worker refactoring pending (Phase 6)

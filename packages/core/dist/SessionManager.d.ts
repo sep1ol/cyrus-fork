@@ -1,4 +1,4 @@
-import { Session } from './Session';
+import { Session } from './Session.js';
 /**
  * Manages active Claude sessions
  */
