@@ -26,6 +26,7 @@ export class EdgeWorker extends EventEmitter {
   private sessionManager: SessionManager
   private claudeRunners: Map<string, ClaudeRunner> = new Map()
   private sessionToRepo: Map<string, string> = new Map() // Maps session ID to repository ID
+  private issueToCommentId: Map<string, string> = new Map() // Maps issue ID to initial comment ID
 
   constructor(config: EdgeWorkerConfig) {
     super()
@@ -237,6 +238,9 @@ export class EdgeWorker extends EventEmitter {
    * Handle issue assignment
    */
   private async handleIssueAssigned(issue: any, repository: RepositoryConfig): Promise<void> {
+    // Post initial comment immediately
+    const initialComment = await this.postInitialComment(issue.id, repository.id)
+    
     // Create workspace
     const workspace = this.config.handlers?.createWorkspace
       ? await this.config.handlers.createWorkspace(issue, repository)
@@ -267,6 +271,11 @@ export class EdgeWorker extends EventEmitter {
       process: processInfo.process,
       startedAt: processInfo.startedAt
     })
+    
+    // Store initial comment ID if we have one
+    if (initialComment?.id) {
+      this.issueToCommentId.set(issue.id, initialComment.id)
+    }
     
     this.sessionManager.addSession(issue.id, session)
     this.sessionToRepo.set(issue.id, repository.id)
@@ -356,12 +365,18 @@ export class EdgeWorker extends EventEmitter {
       const content = this.extractTextContent(event)
       if (content) {
         this.emit('claude:response', issueId, content, repositoryId)
-        
-        // Post to Linear
-        await this.postComment(issueId, content, repositoryId)
+        // Don't post assistant messages anymore - wait for result
       }
+    } else if (event.type === 'result' && 'result' in event && event.result) {
+      // Post the final result to Linear
+      await this.postComment(issueId, event.result, repositoryId)
     } else if (event.type === 'tool' && 'tool_name' in event) {
       this.emit('claude:tool-use', issueId, event.tool_name, event.input, repositoryId)
+      
+      // Handle TodoWrite tool specifically
+      if (event.tool_name === 'TodoWrite' && event.input?.todos) {
+        await this.updateCommentWithTodos(issueId, event.input.todos, repositoryId)
+      }
     } else if (event.type === 'error' || event.type === 'tool_error') {
       const errorMessage = 'message' in event ? event.message : 'error' in event ? event.error : 'Unknown error'
       this.handleError(new Error(`Claude error: ${errorMessage}`))
@@ -539,6 +554,40 @@ Please analyze this issue and help implement a solution.`
   }
 
   /**
+   * Post initial comment when assigned to issue
+   */
+  private async postInitialComment(issueId: string, repositoryId: string): Promise<{ id: string } | null> {
+    try {
+      const body = "I've been assigned to this issue and am getting started right away. I'll update this comment with my plan shortly."
+      
+      // Get the Linear client for this repository
+      const linearClient = this.linearClients.get(repositoryId)
+      if (!linearClient) {
+        throw new Error(`No Linear client found for repository ${repositoryId}`)
+      }
+
+      const commentData: any = {
+        issueId,
+        body
+      }
+
+      const response = await linearClient.createComment(commentData)
+
+      // Linear SDK returns CommentPayload with structure: { comment, success, lastSyncId }
+      if (response && response.comment) {
+        const comment = await response.comment
+        console.log(`✅ Posted initial comment on issue ${issueId} (ID: ${comment.id})`)
+        return comment
+      } else {
+        throw new Error('Initial comment creation failed')
+      }
+    } catch (error) {
+      console.error(`Failed to create initial comment on issue ${issueId}:`, error)
+      return null
+    }
+  }
+
+  /**
    * Post a comment to Linear
    */
   private async postComment(issueId: string, body: string, repositoryId: string): Promise<void> {
@@ -571,5 +620,49 @@ Please analyze this issue and help implement a solution.`
       // Don't re-throw - just log the error so the edge worker doesn't crash
       // TODO: Implement retry logic or token refresh
     }
+  }
+
+  /**
+   * Update initial comment with TODO checklist
+   */
+  private async updateCommentWithTodos(issueId: string, todos: Array<{id: string, content: string, status: string, priority: string}>, repositoryId: string): Promise<void> {
+    try {
+      const commentId = this.issueToCommentId.get(issueId)
+      if (!commentId) {
+        console.log('No initial comment ID found for issue, cannot update with todos')
+        return
+      }
+
+      // Convert todos to Linear checklist format
+      const checklist = this.formatTodosAsChecklist(todos)
+      const body = `I've been assigned to this issue and am getting started right away. Here's my plan:\n\n${checklist}`
+
+      // Get the Linear client
+      const linearClient = this.linearClients.get(repositoryId)
+      if (!linearClient) {
+        throw new Error(`No Linear client found for repository ${repositoryId}`)
+      }
+
+      // Update the comment
+      const response = await linearClient.updateComment(commentId, { body })
+      
+      if (response) {
+        console.log(`✅ Updated comment ${commentId} with ${todos.length} todos`)
+      }
+    } catch (error) {
+      console.error(`Failed to update comment with todos:`, error)
+    }
+  }
+
+  /**
+   * Format todos as Linear checklist markdown
+   */
+  private formatTodosAsChecklist(todos: Array<{id: string, content: string, status: string, priority: string}>): string {
+    return todos.map(todo => {
+      const checkbox = todo.status === 'completed' ? '[x]' : '[ ]'
+      const priorityEmoji = todo.priority === 'high' ? '🔴' : todo.priority === 'medium' ? '🟡' : '🟢'
+      const statusEmoji = todo.status === 'in_progress' ? ' 🔄' : ''
+      return `- ${checkbox} ${priorityEmoji} ${todo.content}${statusEmoji}`
+    }).join('\n')
   }
 }
