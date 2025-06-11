@@ -30,6 +30,7 @@ export class EdgeWorker extends EventEmitter {
   private claudeRunners: Map<string, ClaudeRunner> = new Map()
   private sessionToRepo: Map<string, string> = new Map() // Maps session ID to repository ID
   private issueToCommentId: Map<string, string> = new Map() // Maps issue ID to initial comment ID
+  private issueToReplyContext: Map<string, { commentId: string; parentId?: string }> = new Map() // Maps issue ID to reply context
 
   constructor(config: EdgeWorkerConfig) {
     super()
@@ -347,6 +348,39 @@ export class EdgeWorker extends EventEmitter {
       return
     }
 
+    // Debug: log the comment structure
+    console.log(`[DEBUG] Comment data:`, JSON.stringify(comment, null, 2))
+
+    // Store the comment context for replies
+    // Linear threading rules:
+    // - If comment has NO parentId → it's a root comment, our reply should use its ID as parentId
+    // - If comment HAS a parentId → it's already a reply, our reply should use the SAME parentId
+    const replyParentId = comment.parentId || comment.id
+    
+    this.issueToReplyContext.set(issue.id, {
+      commentId: comment.id,
+      parentId: replyParentId
+    })
+    console.log(`Stored reply context for issue ${issue.id}: commentId=${comment.id}, replyParentId=${replyParentId}`)
+    
+    // Post immediate reply that will be updated with TODOs
+    try {
+      const immediateReply = await this.postComment(
+        issue.id,
+        "I'm getting started on that right away. I'll update this comment with my plan as I work through it.",
+        repository.id,
+        replyParentId
+      )
+      
+      if (immediateReply?.id) {
+        // Store this as the comment to update with TODOs
+        this.issueToCommentId.set(issue.id, immediateReply.id)
+        console.log(`Posted immediate reply with ID: ${immediateReply.id}`)
+      }
+    } catch (error) {
+      console.error('Failed to post immediate reply:', error)
+    }
+
     let session = this.sessionManager.getSession(issue.id)
     
     // If no session exists, we need to create one
@@ -391,25 +425,52 @@ export class EdgeWorker extends EventEmitter {
       existingRunner.kill()
     }
 
-    // Create new runner with --continue flag
-    const runner = new ClaudeRunner({
-      claudePath: this.config.claudePath,
-      workingDirectory: session.workspace.path,
-      allowedTools: this.config.defaultAllowedTools || getAllTools(),
-      continueSession: true,
-      workspaceName: issue.identifier,
-      onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),
-      onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
-    })
+    try {
+      // Create new runner with --continue flag
+      const runner = new ClaudeRunner({
+        claudePath: this.config.claudePath,
+        workingDirectory: session.workspace.path,
+        allowedTools: this.config.defaultAllowedTools || getAllTools(),
+        continueSession: true,
+        workspaceName: issue.identifier,
+        onEvent: (event) => {
+          // Check for continuation errors
+          if (event.type === 'assistant' && 'message' in event && event.message?.content) {
+            const content = Array.isArray(event.message.content) ? event.message.content : [event.message.content]
+            for (const item of content) {
+              if (item?.type === 'text' && item.text?.includes('tool_use` ids were found without `tool_result` blocks')) {
+                console.log('Detected corrupted conversation history, will restart fresh')
+                // Kill this runner
+                runner.kill()
+                // Remove from map
+                this.claudeRunners.delete(issue.id)
+                // Start fresh
+                this.handleIssueAssigned(issue, repository).catch(console.error)
+                return
+              }
+            }
+          }
+          this.handleClaudeEvent(issue.id, event, repository.id)
+        },
+        onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
+      })
 
-    // Store new runner
-    this.claudeRunners.set(issue.id, runner)
+      // Store new runner
+      this.claudeRunners.set(issue.id, runner)
 
-    // Spawn new process
-    runner.spawn()
+      // Spawn new process
+      runner.spawn()
 
-    // Send comment as input
-    await runner.sendInput(comment.body || comment.text || '')
+      // Send comment as input
+      await runner.sendInput(comment.body || comment.text || '')
+    } catch (error) {
+      console.error('Failed to continue conversation, starting fresh:', error)
+      // Remove any partially created session
+      this.sessionManager.removeSession(issue.id)
+      this.sessionToRepo.delete(issue.id)
+      // Start fresh
+      await this.handleIssueAssigned(issue, repository)
+    }
   }
 
   /**
@@ -482,9 +543,19 @@ export class EdgeWorker extends EventEmitter {
         }
       }
     } else if (event.type === 'result' && 'result' in event && event.result) {
-      // Post the final result to Linear as a reply to the initial comment
-      const initialCommentId = this.issueToCommentId.get(issueId)
-      await this.postComment(issueId, event.result, repositoryId, initialCommentId)
+      // Post the final result to Linear
+      // Check if we have reply context (from a comment mention)
+      const replyContext = this.issueToReplyContext.get(issueId)
+      if (replyContext) {
+        // Reply to the comment that mentioned us, using appropriate parentId
+        await this.postComment(issueId, event.result, repositoryId, replyContext.parentId)
+        // Clear the reply context after using it
+        this.issueToReplyContext.delete(issueId)
+      } else {
+        // Fall back to replying to initial comment (for direct assignments)
+        const initialCommentId = this.issueToCommentId.get(issueId)
+        await this.postComment(issueId, event.result, repositoryId, initialCommentId)
+      }
     } else if (event.type === 'error' || event.type === 'tool_error') {
       const errorMessage = 'message' in event ? event.message : 'error' in event ? event.error : 'Unknown error'
       this.handleError(new Error(`Claude error: ${errorMessage}`))
@@ -710,7 +781,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Post a comment to Linear
    */
-  private async postComment(issueId: string, body: string, repositoryId: string, parentId?: string): Promise<void> {
+  private async postComment(issueId: string, body: string, repositoryId: string, parentId?: string): Promise<{ id: string } | null> {
     try {
       // Get the Linear client for this repository
       const linearClient = this.linearClients.get(repositoryId)
@@ -736,7 +807,9 @@ Please analyze this issue and help implement a solution.`
         const comment = await response.comment
         if (comment?.id) {
           console.log(`Comment ID: ${comment.id}`)
+          return comment
         }
+        return null
       } else {
         throw new Error('Comment creation failed')
       }
@@ -744,6 +817,7 @@ Please analyze this issue and help implement a solution.`
       console.error(`Failed to create comment on issue ${issueId}:`, error)
       // Don't re-throw - just log the error so the edge worker doesn't crash
       // TODO: Implement retry logic or token refresh
+      return null
     }
   }
 

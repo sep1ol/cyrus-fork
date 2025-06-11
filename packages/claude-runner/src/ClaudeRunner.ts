@@ -84,7 +84,20 @@ export class ClaudeRunner extends EventEmitter {
     if (this.process.stdout) {
       console.log('[ClaudeRunner] Setting up stdout data handler')
       this.process.stdout.on('data', (chunk) => {
+        const chunkStr = chunk.toString()
         console.log(`[ClaudeRunner] Received stdout data, length: ${chunk.length} bytes`)
+        console.log(`[ClaudeRunner] First 200 chars of stdout: ${chunkStr.substring(0, 200)}`)
+        
+        // Log raw stdout to file for debugging
+        if (this.logStream) {
+          const stdoutEvent = {
+            type: 'stdout-raw',
+            data: chunkStr,
+            timestamp: new Date().toISOString()
+          }
+          this.logStream.write(JSON.stringify(stdoutEvent) + '\n')
+        }
+        
         this.parser?.processData(chunk)
       })
     } else {
@@ -117,18 +130,22 @@ export class ClaudeRunner extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      // Use heredoc for safe multi-line input
-      const heredocDelimiter = 'CLAUDE_INPUT_EOF'
-      const heredocInput = `${input}\n${heredocDelimiter}\n`
+      // Just send the input directly, no heredoc needed
+      const inputWithNewline = input.endsWith('\n') ? input : input + '\n'
 
-      console.log(`[ClaudeRunner] Writing to stdin, heredoc input length: ${heredocInput.length} characters`)
+      console.log(`[ClaudeRunner] Writing to stdin, input: "${inputWithNewline.trim()}"`)
       
-      this.process!.stdin!.write(heredocInput, (err) => {
+      this.process!.stdin!.write(inputWithNewline, (err) => {
         if (err) {
           console.error('[ClaudeRunner] Error writing to stdin:', err)
           reject(err)
         } else {
           console.log('[ClaudeRunner] Successfully wrote to stdin')
+          // Close stdin after writing for --continue mode
+          if (this.config.continueSession) {
+            this.process!.stdin!.end()
+            console.log('[ClaudeRunner] Closed stdin for continue mode')
+          }
           resolve()
         }
       })
@@ -270,8 +287,20 @@ export class ClaudeRunner extends EventEmitter {
       this.emit('error', new Error(`Claude process error: ${error.message}`))
     })
 
-    this.process.on('exit', (code) => {
-      console.log(`[ClaudeRunner] Process exited with code: ${code}`)
+    this.process.on('exit', (code, signal) => {
+      console.log(`[ClaudeRunner] Process exited with code: ${code}, signal: ${signal}`)
+      
+      // Log exit to file
+      if (this.logStream) {
+        const exitEvent = {
+          type: 'process-exit',
+          code,
+          signal,
+          timestamp: new Date().toISOString()
+        }
+        this.logStream.write(JSON.stringify(exitEvent) + '\n')
+      }
+      
       // Process any remaining data
       if (this.parser) {
         console.log('[ClaudeRunner] Processing any remaining parser data')
@@ -297,6 +326,16 @@ export class ClaudeRunner extends EventEmitter {
         const chunkStr = chunk.toString()
         console.log(`[ClaudeRunner] Received stderr data: ${chunkStr}`)
         stderrBuffer += chunkStr
+        
+        // Log to file for debugging
+        if (this.logStream) {
+          const errorEvent = {
+            type: 'stderr',
+            data: chunkStr,
+            timestamp: new Date().toISOString()
+          }
+          this.logStream.write(JSON.stringify(errorEvent) + '\n')
+        }
         // Emit complete lines
         const lines = stderrBuffer.split('\n')
         stderrBuffer = lines.pop() || ''
