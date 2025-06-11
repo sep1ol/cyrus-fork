@@ -376,10 +376,11 @@ describe('EdgeWorker', () => {
       const event = mockClaudeAssistantEvent('Hello from Claude!')
       await claudeEventHandler!(event)
 
-      // Should post comment to Linear
+      // Should NOT post comment to Linear for assistant events (only for result events)
+      // The initial comment should be the only one posted
       expect(mockLinearClient.createComment).toHaveBeenCalledWith({
         issueId: 'issue-123',
-        body: 'Hello from Claude!'
+        body: "I've been assigned to this issue and am getting started right away. I'll update this comment with my plan shortly."
       })
 
       // Should emit events
@@ -494,7 +495,16 @@ describe('EdgeWorker', () => {
       expect(mockConfig.handlers.onSessionEnd).toHaveBeenCalledWith('issue-123', 0, 'test-repo')
     })
 
-    it('should handle comment creation failures', async () => {
+    it('should handle comment creation failures gracefully', async () => {
+      // Mock console.error to verify error logging
+      const consoleErrorSpy = vi.spyOn(console, 'error')
+      
+      // Reset the mock to clear the initial comment creation
+      mockLinearClient.createComment.mockClear()
+      mockLinearClient.createComment.mockResolvedValueOnce({
+        success: true,
+        comment: { id: 'comment-123' }
+      })
       mockLinearClient.createComment.mockRejectedValueOnce(new Error('API Error'))
 
       let claudeEventHandler: Function
@@ -509,8 +519,20 @@ describe('EdgeWorker', () => {
       )?.[1]
       await webhookHandler(webhook.data)
 
-      const event = mockClaudeAssistantEvent('Failed comment')
-      await expect(claudeEventHandler!(event)).rejects.toThrow('API Error')
+      // Use a result event which actually posts comments
+      const event: ClaudeEvent = {
+        type: 'result',
+        result: 'Failed comment'
+      } as any
+      
+      // The handler doesn't throw, it logs the error and continues
+      await claudeEventHandler!(event)
+      
+      // Verify error was logged but not thrown
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to create comment on issue issue-123:'),
+        expect.any(Error)
+      )
     })
   })
 

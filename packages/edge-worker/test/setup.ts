@@ -90,9 +90,14 @@ export const mockClaudeAssistantEvent = (content: string): ClaudeEvent => ({
 } as any)
 
 export const mockClaudeToolEvent = (toolName: string, input: any): ClaudeEvent => ({
-  type: 'tool',
-  tool_name: toolName,
-  input
+  type: 'assistant',
+  message: {
+    content: [{
+      type: 'tool_use',
+      name: toolName,
+      input
+    }]
+  }
 } as any)
 
 export const mockClaudeErrorEvent = (message: string): ClaudeEvent => ({
