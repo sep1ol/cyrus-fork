@@ -359,12 +359,8 @@ export class EdgeWorker extends EventEmitter {
         const fullComment = await linearClient.comment({ id: comment.id })
         
         // Check if comment has a parent (is a reply in a thread)
-        // Linear stores parent reference as _parent with id property
-        if (fullComment._parent && fullComment._parent.id) {
-          // This comment is already a reply, use the same parent
-          replyParentId = fullComment._parent.id
-        } else if (fullComment.parent) {
-          // Try the async parent relation as fallback
+        // Try the async parent relation
+        if (fullComment.parent) {
           const parent = await fullComment.parent
           if (parent?.id) {
             replyParentId = parent.id
