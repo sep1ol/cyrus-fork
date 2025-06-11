@@ -156,6 +156,12 @@ export class ClaudeRunner extends EventEmitter {
       args.push(...this.config.allowedTools)
     }
 
+    // Add allowed directories
+    if (this.config.allowedDirectories && this.config.allowedDirectories.length > 0) {
+      args.push('--add-dir')
+      args.push(...this.config.allowedDirectories)
+    }
+
     return args
   }
 

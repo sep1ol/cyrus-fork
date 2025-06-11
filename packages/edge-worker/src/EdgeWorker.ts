@@ -251,11 +251,21 @@ export class EdgeWorker extends EventEmitter {
           isGitWorktree: false
         }
 
-    // Create Claude runner
+    // Download attachments before creating Claude runner
+    const attachmentResult = await this.downloadIssueAttachments(issue, repository, workspace.path)
+    
+    // Build allowed directories list
+    const allowedDirectories: string[] = []
+    if (attachmentResult.attachmentsDir) {
+      allowedDirectories.push(attachmentResult.attachmentsDir)
+    }
+
+    // Create Claude runner with attachment directory access
     const runner = new ClaudeRunner({
       claudePath: this.config.claudePath,
       workingDirectory: workspace.path,
       allowedTools: this.config.defaultAllowedTools || getAllTools(),
+      allowedDirectories,
       onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),
       onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
     })
@@ -286,11 +296,8 @@ export class EdgeWorker extends EventEmitter {
     this.emit('session:started', issue.id, issue, repository.id)
     this.config.handlers?.onSessionStart?.(issue.id, issue, repository.id)
 
-    // Download attachments before building prompt
-    const attachmentManifest = await this.downloadIssueAttachments(issue, repository, workspace.path)
-    
     // Build and send initial prompt with attachment manifest
-    const prompt = await this.buildInitialPrompt(issue, repository, attachmentManifest)
+    const prompt = await this.buildInitialPrompt(issue, repository, attachmentResult.manifest)
     await runner.sendInitialPrompt(prompt)
   }
 
@@ -693,7 +700,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Download attachments from Linear issue
    */
-  private async downloadIssueAttachments(issue: any, repository: RepositoryConfig, workspacePath: string): Promise<string> {
+  private async downloadIssueAttachments(issue: any, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
     try {
       const attachmentMap: Record<string, string> = {}
       const imageMap: Record<string, string> = {}
@@ -787,7 +794,7 @@ Please analyze this issue and help implement a solution.`
       }
       
       // Generate attachment manifest
-      return this.generateAttachmentManifest({
+      const manifest = this.generateAttachmentManifest({
         attachmentMap,
         imageMap,
         totalFound: allUrls.length,
@@ -796,9 +803,15 @@ Please analyze this issue and help implement a solution.`
         skipped: skippedCount,
         failed: failedCount
       })
+      
+      // Return manifest and directory path if any attachments were downloaded
+      return {
+        manifest,
+        attachmentsDir: attachmentCount > 0 ? attachmentsDir : null
+      }
     } catch (error) {
       console.error('Error downloading attachments:', error)
-      return '' // Return empty manifest on error
+      return { manifest: '', attachmentsDir: null } // Return empty manifest on error
     }
   }
   

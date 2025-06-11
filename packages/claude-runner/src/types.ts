@@ -5,6 +5,7 @@ export interface ClaudeRunnerConfig {
   claudePath: string
   workingDirectory?: string
   allowedTools?: string[]
+  allowedDirectories?: string[]
   continueSession?: boolean
   onEvent?: (event: ClaudeEvent) => void
   onError?: (error: Error) => void
