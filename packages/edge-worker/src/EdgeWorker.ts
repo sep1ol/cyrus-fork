@@ -348,14 +348,33 @@ export class EdgeWorker extends EventEmitter {
       return
     }
 
-    // Debug: log the comment structure
-    console.log(`[DEBUG] Comment data:`, JSON.stringify(comment, null, 2))
-
-    // Store the comment context for replies
-    // Linear threading rules:
-    // - If comment has NO parentId → it's a root comment, our reply should use its ID as parentId
-    // - If comment HAS a parentId → it's already a reply, our reply should use the SAME parentId
-    const replyParentId = comment.parentId || comment.id
+    // The webhook doesn't include parentId, so we need to fetch the full comment
+    let replyParentId = comment.id // Default to treating it as root
+    
+    try {
+      const linearClient = this.linearClients.get(repository.id)
+      if (linearClient && comment.id) {
+        // Fetch the full comment data - comment() expects an object with id property
+        // See: node_modules/.pnpm/@linear+sdk@39.0.0/node_modules/@linear/sdk/dist/_generated_sdk.d.ts:L.CommentQueryVariables
+        const fullComment = await linearClient.comment({ id: comment.id })
+        
+        // Check if comment has a parent (is a reply in a thread)
+        // Linear stores parent reference as _parent with id property
+        if (fullComment._parent && fullComment._parent.id) {
+          // This comment is already a reply, use the same parent
+          replyParentId = fullComment._parent.id
+        } else if (fullComment.parent) {
+          // Try the async parent relation as fallback
+          const parent = await fullComment.parent
+          if (parent?.id) {
+            replyParentId = parent.id
+          }
+        }
+        // If no parent found, replyParentId stays as comment.id (treat as root)
+      }
+    } catch (error) {
+      console.error('Failed to fetch full comment data:', error)
+    }
     
     this.issueToReplyContext.set(issue.id, {
       commentId: comment.id,
