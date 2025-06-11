@@ -270,7 +270,7 @@ export class EdgeWorker extends EventEmitter {
       workingDirectory: workspace.path,
       allowedTools: this.config.defaultAllowedTools || getAllTools(),
       allowedDirectories,
-      repositoryName: repository.name,
+      workspaceName: issue.identifier,
       onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),
       onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
     })
@@ -343,6 +343,7 @@ export class EdgeWorker extends EventEmitter {
       workingDirectory: session.workspace.path,
       allowedTools: this.config.defaultAllowedTools || getAllTools(),
       continueSession: true,
+      workspaceName: issue.identifier,
       onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),
       onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
     })
@@ -410,17 +411,26 @@ export class EdgeWorker extends EventEmitter {
         this.emit('claude:response', issueId, content, repositoryId)
         // Don't post assistant messages anymore - wait for result
       }
+      
+      // Also check for tool use in assistant messages
+      if ('message' in event && event.message && 'content' in event.message) {
+        const messageContent = Array.isArray(event.message.content) ? event.message.content : [event.message.content]
+        for (const item of messageContent) {
+          if (item && typeof item === 'object' && 'type' in item && item.type === 'tool_use') {
+            this.emit('claude:tool-use', issueId, item.name, item.input, repositoryId)
+            
+            // Handle TodoWrite tool specifically
+            if ('name' in item && item.name === 'TodoWrite' && 'input' in item && item.input?.todos) {
+              console.log(`[EdgeWorker] Detected TodoWrite tool use with ${item.input.todos.length} todos`)
+              await this.updateCommentWithTodos(issueId, item.input.todos, repositoryId)
+            }
+          }
+        }
+      }
     } else if (event.type === 'result' && 'result' in event && event.result) {
       // Post the final result to Linear as a reply to the initial comment
       const initialCommentId = this.issueToCommentId.get(issueId)
       await this.postComment(issueId, event.result, repositoryId, initialCommentId)
-    } else if (event.type === 'tool' && 'tool_name' in event) {
-      this.emit('claude:tool-use', issueId, event.tool_name, event.input, repositoryId)
-      
-      // Handle TodoWrite tool specifically
-      if (event.tool_name === 'TodoWrite' && event.input?.todos) {
-        await this.updateCommentWithTodos(issueId, event.input.todos, repositoryId)
-      }
     } else if (event.type === 'error' || event.type === 'tool_error') {
       const errorMessage = 'message' in event ? event.message : 'error' in event ? event.error : 'Unknown error'
       this.handleError(new Error(`Claude error: ${errorMessage}`))

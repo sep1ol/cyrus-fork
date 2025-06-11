@@ -7,7 +7,7 @@ export interface ClaudeRunnerConfig {
   allowedTools?: string[]
   allowedDirectories?: string[]
   continueSession?: boolean
-  repositoryName?: string
+  workspaceName?: string
   onEvent?: (event: ClaudeEvent) => void
   onError?: (error: Error) => void
   onExit?: (code: number | null) => void

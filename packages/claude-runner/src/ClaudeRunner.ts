@@ -318,21 +318,23 @@ export class ClaudeRunner extends EventEmitter {
    */
   private setupLogging(): void {
     try {
-      // Create logs directory structure: ~/.cyrus/logs/<repository-name>/
+      // Create logs directory structure: ~/.cyrus/logs/<workspace-name>/
       const cyrusDir = join(homedir(), '.cyrus')
       const logsDir = join(cyrusDir, 'logs')
       
-      // Get repository name from config or use 'default'
-      const repoName = this.config.repositoryName || 'default'
-      const repoLogsDir = join(logsDir, repoName)
+      // Get workspace name from config or extract from working directory
+      const workspaceName = this.config.workspaceName || 
+        (this.config.workingDirectory ? this.config.workingDirectory.split('/').pop() : 'default') || 
+        'default'
+      const workspaceLogsDir = join(logsDir, workspaceName)
       
       // Create directories
-      mkdirSync(repoLogsDir, { recursive: true })
+      mkdirSync(workspaceLogsDir, { recursive: true })
       
       // Create initial log file with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
       const logFileName = `session-${timestamp}.jsonl`
-      const logFilePath = join(repoLogsDir, logFileName)
+      const logFilePath = join(workspaceLogsDir, logFileName)
       
       console.log(`[ClaudeRunner] Creating log file at: ${logFilePath}`)
       this.logStream = createWriteStream(logFilePath, { flags: 'a' })
@@ -342,7 +344,7 @@ export class ClaudeRunner extends EventEmitter {
         type: 'session-metadata',
         startedAt: this.startedAt?.toISOString(),
         workingDirectory: this.config.workingDirectory,
-        repositoryName: repoName,
+        workspaceName: workspaceName,
         timestamp: new Date().toISOString()
       }
       this.logStream.write(JSON.stringify(metadata) + '\n')
@@ -365,12 +367,14 @@ export class ClaudeRunner extends EventEmitter {
       // Create new file with session ID
       const cyrusDir = join(homedir(), '.cyrus')
       const logsDir = join(cyrusDir, 'logs')
-      const repoName = this.config.repositoryName || 'default'
-      const repoLogsDir = join(logsDir, repoName)
+      const workspaceName = this.config.workspaceName || 
+        (this.config.workingDirectory ? this.config.workingDirectory.split('/').pop() : 'default') || 
+        'default'
+      const workspaceLogsDir = join(logsDir, workspaceName)
       
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
       const logFileName = `session-${this.sessionId}-${timestamp}.jsonl`
-      const logFilePath = join(repoLogsDir, logFileName)
+      const logFilePath = join(workspaceLogsDir, logFileName)
       
       console.log(`[ClaudeRunner] Updating log file to: ${logFilePath}`)
       this.logStream = createWriteStream(logFilePath, { flags: 'a' })
@@ -381,7 +385,7 @@ export class ClaudeRunner extends EventEmitter {
         sessionId: this.sessionId,
         startedAt: this.startedAt?.toISOString(),
         workingDirectory: this.config.workingDirectory,
-        repositoryName: repoName,
+        workspaceName: workspaceName,
         timestamp: new Date().toISOString()
       }
       this.logStream.write(JSON.stringify(metadata) + '\n')
