@@ -1,0 +1,12 @@
+# Environment variables
+.env.proxy
+.env
+
+# OAuth tokens storage
+oauth-tokens/
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log

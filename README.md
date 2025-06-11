@@ -1,4 +1,8 @@
-# Linear Claude Agent
+# Linear Claude Agent (Cyrus)
+
+> **🚧 ARCHITECTURE CHANGE IN PROGRESS**: This project is transitioning to an edge-proxy architecture. 
+> 
+> **[>>> READ THE EDGE-PROXY MASTER DOCUMENTATION <<<](./EDGE-PROXY-MASTER.md)** for current development status and next steps.
 
 <p align="center">
   <a href="https://ceedar.ai">
@@ -8,6 +12,10 @@
     <img src="https://github.com/ceedario/secret-agents/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
 </p>
+
+## ⚠️ Legacy Documentation Below
+
+The documentation below describes the original monolithic architecture. For the new edge-proxy architecture, see the master documentation linked above.
 
 A JavaScript application that integrates Linear with Claude Code to automate issue processing. This agent uses Linear's Agent API to assist with software development tasks by providing AI-powered responses in Linear issues.
 
@@ -25,6 +33,7 @@ https://github.com/user-attachments/assets/730fdf2e-3875-4255-8124-9b2377b086fc
 - Supports Linear's Agent API (assignable to issues, mentionable in comments)
 - OAuth authentication for secure API access
 - Webhook signature verification
+- **Edge Mode**: Run the agent as an edge worker that connects to a central proxy server
 
 ## How It Works
 
@@ -235,6 +244,52 @@ There are several ways to run the agent:
    
    # Then visit in your browser (replace with your ngrok URL):
    # https://your-ngrok-url.ngrok.io/oauth/reset
+   ```
+
+5. **Edge Mode** (connect to a central proxy server):
+   
+   First time setup:
+   ```bash
+   # Set your proxy URL in .env.cyrus:
+   PROXY_URL=https://your-proxy-url.com
+   
+   # Run edge worker - it will guide you through setup
+   pnpm run edge
+   ```
+   
+   The edge worker will:
+   - Open your browser for Linear OAuth authorization
+   - Guide you through repository configuration
+   - Save your settings to `.edge-config.json`
+   
+   Additional commands:
+   ```bash
+   # Add another repository to existing setup
+   pnpm run edge -- --setup
+   
+   # Connect a different Linear workspace
+   pnpm run edge -- --setup --new-workspace
+   ```
+   
+   For advanced users, you can also manually configure:
+   - Environment variables in `.env.cyrus`
+   - Multiple repositories in `repositories.json`
+   
+   Example `repositories.json`:
+   ```json
+   {
+     "repositories": [
+       {
+         "id": "repo1",
+         "name": "Main Repository",
+         "repositoryPath": "/path/to/main/repo",
+         "baseBranch": "main",
+         "linearWorkspaceId": "workspace-id-1",
+         "linearToken": "your-linear-oauth-token-1",
+         "workspaceBaseDir": "/path/to/workspaces/repo1"
+       }
+     ]
+   }
    ```
 
 ## Authentication Flow

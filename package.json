@@ -1,23 +1,19 @@
 {
-  "name": "linear-claude-agent",
+  "name": "cyrus-monorepo",
   "version": "1.0.0",
-  "description": "Integration between Linear and Claude for automated issue processing using Linear's Agent API",
-  "main": "index.mjs",
-  "bin": {
-    "linear-claude-agent": "./index.mjs"
-  },
+  "private": true,
+  "description": "Monorepo for Cyrus - Linear Claude Agent integration",
+  "packageManager": "pnpm@10.11.0",
   "type": "module",
   "scripts": {
-    "start": "node index.mjs",
-    "dev": "nodemon index.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage",
-    "oauth:server": "node scripts/start-auth-server.mjs",
-    "oauth:reset": "node scripts/reset-oauth.mjs"
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "test": "pnpm -r test",
+    "test:packages": "pnpm --filter './packages/*' test",
+    "test:packages:run": "pnpm --filter './packages/*' test:run",
+    "test:apps": "pnpm --filter './apps/*' test",
+    "typecheck": "pnpm -r typecheck"
   },
-  "packageManager": "pnpm@10.11.0",
   "keywords": [
     "linear",
     "claude",
@@ -26,9 +22,7 @@
     "anthropic",
     "ai",
     "agent",
-    "issue-tracker",
-    "webhook",
-    "oauth"
+    "monorepo"
   ],
   "author": "Ceedar",
   "license": "MIT",
@@ -36,20 +30,7 @@
     "type": "git",
     "url": "https://github.com/ceedaragents/cyrus"
   },
-  "dependencies": {
-    "@linear/sdk": "^39.0.0",
-    "child_process": "^1.0.2",
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0",
-    "file-type": "^21.0.0",
-    "fs-extra": "^11.3.0",
-    "node-fetch": "^2.7.0",
-    "path": "^0.12.7",
-    "zod": "^3.24.4"
-  },
   "devDependencies": {
-    "@vitest/ui": "^3.1.4",
-    "nodemon": "^2.0.22",
-    "vitest": "^3.1.4"
+    "typescript": "^5.3.3"
   }
 }

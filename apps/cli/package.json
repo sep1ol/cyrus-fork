@@ -1,0 +1,36 @@
+{
+  "name": "@cyrus/cli",
+  "version": "1.0.0",
+  "description": "CLI application for Cyrus",
+  "main": "app.mjs",
+  "bin": {
+    "cyrus": "./app.mjs"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node app.mjs",
+    "dev": "nodemon app.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@linear/sdk": "^39.0.0",
+    "@cyrus/core": "workspace:*",
+    "@cyrus/claude-parser": "workspace:*",
+    "@cyrus/claude-runner": "workspace:*",
+    "@cyrus/edge-worker": "workspace:*",
+    "@cyrus/ndjson-client": "workspace:*",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "file-type": "^21.0.0",
+    "fs-extra": "^11.3.0",
+    "node-fetch": "^2.7.0",
+    "open": "^10.0.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@vitest/ui": "^3.1.4",
+    "nodemon": "^2.0.22",
+    "vitest": "^3.1.4"
+  }
+}

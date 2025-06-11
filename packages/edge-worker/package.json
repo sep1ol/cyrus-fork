@@ -1,0 +1,39 @@
+{
+  "name": "@cyrus/edge-worker",
+  "version": "0.0.1",
+  "description": "Unified edge worker for processing Linear issues with Claude",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "prompt-template.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cyrus/claude-parser": "workspace:*",
+    "@cyrus/claude-runner": "workspace:*",
+    "@cyrus/core": "workspace:*",
+    "@cyrus/ndjson-client": "workspace:*",
+    "@linear/sdk": "^39.0.0",
+    "file-type": "^18.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^1.6.1",
+    "axios": "^1.6.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
