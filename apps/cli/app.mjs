@@ -404,7 +404,12 @@ class EdgeApp {
         proxyUrl,
         repositories,
         claudePath: process.env.CLAUDE_PATH || 'claude',
-        allowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || []
+        allowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
+        handlers: {
+          createWorkspace: async (issue, repository) => {
+            return this.createGitWorktree(issue, repository)
+          }
+        }
       }
       
       // Create and start EdgeWorker
@@ -475,6 +480,114 @@ class EdgeApp {
     })
   }
   
+  /**
+   * Create a git worktree for an issue
+   */
+  async createGitWorktree(issue, repository) {
+    const { execSync } = await import('child_process')
+    const { existsSync } = await import('fs')
+    const { join } = await import('path')
+    
+    try {
+      // Verify this is a git repository
+      try {
+        execSync('git rev-parse --git-dir', {
+          cwd: repository.repositoryPath,
+          stdio: 'pipe'
+        })
+      } catch (e) {
+        console.error(`${repository.repositoryPath} is not a git repository`)
+        throw new Error('Not a git repository')
+      }
+      
+      // Use Linear's preferred branch name, or generate one if not available
+      const branchName = issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+      const workspacePath = join(repository.workspaceBaseDir, issue.identifier)
+      
+      // Ensure workspace directory exists
+      execSync(`mkdir -p "${repository.workspaceBaseDir}"`, { 
+        cwd: repository.repositoryPath,
+        stdio: 'pipe'
+      })
+      
+      // Check if worktree already exists
+      try {
+        const worktrees = execSync('git worktree list --porcelain', {
+          cwd: repository.repositoryPath,
+          encoding: 'utf-8'
+        })
+        
+        if (worktrees.includes(workspacePath)) {
+          console.log(`Worktree already exists at ${workspacePath}, using existing`)
+          return {
+            path: workspacePath,
+            isGitWorktree: true
+          }
+        }
+      } catch (e) {
+        // git worktree command failed, continue with creation
+      }
+      
+      // Check if branch already exists
+      let createBranch = true
+      try {
+        execSync(`git rev-parse --verify "${branchName}"`, {
+          cwd: repository.repositoryPath,
+          stdio: 'pipe'
+        })
+        createBranch = false
+      } catch (e) {
+        // Branch doesn't exist, we'll create it
+      }
+      
+      // Create the worktree
+      console.log(`Creating git worktree at ${workspacePath} from ${repository.baseBranch}`)
+      const worktreeCmd = createBranch 
+        ? `git worktree add "${workspacePath}" -b "${branchName}" "${repository.baseBranch}"`
+        : `git worktree add "${workspacePath}" "${branchName}"`
+      
+      execSync(worktreeCmd, {
+        cwd: repository.repositoryPath,
+        stdio: 'pipe'
+      })
+      
+      // Check for secretagentsetup.sh script in the repository root
+      const setupScriptPath = join(repository.repositoryPath, 'secretagentsetup.sh')
+      if (existsSync(setupScriptPath)) {
+        console.log('Running secretagentsetup.sh in new worktree...')
+        try {
+          execSync('bash secretagentsetup.sh', {
+            cwd: workspacePath,
+            stdio: 'inherit',
+            env: {
+              ...process.env,
+              LINEAR_ISSUE_ID: issue.id,
+              LINEAR_ISSUE_IDENTIFIER: issue.identifier,
+              LINEAR_ISSUE_TITLE: issue.title
+            }
+          })
+        } catch (error) {
+          console.warn('Warning: secretagentsetup.sh failed:', error.message)
+          // Continue despite setup script failure
+        }
+      }
+      
+      return {
+        path: workspacePath,
+        isGitWorktree: true
+      }
+    } catch (error) {
+      console.error('Failed to create git worktree:', error.message)
+      // Fall back to regular directory if git worktree fails
+      const fallbackPath = join(repository.workspaceBaseDir, issue.identifier)
+      execSync(`mkdir -p "${fallbackPath}"`, { stdio: 'pipe' })
+      return {
+        path: fallbackPath,
+        isGitWorktree: false
+      }
+    }
+  }
+
   /**
    * Shut down the application
    */

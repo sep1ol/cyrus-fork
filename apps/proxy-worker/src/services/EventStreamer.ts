@@ -38,10 +38,15 @@ export class EventStreamer {
     console.log(`Edge worker ${obscuredId} connected for streaming with access to ${workspaceIds.length} workspace(s)`)
     
     // Forward request to durable object with workspace info
-    const url = new URL(request.url)
-    url.searchParams.set('workspaceIds', workspaceIds.join(','))
+    const internalUrl = `http://internal/events/stream?workspaceIds=${workspaceIds.join(',')}`
     
-    return durableObject.fetch(new Request(url, request))
+    const doRequest = new Request(internalUrl, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body
+    })
+    
+    return durableObject.fetch(doRequest)
   }
 
   /**

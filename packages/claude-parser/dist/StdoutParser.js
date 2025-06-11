@@ -15,28 +15,39 @@ export class StdoutParser extends EventEmitter {
      * Process a chunk of data from stdout
      */
     processData(data) {
-        this.lineBuffer += data.toString();
+        const dataStr = data.toString();
+        console.log('[StdoutParser] processData called with data length:', dataStr.length);
+        console.log('[StdoutParser] Raw data chunk:', JSON.stringify(dataStr.slice(0, 200) + (dataStr.length > 200 ? '...' : '')));
+        this.lineBuffer += dataStr;
+        console.log('[StdoutParser] Current buffer length:', this.lineBuffer.length);
         const lines = this.lineBuffer.split('\n');
+        console.log('[StdoutParser] Split into', lines.length, 'lines');
         // Process all complete lines except the last
         for (let i = 0; i < lines.length - 1; i++) {
             const line = lines[i]?.trim();
+            console.log(`[StdoutParser] Processing line ${i + 1}/${lines.length - 1}:`, line ? `"${line.slice(0, 100)}${line.length > 100 ? '...' : ''}"` : '(empty)');
             if (line) {
                 this.processLine(line);
             }
         }
         // Keep the last line in the buffer
         this.lineBuffer = lines[lines.length - 1] || '';
+        console.log('[StdoutParser] Remaining buffer:', this.lineBuffer.slice(0, 100) + (this.lineBuffer.length > 100 ? '...' : ''));
     }
     /**
      * Process any remaining data when stream ends
      */
     processEnd() {
+        console.log('[StdoutParser] processEnd called, buffer length:', this.lineBuffer.length);
         const line = this.lineBuffer.trim();
         if (line) {
+            console.log('[StdoutParser] Processing remaining buffer:', JSON.stringify(line.slice(0, 200) + (line.length > 200 ? '...' : '')));
             // The final line might contain multiple JSON objects
             const parts = line.split(/\r?\n/);
+            console.log('[StdoutParser] Split final buffer into', parts.length, 'parts');
             for (const part of parts) {
                 if (part.trim()) {
+                    console.log('[StdoutParser] Processing final part:', JSON.stringify(part.trim().slice(0, 100) + (part.trim().length > 100 ? '...' : '')));
                     this.processLine(part.trim());
                 }
             }

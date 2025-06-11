@@ -240,6 +240,8 @@ export class EdgeWorker extends EventEmitter {
    * Handle issue assignment
    */
   private async handleIssueAssigned(issue: any, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
+    
     // Post initial comment immediately
     const initialComment = await this.postInitialComment(issue.id, repository.id)
     
@@ -250,6 +252,8 @@ export class EdgeWorker extends EventEmitter {
           path: `${repository.workspaceBaseDir}/${issue.identifier}`,
           isGitWorktree: false
         }
+
+    console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`)
 
     // Download attachments before creating Claude runner
     const attachmentResult = await this.downloadIssueAttachments(issue, repository, workspace.path)
@@ -266,6 +270,7 @@ export class EdgeWorker extends EventEmitter {
       workingDirectory: workspace.path,
       allowedTools: this.config.defaultAllowedTools || getAllTools(),
       allowedDirectories,
+      repositoryName: repository.name,
       onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),
       onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
     })
@@ -297,8 +302,17 @@ export class EdgeWorker extends EventEmitter {
     this.config.handlers?.onSessionStart?.(issue.id, issue, repository.id)
 
     // Build and send initial prompt with attachment manifest
-    const prompt = await this.buildInitialPrompt(issue, repository, attachmentResult.manifest)
-    await runner.sendInitialPrompt(prompt)
+    console.log(`[EdgeWorker] Building initial prompt for issue ${issue.identifier}`)
+    try {
+      const prompt = await this.buildInitialPrompt(issue, repository, attachmentResult.manifest)
+      console.log(`[EdgeWorker] Initial prompt built successfully, length: ${prompt.length} characters`)
+      console.log(`[EdgeWorker] Sending initial prompt to Claude runner`)
+      await runner.sendInitialPrompt(prompt)
+      console.log(`[EdgeWorker] Initial prompt sent successfully`)
+    } catch (error) {
+      console.error(`[EdgeWorker] Error in prompt building/sending:`, error)
+      throw error
+    }
   }
 
   /**
@@ -347,6 +361,20 @@ export class EdgeWorker extends EventEmitter {
    * Handle issue unassignment
    */
   private async handleIssueUnassigned(issue: any, repository: RepositoryConfig): Promise<void> {
+    // Check if there's an active session for this issue
+    const session = this.sessionManager.getSession(issue.id)
+    const initialCommentId = this.issueToCommentId.get(issue.id)
+    
+    // Post farewell comment if there's an active session
+    if (session && initialCommentId) {
+      await this.postComment(
+        issue.id,
+        "I've been unassigned and am stopping work now.",
+        repository.id,
+        initialCommentId  // Post as reply to initial comment
+      )
+    }
+    
     // Kill Claude process
     const runner = this.claudeRunners.get(issue.id)
     if (runner) {
@@ -358,6 +386,9 @@ export class EdgeWorker extends EventEmitter {
     this.sessionManager.removeSession(issue.id)
     const repoId = this.sessionToRepo.get(issue.id)
     this.sessionToRepo.delete(issue.id)
+    
+    // Clean up comment ID mapping
+    this.issueToCommentId.delete(issue.id)
 
     // Emit events
     this.emit('session:ended', issue.id, null, repoId || repository.id)
@@ -380,8 +411,9 @@ export class EdgeWorker extends EventEmitter {
         // Don't post assistant messages anymore - wait for result
       }
     } else if (event.type === 'result' && 'result' in event && event.result) {
-      // Post the final result to Linear
-      await this.postComment(issueId, event.result, repositoryId)
+      // Post the final result to Linear as a reply to the initial comment
+      const initialCommentId = this.issueToCommentId.get(issueId)
+      await this.postComment(issueId, event.result, repositoryId, initialCommentId)
     } else if (event.type === 'tool' && 'tool_name' in event) {
       this.emit('claude:tool-use', issueId, event.tool_name, event.input, repositoryId)
       
@@ -437,6 +469,7 @@ export class EdgeWorker extends EventEmitter {
    * Build initial prompt for issue
    */
   private async buildInitialPrompt(issue: any, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
+    console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
     try {
       // Use custom template if provided (repository-specific takes precedence)
       let templatePath = repository.promptTemplatePath || this.config.features?.promptTemplatePath
@@ -449,7 +482,9 @@ export class EdgeWorker extends EventEmitter {
       }
 
       // Load the template
+      console.log(`[EdgeWorker] Loading prompt template from: ${templatePath}`)
       const template = await readFile(templatePath, 'utf-8')
+      console.log(`[EdgeWorker] Template loaded, length: ${template.length} characters`)
       
       // Get comment history
       const linearClient = this.linearClients.get(repository.id)
@@ -493,12 +528,16 @@ export class EdgeWorker extends EventEmitter {
       
       // Append attachment manifest if provided
       if (attachmentManifest) {
-        return prompt + '\n\n' + attachmentManifest
+        console.log(`[EdgeWorker] Adding attachment manifest, length: ${attachmentManifest.length} characters`)
+        const finalPrompt = prompt + '\n\n' + attachmentManifest
+        console.log(`[EdgeWorker] Final prompt with attachments, total length: ${finalPrompt.length} characters`)
+        return finalPrompt
       }
-        
+      
+      console.log(`[EdgeWorker] Returning prompt without attachments, length: ${prompt.length} characters`)
       return prompt
     } catch (error) {
-      console.error('Failed to load prompt template:', error)
+      console.error('[EdgeWorker] Failed to load prompt template:', error)
       
       // Fallback to simple prompt
       return `Please help me with the following Linear issue:
@@ -607,7 +646,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Post a comment to Linear
    */
-  private async postComment(issueId: string, body: string, repositoryId: string): Promise<void> {
+  private async postComment(issueId: string, body: string, repositoryId: string, parentId?: string): Promise<void> {
     try {
       // Get the Linear client for this repository
       const linearClient = this.linearClients.get(repositoryId)
@@ -618,6 +657,11 @@ Please analyze this issue and help implement a solution.`
       const commentData: any = {
         issueId,
         body
+      }
+
+      // Add parent ID if provided (for reply)
+      if (parentId) {
+        commentData.parentId = parentId
       }
 
       const response = await linearClient.createComment(commentData)

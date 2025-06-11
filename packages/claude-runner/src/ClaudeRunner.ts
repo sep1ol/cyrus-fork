@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events'
 import { spawn, type ChildProcess } from 'child_process'
-import { mkdirSync } from 'fs'
+import { mkdirSync, createWriteStream, type WriteStream } from 'fs'
+import { join } from 'path'
+import { homedir } from 'os'
 import { StdoutParser, type ClaudeEvent, type ErrorEvent, type ToolErrorEvent } from '@cyrus/claude-parser'
 import type { ClaudeRunnerConfig, ClaudeRunnerEvents, ClaudeProcessInfo } from './types.js'
 
@@ -17,6 +19,8 @@ export class ClaudeRunner extends EventEmitter {
   private process: ChildProcess | null = null
   private parser: StdoutParser | null = null
   private startedAt: Date | null = null
+  private logStream: WriteStream | null = null
+  private sessionId: string | null = null
 
   constructor(config: ClaudeRunnerConfig) {
     super()
@@ -56,6 +60,7 @@ export class ClaudeRunner extends EventEmitter {
     }
 
     // Spawn the process
+    console.log('[ClaudeRunner] Spawning Claude process...')
     this.process = spawn('sh', ['-c', command], {
       cwd: this.config.workingDirectory,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -63,6 +68,7 @@ export class ClaudeRunner extends EventEmitter {
     })
 
     this.startedAt = new Date()
+    console.log(`[ClaudeRunner] Process spawned with PID: ${this.process.pid}`)
 
     // Set up stdout parser
     this.parser = new StdoutParser()
@@ -70,12 +76,26 @@ export class ClaudeRunner extends EventEmitter {
 
     // Handle process events
     this.setupProcessEvents()
+    
+    // Set up logging
+    this.setupLogging()
 
     // Pipe stdout through parser
     if (this.process.stdout) {
+      console.log('[ClaudeRunner] Setting up stdout data handler')
       this.process.stdout.on('data', (chunk) => {
+        console.log(`[ClaudeRunner] Received stdout data, length: ${chunk.length} bytes`)
         this.parser?.processData(chunk)
       })
+    } else {
+      console.error('[ClaudeRunner] Warning: process.stdout is null')
+    }
+    
+    // Check stdin availability
+    if (this.process.stdin) {
+      console.log('[ClaudeRunner] stdin is available')
+    } else {
+      console.error('[ClaudeRunner] Warning: process.stdin is null')
     }
 
     return {
@@ -89,7 +109,10 @@ export class ClaudeRunner extends EventEmitter {
    * Send input to Claude
    */
   async sendInput(input: string): Promise<void> {
+    console.log(`[ClaudeRunner] sendInput called with input length: ${input.length} characters`)
+    
     if (!this.process || !this.process.stdin) {
+      console.error('[ClaudeRunner] No active Claude process or stdin')
       throw new Error('No active Claude process')
     }
 
@@ -98,10 +121,14 @@ export class ClaudeRunner extends EventEmitter {
       const heredocDelimiter = 'CLAUDE_INPUT_EOF'
       const heredocInput = `${input}\n${heredocDelimiter}\n`
 
+      console.log(`[ClaudeRunner] Writing to stdin, heredoc input length: ${heredocInput.length} characters`)
+      
       this.process!.stdin!.write(heredocInput, (err) => {
         if (err) {
+          console.error('[ClaudeRunner] Error writing to stdin:', err)
           reject(err)
         } else {
+          console.log('[ClaudeRunner] Successfully wrote to stdin')
           resolve()
         }
       })
@@ -112,8 +139,16 @@ export class ClaudeRunner extends EventEmitter {
    * Send initial prompt and close stdin
    */
   async sendInitialPrompt(prompt: string): Promise<void> {
-    await this.sendInput(prompt)
-    this.process?.stdin?.end()
+    console.log(`[ClaudeRunner] sendInitialPrompt called with prompt length: ${prompt.length} characters`)
+    try {
+      await this.sendInput(prompt)
+      console.log('[ClaudeRunner] sendInput completed, closing stdin')
+      this.process?.stdin?.end()
+      console.log('[ClaudeRunner] stdin closed successfully')
+    } catch (error) {
+      console.error('[ClaudeRunner] Error in sendInitialPrompt:', error)
+      throw error
+    }
   }
 
   /**
@@ -173,6 +208,18 @@ export class ClaudeRunner extends EventEmitter {
 
     // Forward all events
     this.parser.on('message', (event: ClaudeEvent) => {
+      // Capture session ID from the first event if available
+      if (!this.sessionId && 'sessionId' in event && event.sessionId) {
+        this.sessionId = event.sessionId as string
+        console.log(`[ClaudeRunner] Captured session ID: ${this.sessionId}`)
+        this.updateLogFilePath()
+      }
+      
+      // Log the event
+      if (this.logStream) {
+        this.logStream.write(JSON.stringify(event) + '\n')
+      }
+      
       this.emit('message', event)
     })
 
@@ -224,31 +271,123 @@ export class ClaudeRunner extends EventEmitter {
     })
 
     this.process.on('exit', (code) => {
+      console.log(`[ClaudeRunner] Process exited with code: ${code}`)
       // Process any remaining data
       if (this.parser) {
+        console.log('[ClaudeRunner] Processing any remaining parser data')
         this.parser.processEnd()
       }
 
       this.emit('exit', code)
       this.process = null
       this.parser = null
+      
+      // Close log stream
+      if (this.logStream) {
+        this.logStream.end()
+        this.logStream = null
+      }
     })
 
     // Capture stderr
     if (this.process.stderr) {
+      console.log('[ClaudeRunner] Setting up stderr handler')
       let stderrBuffer = ''
       this.process.stderr.on('data', (chunk) => {
-        stderrBuffer += chunk.toString()
+        const chunkStr = chunk.toString()
+        console.log(`[ClaudeRunner] Received stderr data: ${chunkStr}`)
+        stderrBuffer += chunkStr
         // Emit complete lines
         const lines = stderrBuffer.split('\n')
         stderrBuffer = lines.pop() || ''
         
         for (const line of lines) {
           if (line.trim()) {
+            console.error(`[ClaudeRunner] stderr line: ${line}`)
             this.emit('error', new Error(`Claude stderr: ${line}`))
           }
         }
       })
+    } else {
+      console.error('[ClaudeRunner] Warning: process.stderr is null')
+    }
+  }
+
+  /**
+   * Set up logging to .cyrus directory
+   */
+  private setupLogging(): void {
+    try {
+      // Create logs directory structure: ~/.cyrus/logs/<repository-name>/
+      const cyrusDir = join(homedir(), '.cyrus')
+      const logsDir = join(cyrusDir, 'logs')
+      
+      // Get repository name from config or use 'default'
+      const repoName = this.config.repositoryName || 'default'
+      const repoLogsDir = join(logsDir, repoName)
+      
+      // Create directories
+      mkdirSync(repoLogsDir, { recursive: true })
+      
+      // Create initial log file with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const logFileName = `session-${timestamp}.jsonl`
+      const logFilePath = join(repoLogsDir, logFileName)
+      
+      console.log(`[ClaudeRunner] Creating log file at: ${logFilePath}`)
+      this.logStream = createWriteStream(logFilePath, { flags: 'a' })
+      
+      // Write initial metadata
+      const metadata = {
+        type: 'session-metadata',
+        startedAt: this.startedAt?.toISOString(),
+        workingDirectory: this.config.workingDirectory,
+        repositoryName: repoName,
+        timestamp: new Date().toISOString()
+      }
+      this.logStream.write(JSON.stringify(metadata) + '\n')
+      
+    } catch (error) {
+      console.error('[ClaudeRunner] Failed to set up logging:', error)
+    }
+  }
+  
+  /**
+   * Update log file path when session ID is captured
+   */
+  private updateLogFilePath(): void {
+    if (!this.sessionId || !this.logStream) return
+    
+    try {
+      // Close current stream
+      this.logStream.end()
+      
+      // Create new file with session ID
+      const cyrusDir = join(homedir(), '.cyrus')
+      const logsDir = join(cyrusDir, 'logs')
+      const repoName = this.config.repositoryName || 'default'
+      const repoLogsDir = join(logsDir, repoName)
+      
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      const logFileName = `session-${this.sessionId}-${timestamp}.jsonl`
+      const logFilePath = join(repoLogsDir, logFileName)
+      
+      console.log(`[ClaudeRunner] Updating log file to: ${logFilePath}`)
+      this.logStream = createWriteStream(logFilePath, { flags: 'a' })
+      
+      // Write session metadata
+      const metadata = {
+        type: 'session-metadata',
+        sessionId: this.sessionId,
+        startedAt: this.startedAt?.toISOString(),
+        workingDirectory: this.config.workingDirectory,
+        repositoryName: repoName,
+        timestamp: new Date().toISOString()
+      }
+      this.logStream.write(JSON.stringify(metadata) + '\n')
+      
+    } catch (error) {
+      console.error('[ClaudeRunner] Failed to update log file path:', error)
     }
   }
 }

@@ -45,12 +45,20 @@ export class StdoutParser extends EventEmitter {
    * Process a chunk of data from stdout
    */
   processData(data: Buffer | string): void {
-    this.lineBuffer += data.toString()
+    const dataStr = data.toString()
+    console.log('[StdoutParser] processData called with data length:', dataStr.length)
+    console.log('[StdoutParser] Raw data chunk:', JSON.stringify(dataStr.slice(0, 200) + (dataStr.length > 200 ? '...' : '')))
+    
+    this.lineBuffer += dataStr
+    console.log('[StdoutParser] Current buffer length:', this.lineBuffer.length)
+    
     const lines = this.lineBuffer.split('\n')
+    console.log('[StdoutParser] Split into', lines.length, 'lines')
 
     // Process all complete lines except the last
     for (let i = 0; i < lines.length - 1; i++) {
       const line = lines[i]?.trim()
+      console.log(`[StdoutParser] Processing line ${i + 1}/${lines.length - 1}:`, line ? `"${line.slice(0, 100)}${line.length > 100 ? '...' : ''}"` : '(empty)')
       if (line) {
         this.processLine(line)
       }
@@ -58,18 +66,23 @@ export class StdoutParser extends EventEmitter {
 
     // Keep the last line in the buffer
     this.lineBuffer = lines[lines.length - 1] || ''
+    console.log('[StdoutParser] Remaining buffer:', this.lineBuffer.slice(0, 100) + (this.lineBuffer.length > 100 ? '...' : ''))
   }
 
   /**
    * Process any remaining data when stream ends
    */
   processEnd(): void {
+    console.log('[StdoutParser] processEnd called, buffer length:', this.lineBuffer.length)
     const line = this.lineBuffer.trim()
     if (line) {
+      console.log('[StdoutParser] Processing remaining buffer:', JSON.stringify(line.slice(0, 200) + (line.length > 200 ? '...' : '')))
       // The final line might contain multiple JSON objects
       const parts = line.split(/\r?\n/)
+      console.log('[StdoutParser] Split final buffer into', parts.length, 'parts')
       for (const part of parts) {
         if (part.trim()) {
+          console.log('[StdoutParser] Processing final part:', JSON.stringify(part.trim().slice(0, 100) + (part.trim().length > 100 ? '...' : '')))
           this.processLine(part.trim())
         }
       }
@@ -81,23 +94,31 @@ export class StdoutParser extends EventEmitter {
    * Process a single line of JSON
    */
   private processLine(line: string): void {
+    console.log('[StdoutParser] processLine called with:', JSON.stringify(line.slice(0, 200) + (line.length > 200 ? '...' : '')))
     try {
       const jsonResponse = JSON.parse(line)
+      console.log('[StdoutParser] Successfully parsed JSON:', JSON.stringify(jsonResponse).slice(0, 200) + (JSON.stringify(jsonResponse).length > 200 ? '...' : ''))
+      console.log('[StdoutParser] Message type:', jsonResponse.type)
       
       // Emit raw line event
+      console.log('[StdoutParser] Emitting "line" event')
       this.emit('line', line)
 
       // Add session ID if provided
       if (this.options.sessionId && !jsonResponse.session_id) {
         jsonResponse.session_id = this.options.sessionId
+        console.log('[StdoutParser] Added session ID:', this.options.sessionId)
       }
 
       // Emit generic message event
+      console.log('[StdoutParser] Emitting "message" event for type:', jsonResponse.type)
       this.emit('message', jsonResponse)
 
       // Process specific message types
       this.processMessage(jsonResponse)
     } catch (err) {
+      console.error('[StdoutParser] JSON parse error:', err)
+      console.error('[StdoutParser] Failed line:', line)
       this.emit('error', new Error(`Failed to parse JSON: ${err instanceof Error ? err.message : String(err)}\nLine: ${line}`))
     }
   }
@@ -106,28 +127,38 @@ export class StdoutParser extends EventEmitter {
    * Process a parsed message based on its type
    */
   private processMessage(message: any): void {
+    console.log('[StdoutParser] processMessage called with type:', message.type)
+    
     // Check for token limit errors first
     if (this.isTokenLimitError(message)) {
+      console.log('[StdoutParser] Token limit error detected')
       this.handleTokenLimitError()
       return
     }
 
     switch (message.type) {
       case 'assistant':
+        console.log('[StdoutParser] Processing assistant message')
         this.processAssistantMessage(message as AssistantEvent)
         break
       
       case 'result':
+        console.log('[StdoutParser] Emitting "result" event')
         this.emit('result', message as ResultEvent)
         break
       
       case 'error':
+        console.log('[StdoutParser] Emitting "error" event for error type')
         this.emit('error', message as ErrorEvent)
         break
       
       case 'tool_error':
+        console.log('[StdoutParser] Emitting "error" event for tool_error type')
         this.emit('error', message as ToolErrorEvent)
         break
+        
+      default:
+        console.log('[StdoutParser] Unknown message type:', message.type)
     }
   }
 
@@ -135,30 +166,41 @@ export class StdoutParser extends EventEmitter {
    * Process assistant messages
    */
   private processAssistantMessage(event: AssistantEvent): void {
+    console.log('[StdoutParser] processAssistantMessage called')
+    console.log('[StdoutParser] Emitting "assistant" event')
     this.emit('assistant', event)
 
     const message = event.message
     let currentText = ''
 
+    console.log('[StdoutParser] Message content type:', typeof message.content, Array.isArray(message.content) ? '(array)' : '(not array)')
+    console.log('[StdoutParser] Stop reason:', message.stop_reason)
+
     // Extract content from message
     if (message.content && Array.isArray(message.content)) {
+      console.log('[StdoutParser] Processing', message.content.length, 'content items')
       for (const content of message.content) {
+        console.log('[StdoutParser] Content type:', content.type)
         if (content.type === 'text') {
           const textContent = content as TextContent
           currentText += textContent.text
+          console.log('[StdoutParser] Emitting "text" event with:', textContent.text.slice(0, 100) + (textContent.text.length > 100 ? '...' : ''))
           this.emit('text', textContent.text)
         } else if (content.type === 'tool_use') {
           const toolContent = content as ToolUseContent
+          console.log('[StdoutParser] Emitting "tool-use" event for tool:', toolContent.name)
           this.emit('tool-use', toolContent.name, toolContent.input)
         }
       }
     } else if (typeof message.content === 'string') {
       currentText = message.content
+      console.log('[StdoutParser] String content, emitting "text" event with:', currentText.slice(0, 100) + (currentText.length > 100 ? '...' : ''))
       this.emit('text', currentText)
     }
 
     // Check for token limit in text
     if (currentText === 'Prompt is too long') {
+      console.log('[StdoutParser] Token limit detected in text content')
       this.handleTokenLimitError()
       return
     }
@@ -166,10 +208,12 @@ export class StdoutParser extends EventEmitter {
     // Store last assistant text
     if (currentText.trim()) {
       this.lastAssistantText = currentText
+      console.log('[StdoutParser] Stored last assistant text, length:', currentText.length)
     }
 
     // Check for end of turn
     if (message.stop_reason === 'end_turn') {
+      console.log('[StdoutParser] End of turn detected, emitting "end-turn" event')
       this.emit('end-turn', this.lastAssistantText)
     }
   }
