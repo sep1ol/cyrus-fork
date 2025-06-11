@@ -194,13 +194,13 @@ describe('ClaudeRunner', () => {
   })
 
   describe('sendInput()', () => {
-    it('should send input with heredoc delimiter', async () => {
+    it('should send input with newline', async () => {
       runner.spawn()
       
       await runner.sendInput('Hello Claude')
       
       expect(mockStdin.write).toHaveBeenCalledWith(
-        'Hello Claude\nCLAUDE_INPUT_EOF\n',
+        'Hello Claude\n',
         expect.any(Function)
       )
     })
@@ -212,7 +212,7 @@ describe('ClaudeRunner', () => {
       await runner.sendInput(multilineInput)
       
       expect(mockStdin.write).toHaveBeenCalledWith(
-        'Line 1\nLine 2\nLine 3\nCLAUDE_INPUT_EOF\n',
+        'Line 1\nLine 2\nLine 3\n',
         expect.any(Function)
       )
     })
