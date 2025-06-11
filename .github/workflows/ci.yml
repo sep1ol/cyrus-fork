@@ -35,6 +35,9 @@ jobs:
         ANTHROPIC_API_KEY=test
         EOF
     
+    - name: Build packages
+      run: pnpm build
+    
     - run: pnpm -r test:run
     
     - name: Upload coverage
