@@ -6,9 +6,11 @@ import { SessionManager, Session } from '@cyrus/core'
 import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
 import type { WebhookEvent, StatusUpdate } from '@cyrus/ndjson-client'
 import type { ClaudeEvent } from '@cyrus/claude-parser'
-import { readFile } from 'fs/promises'
-import { resolve, dirname } from 'path'
+import { readFile, writeFile, mkdir, rename } from 'fs/promises'
+import { resolve, dirname, join, basename, extname } from 'path'
 import { fileURLToPath } from 'url'
+import { homedir } from 'os'
+import { fileTypeFromBuffer } from 'file-type'
 
 export declare interface EdgeWorker {
   on<K extends keyof EdgeWorkerEvents>(event: K, listener: EdgeWorkerEvents[K]): this
@@ -284,8 +286,11 @@ export class EdgeWorker extends EventEmitter {
     this.emit('session:started', issue.id, issue, repository.id)
     this.config.handlers?.onSessionStart?.(issue.id, issue, repository.id)
 
-    // Build and send initial prompt
-    const prompt = await this.buildInitialPrompt(issue, repository)
+    // Download attachments before building prompt
+    const attachmentManifest = await this.downloadIssueAttachments(issue, repository, workspace.path)
+    
+    // Build and send initial prompt with attachment manifest
+    const prompt = await this.buildInitialPrompt(issue, repository, attachmentManifest)
     await runner.sendInitialPrompt(prompt)
   }
 
@@ -424,7 +429,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Build initial prompt for issue
    */
-  private async buildInitialPrompt(issue: any, repository: RepositoryConfig): Promise<string> {
+  private async buildInitialPrompt(issue: any, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     try {
       // Use custom template if provided (repository-specific takes precedence)
       let templatePath = repository.promptTemplatePath || this.config.features?.promptTemplatePath
@@ -478,6 +483,11 @@ export class EdgeWorker extends EventEmitter {
           'Will be created based on issue' : repository.repositoryPath)
         .replace(/{{base_branch}}/g, repository.baseBranch)
         .replace(/{{branch_name}}/g, issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`)
+      
+      // Append attachment manifest if provided
+      if (attachmentManifest) {
+        return prompt + '\n\n' + attachmentManifest
+      }
         
       return prompt
     } catch (error) {
@@ -664,5 +674,249 @@ Please analyze this issue and help implement a solution.`
       const statusEmoji = todo.status === 'in_progress' ? ' 🔄' : ''
       return `- ${checkbox} ${priorityEmoji} ${todo.content}${statusEmoji}`
     }).join('\n')
+  }
+  
+  /**
+   * Extract attachment URLs from text (issue description or comment)
+   */
+  private extractAttachmentUrls(text: string): string[] {
+    if (!text) return []
+    
+    // Match URLs that start with https://uploads.linear.app
+    const regex = /https:\/\/uploads\.linear\.app\/[^\s<>"')]+/gi
+    const matches = text.match(regex) || []
+    
+    // Remove duplicates
+    return [...new Set(matches)]
+  }
+  
+  /**
+   * Download attachments from Linear issue
+   */
+  private async downloadIssueAttachments(issue: any, repository: RepositoryConfig, workspacePath: string): Promise<string> {
+    try {
+      const attachmentMap: Record<string, string> = {}
+      const imageMap: Record<string, string> = {}
+      let attachmentCount = 0
+      let imageCount = 0
+      let skippedCount = 0
+      let failedCount = 0
+      const maxAttachments = 10
+      
+      // Create attachments directory in home directory
+      const workspaceFolderName = basename(workspacePath)
+      const attachmentsDir = join(
+        homedir(),
+        '.cyrus',
+        workspaceFolderName,
+        'attachments'
+      )
+      
+      // Ensure directory exists
+      await mkdir(attachmentsDir, { recursive: true })
+      
+      // Extract URLs from issue description
+      const descriptionUrls = this.extractAttachmentUrls(issue.description)
+      
+      // Extract URLs from comments if available
+      const commentUrls: string[] = []
+      const linearClient = this.linearClients.get(repository.id)
+      if (linearClient && issue.id) {
+        try {
+          const comments = await linearClient.comments({
+            filter: { issue: { id: { eq: issue.id } } }
+          })
+          const commentNodes = await comments.nodes
+          for (const comment of commentNodes) {
+            const urls = this.extractAttachmentUrls(comment.body)
+            commentUrls.push(...urls)
+          }
+        } catch (error) {
+          console.error('Failed to fetch comments for attachments:', error)
+        }
+      }
+      
+      // Combine and deduplicate all URLs
+      const allUrls = [...new Set([...descriptionUrls, ...commentUrls])]
+      
+      console.log(`Found ${allUrls.length} unique attachment URLs in issue ${issue.identifier}`)
+      
+      if (allUrls.length > maxAttachments) {
+        console.warn(`Warning: Found ${allUrls.length} attachments but limiting to ${maxAttachments}. Skipping ${allUrls.length - maxAttachments} attachments.`)
+      }
+      
+      // Download attachments up to the limit
+      for (const url of allUrls) {
+        if (attachmentCount >= maxAttachments) {
+          skippedCount++
+          continue
+        }
+        
+        // Generate a temporary filename
+        const tempFilename = `attachment_${attachmentCount + 1}.tmp`
+        const tempPath = join(attachmentsDir, tempFilename)
+        
+        const result = await this.downloadAttachment(url, tempPath, repository.linearToken)
+        
+        if (result.success) {
+          // Determine the final filename based on type
+          let finalFilename: string
+          if (result.isImage) {
+            imageCount++
+            finalFilename = `image_${imageCount}${result.fileType || '.png'}`
+          } else {
+            finalFilename = `attachment_${attachmentCount + 1}${result.fileType || ''}`
+          }
+          
+          const finalPath = join(attachmentsDir, finalFilename)
+          
+          // Rename the file to include the correct extension
+          await rename(tempPath, finalPath)
+          
+          // Store in appropriate map
+          if (result.isImage) {
+            imageMap[url] = finalPath
+          } else {
+            attachmentMap[url] = finalPath
+          }
+          attachmentCount++
+        } else {
+          failedCount++
+          console.warn(`Failed to download attachment: ${url}`)
+        }
+      }
+      
+      // Generate attachment manifest
+      return this.generateAttachmentManifest({
+        attachmentMap,
+        imageMap,
+        totalFound: allUrls.length,
+        downloaded: attachmentCount,
+        imagesDownloaded: imageCount,
+        skipped: skippedCount,
+        failed: failedCount
+      })
+    } catch (error) {
+      console.error('Error downloading attachments:', error)
+      return '' // Return empty manifest on error
+    }
+  }
+  
+  /**
+   * Download a single attachment from Linear
+   */
+  private async downloadAttachment(
+    attachmentUrl: string, 
+    destinationPath: string, 
+    linearToken: string
+  ): Promise<{ success: boolean, fileType?: string, isImage?: boolean }> {
+    try {
+      console.log(`Downloading attachment from: ${attachmentUrl}`)
+      
+      const response = await fetch(attachmentUrl, {
+        headers: {
+          'Authorization': `Bearer ${linearToken}`
+        }
+      })
+      
+      if (!response.ok) {
+        console.error(`Attachment download failed: ${response.status} ${response.statusText}`)
+        return { success: false }
+      }
+      
+      const buffer = Buffer.from(await response.arrayBuffer())
+      
+      // Detect the file type from the buffer
+      const fileType = await fileTypeFromBuffer(buffer)
+      let detectedExtension: string | undefined = undefined
+      let isImage = false
+      
+      if (fileType) {
+        detectedExtension = `.${fileType.ext}`
+        isImage = fileType.mime.startsWith('image/')
+        console.log(`Detected file type: ${fileType.mime} (${fileType.ext}), is image: ${isImage}`)
+      } else {
+        // Try to get extension from URL
+        const urlPath = new URL(attachmentUrl).pathname
+        const urlExt = extname(urlPath)
+        if (urlExt) {
+          detectedExtension = urlExt
+          console.log(`Using extension from URL: ${detectedExtension}`)
+        }
+      }
+      
+      // Write the attachment to disk
+      await writeFile(destinationPath, buffer)
+      
+      console.log(`Successfully downloaded attachment to: ${destinationPath}`)
+      return { success: true, fileType: detectedExtension, isImage }
+    } catch (error) {
+      console.error(`Error downloading attachment:`, error)
+      return { success: false }
+    }
+  }
+  
+  /**
+   * Generate a markdown section describing downloaded attachments
+   */
+  private generateAttachmentManifest(downloadResult: {
+    attachmentMap: Record<string, string>
+    imageMap: Record<string, string>
+    totalFound: number
+    downloaded: number
+    imagesDownloaded: number
+    skipped: number
+    failed: number
+  }): string {
+    const { attachmentMap, imageMap, totalFound, downloaded, imagesDownloaded, skipped, failed } = downloadResult
+    
+    let manifest = '\n## Downloaded Attachments\n\n'
+    
+    if (totalFound === 0) {
+      manifest += 'No attachments were found in this issue.\n'
+      return manifest
+    }
+    
+    manifest += `Found ${totalFound} attachments. Downloaded ${downloaded}`
+    if (imagesDownloaded > 0) {
+      manifest += ` (including ${imagesDownloaded} images)`
+    }
+    if (skipped > 0) {
+      manifest += `, skipped ${skipped} due to ${downloaded} attachment limit`
+    }
+    if (failed > 0) {
+      manifest += `, failed to download ${failed}`
+    }
+    manifest += '.\n\n'
+    
+    if (failed > 0) {
+      manifest += '**Note**: Some attachments failed to download. This may be due to authentication issues or the files being unavailable. The agent will continue processing the issue with the available information.\n\n'
+    }
+    
+    manifest += 'Attachments have been downloaded to the `~/.cyrus/<workspace>/attachments` directory:\n\n'
+    
+    // List images first
+    if (Object.keys(imageMap).length > 0) {
+      manifest += '### Images\n'
+      Object.entries(imageMap).forEach(([url, localPath], index) => {
+        const filename = basename(localPath)
+        manifest += `${index + 1}. ${filename} - Original URL: ${url}\n`
+        manifest += `   Local path: ${localPath}\n\n`
+      })
+      manifest += 'You can use the Read tool to view these images.\n\n'
+    }
+    
+    // List other attachments
+    if (Object.keys(attachmentMap).length > 0) {
+      manifest += '### Other Attachments\n'
+      Object.entries(attachmentMap).forEach(([url, localPath], index) => {
+        const filename = basename(localPath)
+        manifest += `${index + 1}. ${filename} - Original URL: ${url}\n`
+        manifest += `   Local path: ${localPath}\n\n`
+      })
+      manifest += 'You can use the Read tool to view these files.\n\n'
+    }
+    
+    return manifest
   }
 }
