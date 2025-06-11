@@ -6,11 +6,12 @@ import { SessionManager, Session } from '@cyrus/core'
 import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
 import type { WebhookEvent, StatusUpdate } from '@cyrus/ndjson-client'
 import type { ClaudeEvent } from '@cyrus/claude-parser'
-import { readFile, writeFile, mkdir, rename } from 'fs/promises'
+import { readFile, writeFile, mkdir, rename, readdir } from 'fs/promises'
 import { resolve, dirname, join, basename, extname } from 'path'
 import { fileURLToPath } from 'url'
 import { homedir } from 'os'
 import { fileTypeFromBuffer } from 'file-type'
+import { existsSync } from 'fs'
 
 export declare interface EdgeWorker {
   on<K extends keyof EdgeWorkerEvents>(event: K, listener: EdgeWorkerEvents[K]): this
@@ -134,6 +135,27 @@ export class EdgeWorker extends EventEmitter {
   private handleError(error: Error): void {
     this.emit('error', error)
     this.config.handlers?.onError?.(error)
+  }
+
+  /**
+   * Check if Claude logs exist for a workspace
+   */
+  private async hasExistingLogs(workspaceName: string): Promise<boolean> {
+    try {
+      const logsDir = join(homedir(), '.cyrus', 'logs', workspaceName)
+      
+      // Check if directory exists
+      if (!existsSync(logsDir)) {
+        return false
+      }
+      
+      // Check if directory has any log files
+      const files = await readdir(logsDir)
+      return files.some(file => file.endsWith('.jsonl'))
+    } catch (error) {
+      console.error(`Failed to check logs for workspace ${workspaceName}:`, error)
+      return false
+    }
   }
 
   /**
@@ -319,19 +341,51 @@ export class EdgeWorker extends EventEmitter {
    * Handle new comment on issue
    */
   private async handleNewComment(issue: any, comment: any, repository: RepositoryConfig): Promise<void> {
-    const session = this.sessionManager.getSession(issue.id)
-    if (!session) {
-      console.log(`No active session for issue ${issue.identifier}`)
-      return
-    }
-
     // Check if continuation is enabled
     if (!this.config.features?.enableContinuation) {
       console.log('Continuation not enabled, ignoring comment')
       return
     }
 
-    // Kill existing Claude process
+    let session = this.sessionManager.getSession(issue.id)
+    
+    // If no session exists, we need to create one
+    if (!session) {
+      console.log(`No active session for issue ${issue.identifier}, checking for existing logs...`)
+      
+      // Check if we have existing logs for this issue
+      const hasLogs = await this.hasExistingLogs(issue.identifier)
+      
+      if (!hasLogs) {
+        console.log(`No existing logs found for ${issue.identifier}, treating as new assignment`)
+        // Start fresh - treat it like a new assignment
+        await this.handleIssueAssigned(issue, repository)
+        return
+      }
+      
+      console.log(`Found existing logs for ${issue.identifier}, creating session for continuation`)
+      
+      // Create workspace (or get existing one)
+      const workspace = this.config.handlers?.createWorkspace
+        ? await this.config.handlers.createWorkspace(issue, repository)
+        : {
+            path: `${repository.workspaceBaseDir}/${issue.identifier}`,
+            isGitWorktree: false
+          }
+      
+      // Create session without spawning Claude yet
+      session = new Session({
+        issue,
+        workspace,
+        process: null,
+        startedAt: new Date()
+      })
+      
+      this.sessionManager.addSession(issue.id, session)
+      this.sessionToRepo.set(issue.id, repository.id)
+    }
+
+    // Kill existing Claude process if running
     const existingRunner = this.claudeRunners.get(issue.id)
     if (existingRunner) {
       existingRunner.kill()

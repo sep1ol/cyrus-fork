@@ -405,6 +405,9 @@ class EdgeApp {
         repositories,
         claudePath: process.env.CLAUDE_PATH || 'claude',
         allowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
+        features: {
+          enableContinuation: true
+        },
         handlers: {
           createWorkspace: async (issue, repository) => {
             return this.createGitWorktree(issue, repository)
