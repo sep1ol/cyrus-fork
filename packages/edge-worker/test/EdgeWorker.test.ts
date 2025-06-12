@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EdgeWorker } from '../src/EdgeWorker'
 import { LinearClient } from '@linear/sdk'
-import { NdjsonClient } from '@cyrus/ndjson-client'
-import { ClaudeRunner } from '@cyrus/claude-runner'
-import { SessionManager, Session } from '@cyrus/core'
+import { NdjsonClient } from 'cyrus-ndjson-client'
+import { ClaudeRunner } from 'cyrus-claude-runner'
+import { SessionManager, Session } from 'cyrus-core'
 import type { EdgeWorkerConfig } from '../src/types'
 import { 
   mockIssueAssignedWebhook, 
@@ -16,9 +16,9 @@ import {
 
 // Mock dependencies
 vi.mock('@linear/sdk')
-vi.mock('@cyrus/ndjson-client')
-vi.mock('@cyrus/claude-runner')
-vi.mock('@cyrus/core')
+vi.mock('cyrus-ndjson-client')
+vi.mock('cyrus-claude-runner')
+vi.mock('cyrus-core')
 
 describe('EdgeWorker', () => {
   let edgeWorker: EdgeWorker

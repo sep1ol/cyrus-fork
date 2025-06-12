@@ -1,5 +1,5 @@
-import type { Issue, Workspace } from '@cyrus/core'
-import type { ClaudeEvent } from '@cyrus/claude-parser'
+import type { Issue, Workspace } from 'cyrus-core'
+import type { ClaudeEvent } from 'cyrus-claude-parser'
 
 /**
  * Configuration for a single repository/workspace pair

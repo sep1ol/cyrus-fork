@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'child_process'
-import type { ClaudeEvent } from '@cyrus/claude-parser'
+import type { ClaudeEvent } from 'cyrus-claude-parser'
 
 export interface ClaudeRunnerConfig {
   claudePath: string
