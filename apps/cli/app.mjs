@@ -88,9 +88,16 @@ class EdgeApp {
       
       // Ask for allowed tools configuration
       console.log('\n🔧 Tool Configuration')
-      console.log('Available tools: Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash,Task,WebFetch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch')
-      console.log('Default: All tools (leave blank for all tools)')
-      const allowedToolsInput = await question('Allowed tools (comma-separated, default: all): ')
+      console.log('Available tools: Read,Write,Edit,MultiEdit,Glob,Grep,LS,Task,WebFetch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch')
+      console.log('')
+      console.log('⚠️  SECURITY NOTE: Bash tool requires special configuration for safety:')
+      console.log('   • Use "Bash" for full access (not recommended in production)')
+      console.log('   • Use "Bash(npm:*)" to restrict to npm commands only')
+      console.log('   • Use "Bash(git:*)" to restrict to git commands only')
+      console.log('   • See: https://docs.anthropic.com/en/docs/claude-code/settings#permissions')
+      console.log('')
+      console.log('Default: All tools except Bash (leave blank for all non-Bash tools)')
+      const allowedToolsInput = await question('Allowed tools (comma-separated, default: all except Bash): ')
       const allowedTools = allowedToolsInput ? allowedToolsInput.split(',').map(t => t.trim()) : undefined
       
       rl.close()

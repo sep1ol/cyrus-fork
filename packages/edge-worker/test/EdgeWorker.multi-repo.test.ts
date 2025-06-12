@@ -53,7 +53,8 @@ vi.mock('@cyrus/ndjson-client', () => ({
 
 vi.mock('@cyrus/claude-runner', () => ({
   ClaudeRunner: vi.fn(() => new MockClaudeRunner()),
-  getAllTools: vi.fn(() => ['bash', 'edit', 'read'])
+  getAllTools: vi.fn(() => ['bash', 'edit', 'read']),
+  getSafeTools: vi.fn(() => ['edit', 'read'])
 }))
 
 vi.mock('@cyrus/core', () => ({
