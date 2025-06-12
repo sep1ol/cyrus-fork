@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events'
 import { LinearClient } from '@linear/sdk'
 import { NdjsonClient } from '@cyrus/ndjson-client'
-import { ClaudeRunner, getAllTools } from '@cyrus/claude-runner'
+import { ClaudeRunner, getAllTools, getSafeTools } from '@cyrus/claude-runner'
 import { SessionManager, Session } from '@cyrus/core'
 import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
 import type { WebhookEvent, StatusUpdate } from '@cyrus/ndjson-client'
@@ -291,7 +291,7 @@ export class EdgeWorker extends EventEmitter {
     const runner = new ClaudeRunner({
       claudePath: this.config.claudePath,
       workingDirectory: workspace.path,
-      allowedTools: this.config.defaultAllowedTools || getAllTools(),
+      allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
       allowedDirectories,
       workspaceName: issue.identifier,
       onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),

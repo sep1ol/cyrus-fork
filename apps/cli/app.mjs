@@ -86,6 +86,20 @@ class EdgeApp {
       const workspaceBaseDir = await question(`Workspace directory (default: ${repositoryPath}/workspaces): `) || `${repositoryPath}/workspaces`
       const promptTemplatePath = await question('Prompt template path (default: ./agent-prompt-template.md): ') || './agent-prompt-template.md'
       
+      // Ask for allowed tools configuration
+      console.log('\n🔧 Tool Configuration')
+      console.log('Available tools: Read,Write,Edit,MultiEdit,Glob,Grep,LS,Task,WebFetch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch')
+      console.log('')
+      console.log('⚠️  SECURITY NOTE: Bash tool requires special configuration for safety:')
+      console.log('   • Use "Bash" for full access (not recommended in production)')
+      console.log('   • Use "Bash(npm:*)" to restrict to npm commands only')
+      console.log('   • Use "Bash(git:*)" to restrict to git commands only')
+      console.log('   • See: https://docs.anthropic.com/en/docs/claude-code/settings#permissions')
+      console.log('')
+      console.log('Default: All tools except Bash (leave blank for all non-Bash tools)')
+      const allowedToolsInput = await question('Allowed tools (comma-separated, default: all except Bash): ')
+      const allowedTools = allowedToolsInput ? allowedToolsInput.split(',').map(t => t.trim()) : undefined
+      
       rl.close()
       
       // Create repository configuration
@@ -99,7 +113,8 @@ class EdgeApp {
         linearToken: linearCredentials.linearToken,
         workspaceBaseDir: resolve(workspaceBaseDir),
         isActive: true,
-        promptTemplatePath: resolve(promptTemplatePath)
+        promptTemplatePath: resolve(promptTemplatePath),
+        ...(allowedTools && { allowedTools })
       }
       
       return repository

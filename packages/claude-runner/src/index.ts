@@ -5,6 +5,7 @@ export {
   writeTools,
   getReadOnlyTools,
   getAllTools,
+  getSafeTools,
   type ToolName
 } from './config.js'
 export type {
