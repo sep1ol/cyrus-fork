@@ -57,3 +57,10 @@ export function getReadOnlyTools(): string[] {
 export function getAllTools(): string[] {
   return [...availableTools]
 }
+
+/**
+ * Get all tools except Bash (safer default for repository configuration)
+ */
+export function getSafeTools(): string[] {
+  return availableTools.filter(tool => tool !== 'Bash')
+}
