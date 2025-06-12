@@ -37,7 +37,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Developed by [Ceedar](https://ceedar.ai/)
 
-Made possible by:
+This projects builds on the technologies built by the awesome teams at Linear, and Claude by Anthropic:
 - [Linear API](https://linear.app/developers)
 - [Anthropic Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
 
