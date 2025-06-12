@@ -15,6 +15,7 @@ router.get('/', (request: Request, env: Env) => {
     <!DOCTYPE html>
     <html>
     <head>
+      <meta charset="utf-8">
       <title>Cyrus Proxy Worker</title>
       <style>
         body { font-family: system-ui; max-width: 600px; margin: 50px auto; padding: 20px; }
@@ -61,7 +62,7 @@ router.get('/', (request: Request, env: Env) => {
     </html>
   `, {
     status: 200,
-    headers: { 'Content-Type': 'text/html' }
+    headers: { 'Content-Type': 'text/html; charset=utf-8' }
   })
 })
 
