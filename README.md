@@ -19,17 +19,6 @@ AI-powered Linear issue automation using Claude. Cyrus monitors Linear issues as
 npm install -g cyrus-ai
 ```
 
-### From Source
-
-Clone the repository and install dependencies:
-
-```bash
-git clone https://github.com/ceedaragents/cyrus.git
-cd cyrus
-pnpm install
-pnpm build
-```
-
 ## Quick Start
 
 1. Run the setup wizard:
