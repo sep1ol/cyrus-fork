@@ -9,15 +9,8 @@
   </a>
 </p>
 
-### Tool Permissions (optional)
 
-- `CLAUDE_ALLOWED_TOOLS`: Comma-separated list of Claude Code tools to allow (e.g., "Read,Glob,Grep,WebFetch"). 
-  If not specified, defaults to read-only tools.
-- `CLAUDE_READ_ONLY`: Set to "false" to allow all tools when `CLAUDE_ALLOWED_TOOLS` is not specified. Defaults to "true".
-
-Available tools: https://docs.anthropic.com/en/docs/claude-code/security
-
-### GitHub Actions
+### Submitting Work To GitHub
 
 When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authentication. This means:
 
@@ -26,8 +19,6 @@ When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authe
 - Review requests will be attributed to you
 - Your repository permissions apply to all operations
 - The only indication that Claude assisted is the "Co-Authored-By" commit trailer
-
-Always review PR contents before allowing Claude to create them on your behalf.
 
 ## Documentation Resources
 
