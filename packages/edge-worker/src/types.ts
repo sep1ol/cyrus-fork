@@ -23,6 +23,7 @@ export interface RepositoryConfig {
   // Optional settings
   isActive?: boolean           // Whether to process webhooks for this repo (default: true)
   promptTemplatePath?: string  // Custom prompt template for this repo
+  allowedTools?: string[]      // Override Claude tools for this repository (overrides defaultAllowedTools)
 }
 
 /**

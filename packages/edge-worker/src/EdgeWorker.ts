@@ -291,7 +291,7 @@ export class EdgeWorker extends EventEmitter {
     const runner = new ClaudeRunner({
       claudePath: this.config.claudePath,
       workingDirectory: workspace.path,
-      allowedTools: this.config.defaultAllowedTools || getAllTools(),
+      allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getAllTools(),
       allowedDirectories,
       workspaceName: issue.identifier,
       onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),

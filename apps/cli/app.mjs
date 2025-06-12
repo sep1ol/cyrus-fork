@@ -86,6 +86,13 @@ class EdgeApp {
       const workspaceBaseDir = await question(`Workspace directory (default: ${repositoryPath}/workspaces): `) || `${repositoryPath}/workspaces`
       const promptTemplatePath = await question('Prompt template path (default: ./agent-prompt-template.md): ') || './agent-prompt-template.md'
       
+      // Ask for allowed tools configuration
+      console.log('\n🔧 Tool Configuration')
+      console.log('Available tools: Read,Write,Edit,MultiEdit,Glob,Grep,LS,Bash,Task,WebFetch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch')
+      console.log('Default: All tools (leave blank for all tools)')
+      const allowedToolsInput = await question('Allowed tools (comma-separated, default: all): ')
+      const allowedTools = allowedToolsInput ? allowedToolsInput.split(',').map(t => t.trim()) : undefined
+      
       rl.close()
       
       // Create repository configuration
@@ -99,7 +106,8 @@ class EdgeApp {
         linearToken: linearCredentials.linearToken,
         workspaceBaseDir: resolve(workspaceBaseDir),
         isActive: true,
-        promptTemplatePath: resolve(promptTemplatePath)
+        promptTemplatePath: resolve(promptTemplatePath),
+        ...(allowedTools && { allowedTools })
       }
       
       return repository
