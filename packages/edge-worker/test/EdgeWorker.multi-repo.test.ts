@@ -44,20 +44,20 @@ vi.mock('@linear/sdk', () => ({
   })
 }))
 
-vi.mock('@cyrus/ndjson-client', () => ({
+vi.mock('cyrus-ndjson-client', () => ({
   NdjsonClient: vi.fn(() => {
     ndjsonClientCalls++
     return new MockNdjsonClient()
   })
 }))
 
-vi.mock('@cyrus/claude-runner', () => ({
+vi.mock('cyrus-claude-runner', () => ({
   ClaudeRunner: vi.fn(() => new MockClaudeRunner()),
   getAllTools: vi.fn(() => ['bash', 'edit', 'read']),
   getSafeTools: vi.fn(() => ['edit', 'read'])
 }))
 
-vi.mock('@cyrus/core', () => ({
+vi.mock('cyrus-core', () => ({
   SessionManager: vi.fn(() => new MockSessionManager()),
   Session: vi.fn((props) => props)
 }))

@@ -9,8 +9,42 @@
   </a>
 </div>
 
+AI-powered Linear issue automation using Claude. Cyrus monitors Linear issues assigned to a specific user, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments.
 
-### Submitting Work To GitHub
+## Installation
+
+### Via npm (recommended)
+
+```bash
+npm install -g cyrus-ai
+```
+
+### From Source
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/ceedaragents/cyrus.git
+cd cyrus
+pnpm install
+pnpm build
+```
+
+## Quick Start
+
+1. Run the setup wizard:
+   ```bash
+   cyrus
+   ```
+
+2. Follow the prompts to:
+   - Connect your Linear workspace via OAuth
+   - Configure your repository settings
+   - Set up allowed tools (security configuration)
+
+3. The agent will start monitoring issues assigned to you in Linear and process them automatically.
+
+## Submitting Work To GitHub
 
 When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authentication. This means:
 

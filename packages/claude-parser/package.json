@@ -1,5 +1,5 @@
 {
-  "name": "@cyrus/claude-parser",
+  "name": "cyrus-claude-parser",
   "version": "0.0.1",
   "description": "Claude stdout JSON parser for Cyrus",
   "type": "module",
