@@ -9,7 +9,7 @@
   </a>
 </div>
 
-AI-powered Linear issue automation using Claude. Cyrus monitors Linear issues assigned to a specific user, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments.
+AI development agent for Linear powered by Claude Code. Cyrus monitors Linear issues assigned to it, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments.
 
 ## Installation
 
