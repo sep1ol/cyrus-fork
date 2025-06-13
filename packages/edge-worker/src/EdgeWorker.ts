@@ -253,20 +253,27 @@ export class EdgeWorker extends EventEmitter {
   private async handleIssueAssigned(issue: LinearWebhookIssue, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
     
+    // Fetch full Linear issue details immediately
+    const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id)
+    if (!fullIssue) {
+      throw new Error(`Failed to fetch full issue details for ${issue.id}`)
+    }
+    console.log(`[EdgeWorker] Fetched full issue details for ${issue.identifier}`)
+    
     // Post initial comment immediately
     const initialComment = await this.postInitialComment(issue.id, repository.id)
     
-    // Create workspace
+    // Create workspace using full issue data
     const workspace = this.config.handlers?.createWorkspace
       ? await this.config.handlers.createWorkspace(issue, repository)
       : {
-          path: `${repository.workspaceBaseDir}/${issue.identifier}`,
+          path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
           isGitWorktree: false
         }
 
     console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`)
 
-    // Download attachments before creating Claude runner
+    // Download attachments before creating Claude runner (still use webhook issue for attachment extraction)
     const attachmentResult = await this.downloadIssueAttachments(issue, repository, workspace.path)
     
     // Build allowed directories list
@@ -281,20 +288,20 @@ export class EdgeWorker extends EventEmitter {
       workingDirectory: workspace.path,
       allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
       allowedDirectories,
-      workspaceName: issue.identifier,
-      onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),
-      onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
+      workspaceName: fullIssue.identifier,
+      onEvent: (event) => this.handleClaudeEvent(fullIssue.id, event, repository.id),
+      onExit: (code) => this.handleClaudeExit(fullIssue.id, code, repository.id)
     })
 
     // Store runner
-    this.claudeRunners.set(issue.id, runner)
+    this.claudeRunners.set(fullIssue.id, runner)
 
     // Spawn Claude process
     const processInfo = runner.spawn()
 
-    // Create session (convert webhook payload to CoreIssue)
+    // Create session using full Linear issue (convert LinearIssue to CoreIssue)
     const session = new Session({
-      issue: this.convertWebhookIssueToCore(issue),
+      issue: this.convertLinearIssueToCore(fullIssue),
       workspace,
       process: processInfo.process,
       startedAt: processInfo.startedAt
@@ -302,20 +309,20 @@ export class EdgeWorker extends EventEmitter {
     
     // Store initial comment ID if we have one
     if (initialComment?.id) {
-      this.issueToCommentId.set(issue.id, initialComment.id)
+      this.issueToCommentId.set(fullIssue.id, initialComment.id)
     }
     
-    this.sessionManager.addSession(issue.id, session)
-    this.sessionToRepo.set(issue.id, repository.id)
+    this.sessionManager.addSession(fullIssue.id, session)
+    this.sessionToRepo.set(fullIssue.id, repository.id)
 
-    // Emit events
-    this.emit('session:started', issue.id, issue, repository.id)
-    this.config.handlers?.onSessionStart?.(issue.id, issue, repository.id)
+    // Emit events (still use webhook issue for events to maintain compatibility)
+    this.emit('session:started', fullIssue.id, issue, repository.id)
+    this.config.handlers?.onSessionStart?.(fullIssue.id, issue, repository.id)
 
-    // Build and send initial prompt with attachment manifest
-    console.log(`[EdgeWorker] Building initial prompt for issue ${issue.identifier}`)
+    // Build and send initial prompt with attachment manifest using full issue
+    console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
     try {
-      const prompt = await this.buildInitialPrompt(issue, repository, attachmentResult.manifest)
+      const prompt = await this.buildInitialPrompt(fullIssue, repository, attachmentResult.manifest)
       console.log(`[EdgeWorker] Initial prompt built successfully, length: ${prompt.length} characters`)
       console.log(`[EdgeWorker] Sending initial prompt to Claude runner`)
       await runner.sendInitialPrompt(prompt)
@@ -663,13 +670,28 @@ export class EdgeWorker extends EventEmitter {
     }
   }
 
+  /**
+   * Convert full Linear SDK issue to CoreIssue interface for Session creation
+   */
+  private convertLinearIssueToCore(issue: LinearIssue): CoreIssue {
+    return {
+      id: issue.id,
+      identifier: issue.identifier,
+      title: issue.title || '',
+      description: issue.description || undefined,
+      getBranchName(): string {
+        return issue.branchName // Use the real branchName property!
+      }
+    }
+  }
+
 
   /**
    * Build initial prompt for issue
    */
-  private async buildInitialPrompt(issue: LinearWebhookIssue, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
+  private async buildInitialPrompt(issue: LinearIssue, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
-    let enhancedIssue: any = issue  // Declare at function scope for fallback access, typed as any for flexibility
+    // No need for enhancedIssue anymore - we already have the full Linear issue!
     try {
       // Use custom template if provided (repository-specific takes precedence)
       let templatePath = repository.promptTemplatePath || this.config.features?.promptTemplatePath
@@ -686,35 +708,14 @@ export class EdgeWorker extends EventEmitter {
       const template = await readFile(templatePath, 'utf-8')
       console.log(`[EdgeWorker] Template loaded, length: ${template.length} characters`)
       
-      // Fetch complete issue details from Linear API
-      if (issue.id) {
-        const fullIssueDetails = await this.fetchFullIssueDetails(issue.id, repository.id)
-        if (fullIssueDetails) {
-          // Get state name from Linear API
-          const state = await fullIssueDetails.state
-          const stateName = state?.name || 'Unknown'
-          
-          // Merge webhook data with complete API data, using plain values
-          enhancedIssue = {
-            ...issue,  // Keep webhook fields like identifier, url
-            id: fullIssueDetails.id,
-            title: fullIssueDetails.title,
-            description: fullIssueDetails.description,
-            branchName: fullIssueDetails.branchName,
-            priority: fullIssueDetails.priority,
-            stateName: stateName,  // Store as separate property
-            // Preserve important webhook fields that might differ
-            identifier: issue.identifier || fullIssueDetails.identifier,
-            url: issue.url || fullIssueDetails.url
-          }
-          console.log(`[EdgeWorker] Enhanced issue data with API details for ${issue.identifier}`)
-          console.log(`[EdgeWorker] Issue description: ${enhancedIssue.description ? 'present' : 'missing'}`)
-          console.log(`[EdgeWorker] Issue state: ${stateName}`)
-          console.log(`[EdgeWorker] Issue priority: ${enhancedIssue.priority || 'none'}`)
-        } else {
-          console.log(`[EdgeWorker] Using webhook data only for ${issue.identifier}`)
-        }
-      }
+      // Get state name from Linear API
+      const state = await issue.state
+      const stateName = state?.name || 'Unknown'
+      
+      console.log(`[EdgeWorker] Issue description: ${issue.description ? 'present' : 'missing'}`)
+      console.log(`[EdgeWorker] Issue state: ${stateName}`)
+      console.log(`[EdgeWorker] Issue priority: ${issue.priority || 'none'}`)
+      console.log(`[EdgeWorker] Issue branchName: ${issue.branchName}`)
       
       // Get comment history
       const linearClient = this.linearClients.get(repository.id)
@@ -744,21 +745,21 @@ export class EdgeWorker extends EventEmitter {
         }
       }
       
-      // Replace template variables
+      // Replace template variables using the full Linear issue
       const prompt = template
         .replace(/{{repository_name}}/g, repository.name)
-        .replace(/{{issue_id}}/g, enhancedIssue.id || enhancedIssue.identifier || '')
-        .replace(/{{issue_title}}/g, enhancedIssue.title || '')
-        .replace(/{{issue_description}}/g, enhancedIssue.description || 'No description provided')
-        .replace(/{{issue_state}}/g, enhancedIssue.stateName || 'Unknown')
-        .replace(/{{issue_priority}}/g, enhancedIssue.priority?.toString() || 'None')
-        .replace(/{{issue_url}}/g, enhancedIssue.url || '')
+        .replace(/{{issue_id}}/g, issue.id || issue.identifier || '')
+        .replace(/{{issue_title}}/g, issue.title || '')
+        .replace(/{{issue_description}}/g, issue.description || 'No description provided')
+        .replace(/{{issue_state}}/g, stateName)
+        .replace(/{{issue_priority}}/g, issue.priority?.toString() || 'None')
+        .replace(/{{issue_url}}/g, issue.url || '')
         .replace(/{{comment_history}}/g, commentHistory || 'No comments yet')
         .replace(/{{latest_comment}}/g, latestComment || 'No comments yet')
         .replace(/{{working_directory}}/g, this.config.handlers?.createWorkspace ? 
           'Will be created based on issue' : repository.repositoryPath)
         .replace(/{{base_branch}}/g, repository.baseBranch)
-        .replace(/{{branch_name}}/g, `${enhancedIssue.identifier}-${enhancedIssue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`)
+        .replace(/{{branch_name}}/g, issue.branchName) // Use the real branchName!
       
       // Append attachment manifest if provided
       if (attachmentManifest) {
@@ -773,16 +774,19 @@ export class EdgeWorker extends EventEmitter {
     } catch (error) {
       console.error('[EdgeWorker] Failed to load prompt template:', error)
       
-      // Fallback to simple prompt
-      const fallbackIssue = enhancedIssue
+      // Fallback to simple prompt using the full Linear issue
+      const state = await issue.state
+      const stateName = state?.name || 'Unknown'
+      
       return `Please help me with the following Linear issue:
 
 Repository: ${repository.name}
-Issue: ${fallbackIssue.identifier}
-Title: ${fallbackIssue.title}
-Description: ${fallbackIssue.description || 'No description provided'}
-State: ${fallbackIssue.stateName || 'Unknown'}
-Priority: ${fallbackIssue.priority?.toString() || 'None'}
+Issue: ${issue.identifier}
+Title: ${issue.title}
+Description: ${issue.description || 'No description provided'}
+State: ${stateName}
+Priority: ${issue.priority?.toString() || 'None'}
+Branch: ${issue.branchName}
 
 Working directory: ${repository.repositoryPath}
 Base branch: ${repository.baseBranch}

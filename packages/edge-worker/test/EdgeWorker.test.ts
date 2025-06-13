@@ -113,6 +113,18 @@ describe('EdgeWorker', () => {
 
     // Create EdgeWorker instance
     edgeWorker = new EdgeWorker(mockConfig)
+
+    // Mock the fetchFullIssueDetails method to return a mock Linear issue
+    vi.spyOn(edgeWorker as any, 'fetchFullIssueDetails').mockResolvedValue({
+      id: 'issue-123',
+      identifier: 'TEST-123',
+      title: 'Test Issue',
+      description: 'Test description',
+      branchName: 'TEST-123-test-issue',
+      priority: 1,
+      state: Promise.resolve({ name: 'In Progress' }),
+      url: 'https://linear.app/test/issue/TEST-123'
+    })
   })
 
   afterEach(() => {
