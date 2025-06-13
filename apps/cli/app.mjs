@@ -577,10 +577,22 @@ class EdgeApp {
         // Branch doesn't exist, we'll create it
       }
       
-      // Create the worktree
-      console.log(`Creating git worktree at ${workspacePath} from ${repository.baseBranch}`)
+      // Fetch latest changes from remote
+      console.log('Fetching latest changes from remote...')
+      try {
+        execSync('git fetch origin', {
+          cwd: repository.repositoryPath,
+          stdio: 'pipe'
+        })
+      } catch (e) {
+        console.warn('Warning: git fetch failed, proceeding with local branch:', e.message)
+      }
+
+      // Create the worktree from remote branch
+      const remoteBranch = `origin/${repository.baseBranch}`
+      console.log(`Creating git worktree at ${workspacePath} from ${remoteBranch}`)
       const worktreeCmd = createBranch 
-        ? `git worktree add "${workspacePath}" -b "${branchName}" "${repository.baseBranch}"`
+        ? `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`
         : `git worktree add "${workspacePath}" "${branchName}"`
       
       execSync(worktreeCmd, {
