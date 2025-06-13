@@ -3,6 +3,7 @@ import { LinearClient, Issue as LinearIssue, Comment } from '@linear/sdk'
 import { NdjsonClient } from '@cyrus/ndjson-client'
 import { ClaudeRunner, getSafeTools } from '@cyrus/claude-runner'
 import { SessionManager, Session } from '@cyrus/core'
+import type { Issue as CoreIssue } from '@cyrus/core'
 import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
 import type { WebhookEvent, StatusUpdate } from '@cyrus/ndjson-client'
 import type { ClaudeEvent } from '@cyrus/claude-parser'
@@ -262,7 +263,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle issue assignment
    */
-  private async handleIssueAssigned(issue: LinearIssue | any, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueAssigned(issue: LinearIssue, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
     
     // Post initial comment immediately
@@ -304,9 +305,9 @@ export class EdgeWorker extends EventEmitter {
     // Spawn Claude process
     const processInfo = runner.spawn()
 
-    // Create session
+    // Create session (convert LinearIssue to CoreIssue)
     const session = new Session({
-      issue,
+      issue: this.convertLinearIssueToCore(issue),
       workspace,
       process: processInfo.process,
       startedAt: processInfo.startedAt
@@ -341,7 +342,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle new comment on issue
    */
-  private async handleNewComment(issue: LinearIssue | any, comment: Comment | any, repository: RepositoryConfig): Promise<void> {
+  private async handleNewComment(issue: LinearIssue, comment: Comment, repository: RepositoryConfig): Promise<void> {
     // Check if continuation is enabled
     if (!this.config.features?.enableContinuation) {
       console.log('Continuation not enabled, ignoring comment')
@@ -422,9 +423,9 @@ export class EdgeWorker extends EventEmitter {
             isGitWorktree: false
           }
       
-      // Create session without spawning Claude yet
+      // Create session without spawning Claude yet (convert LinearIssue to CoreIssue)
       session = new Session({
-        issue,
+        issue: this.convertLinearIssueToCore(issue),
         workspace,
         process: null,
         startedAt: new Date()
@@ -477,7 +478,7 @@ export class EdgeWorker extends EventEmitter {
       runner.spawn()
 
       // Send comment as input
-      await runner.sendInput(comment.body || comment.text || '')
+      await runner.sendInput(comment.body || '')
     } catch (error) {
       console.error('Failed to continue conversation, starting fresh:', error)
       // Remove any partially created session
@@ -491,7 +492,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle issue unassignment
    */
-  private async handleIssueUnassigned(issue: LinearIssue | any, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueUnassigned(issue: LinearIssue, repository: RepositoryConfig): Promise<void> {
     // Check if there's an active session for this issue
     const session = this.sessionManager.getSession(issue.id)
     const initialCommentId = this.issueToCommentId.get(issue.id)
@@ -611,8 +612,24 @@ export class EdgeWorker extends EventEmitter {
       repositoryId
     )
 
-    // Restart session
-    await this.handleIssueAssigned(session.issue, repository)
+    // Fetch fresh LinearIssue data and restart session
+    const issue = await this.fetchFullIssueDetails(issueId, repositoryId)
+    if (issue) {
+      await this.handleIssueAssigned(issue, repository)
+    } else {
+      // Fallback: create minimal LinearIssue from session data for restart
+      const sessionIssue = session.issue
+      const fallbackIssue = {
+        id: sessionIssue.id,
+        identifier: sessionIssue.identifier,
+        title: sessionIssue.title,
+        description: sessionIssue.description,
+        branchName: typeof sessionIssue.getBranchName === 'function' 
+          ? sessionIssue.getBranchName() 
+          : `${sessionIssue.identifier}-${sessionIssue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+      } as any
+      await this.handleIssueAssigned(fallbackIssue, repository)
+    }
   }
 
   /**
@@ -637,11 +654,26 @@ export class EdgeWorker extends EventEmitter {
   }
 
   /**
+   * Convert LinearIssue to CoreIssue interface for Session creation
+   */
+  private convertLinearIssueToCore(issue: LinearIssue): CoreIssue {
+    return {
+      id: issue.id,
+      identifier: issue.identifier,
+      title: issue.title,
+      description: issue.description || undefined,
+      getBranchName(): string {
+        return issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+      }
+    }
+  }
+
+  /**
    * Build initial prompt for issue
    */
-  private async buildInitialPrompt(issue: LinearIssue | any, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
+  private async buildInitialPrompt(issue: LinearIssue, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
-    let enhancedIssue = issue  // Declare at function scope for fallback access
+    let enhancedIssue: any = issue  // Declare at function scope for fallback access, typed as any for flexibility
     try {
       // Use custom template if provided (repository-specific takes precedence)
       let templatePath = repository.promptTemplatePath || this.config.features?.promptTemplatePath
@@ -662,17 +694,26 @@ export class EdgeWorker extends EventEmitter {
       if (issue.id) {
         const fullIssueDetails = await this.fetchFullIssueDetails(issue.id, repository.id)
         if (fullIssueDetails) {
-          // Merge webhook data with complete API data, prioritizing API data
+          // Get state name from Linear API
+          const state = await fullIssueDetails.state
+          const stateName = state?.name || 'Unknown'
+          
+          // Merge webhook data with complete API data, using plain values
           enhancedIssue = {
             ...issue,  // Keep webhook fields like identifier, url
-            ...fullIssueDetails,  // Override with complete API data
+            id: fullIssueDetails.id,
+            title: fullIssueDetails.title,
+            description: fullIssueDetails.description,
+            branchName: fullIssueDetails.branchName,
+            priority: fullIssueDetails.priority,
+            stateName: stateName,  // Store as separate property
             // Preserve important webhook fields that might differ
             identifier: issue.identifier || fullIssueDetails.identifier,
             url: issue.url || fullIssueDetails.url
           }
           console.log(`[EdgeWorker] Enhanced issue data with API details for ${issue.identifier}`)
           console.log(`[EdgeWorker] Issue description: ${enhancedIssue.description ? 'present' : 'missing'}`)
-          console.log(`[EdgeWorker] Issue state: ${enhancedIssue.state?.name || 'unknown'}`)
+          console.log(`[EdgeWorker] Issue state: ${stateName}`)
           console.log(`[EdgeWorker] Issue priority: ${enhancedIssue.priority || 'none'}`)
         } else {
           console.log(`[EdgeWorker] Using webhook data only for ${issue.identifier}`)
@@ -713,7 +754,7 @@ export class EdgeWorker extends EventEmitter {
         .replace(/{{issue_id}}/g, enhancedIssue.id || enhancedIssue.identifier || '')
         .replace(/{{issue_title}}/g, enhancedIssue.title || '')
         .replace(/{{issue_description}}/g, enhancedIssue.description || 'No description provided')
-        .replace(/{{issue_state}}/g, enhancedIssue.state?.name || 'Unknown')
+        .replace(/{{issue_state}}/g, enhancedIssue.stateName || 'Unknown')
         .replace(/{{issue_priority}}/g, enhancedIssue.priority?.toString() || 'None')
         .replace(/{{issue_url}}/g, enhancedIssue.url || '')
         .replace(/{{comment_history}}/g, commentHistory || 'No comments yet')
@@ -744,7 +785,7 @@ Repository: ${repository.name}
 Issue: ${fallbackIssue.identifier}
 Title: ${fallbackIssue.title}
 Description: ${fallbackIssue.description || 'No description provided'}
-State: ${fallbackIssue.state?.name || 'Unknown'}
+State: ${fallbackIssue.stateName || 'Unknown'}
 Priority: ${fallbackIssue.priority?.toString() || 'None'}
 
 Working directory: ${repository.repositoryPath}
@@ -947,7 +988,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Download attachments from Linear issue
    */
-  private async downloadIssueAttachments(issue: LinearIssue | any, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
+  private async downloadIssueAttachments(issue: LinearIssue, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
     try {
       const attachmentMap: Record<string, string> = {}
       const imageMap: Record<string, string> = {}
@@ -970,7 +1011,7 @@ Please analyze this issue and help implement a solution.`
       await mkdir(attachmentsDir, { recursive: true })
       
       // Extract URLs from issue description
-      const descriptionUrls = this.extractAttachmentUrls(issue.description)
+      const descriptionUrls = this.extractAttachmentUrls(issue.description || '')
       
       // Extract URLs from comments if available
       const commentUrls: string[] = []
