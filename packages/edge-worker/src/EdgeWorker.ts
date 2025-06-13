@@ -269,19 +269,9 @@ export class EdgeWorker extends EventEmitter {
     // Post initial comment immediately
     const initialComment = await this.postInitialComment(fullIssue.id, repository.id)
     
-    // Create webhook-compatible issue for handlers that still need it
-    const webhookIssue: LinearWebhookIssue = {
-      id: fullIssue.id,
-      identifier: fullIssue.identifier,
-      title: fullIssue.title,
-      teamId: repository.linearWorkspaceId,
-      team: { id: repository.linearWorkspaceId, key: 'TEMP', name: 'Unknown' },
-      url: `https://linear.app/issue/${fullIssue.identifier}`
-    }
-    
     // Create workspace using full issue data
     const workspace = this.config.handlers?.createWorkspace
-      ? await this.config.handlers.createWorkspace(webhookIssue, repository)
+      ? await this.config.handlers.createWorkspace(fullIssue, repository)
       : {
           path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
           isGitWorktree: false
@@ -290,7 +280,7 @@ export class EdgeWorker extends EventEmitter {
     console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`)
 
     // Download attachments before creating Claude runner
-    const attachmentResult = await this.downloadIssueAttachments(webhookIssue, repository, workspace.path)
+    const attachmentResult = await this.downloadIssueAttachments(fullIssue, repository, workspace.path)
     
     // Build allowed directories list
     const allowedDirectories: string[] = []
@@ -331,9 +321,9 @@ export class EdgeWorker extends EventEmitter {
     this.sessionManager.addSession(fullIssue.id, session)
     this.sessionToRepo.set(fullIssue.id, repository.id)
 
-    // Emit events (use webhook issue for events to maintain compatibility)
-    this.emit('session:started', fullIssue.id, webhookIssue, repository.id)
-    this.config.handlers?.onSessionStart?.(fullIssue.id, webhookIssue, repository.id)
+    // Emit events using full Linear issue
+    this.emit('session:started', fullIssue.id, fullIssue, repository.id)
+    this.config.handlers?.onSessionStart?.(fullIssue.id, fullIssue, repository.id)
 
     // Build and send initial prompt with attachment manifest using full issue
     console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
@@ -357,6 +347,12 @@ export class EdgeWorker extends EventEmitter {
     if (!this.config.features?.enableContinuation) {
       console.log('Continuation not enabled, ignoring comment')
       return
+    }
+
+    // Fetch full Linear issue details
+    const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id)
+    if (!fullIssue) {
+      throw new Error(`Failed to fetch full issue details for ${issue.id}`)
     }
 
     // The webhook doesn't include parentId, so we need to fetch the full comment
@@ -427,9 +423,9 @@ export class EdgeWorker extends EventEmitter {
       
       // Create workspace (or get existing one)
       const workspace = this.config.handlers?.createWorkspace
-        ? await this.config.handlers.createWorkspace(issue, repository)
+        ? await this.config.handlers.createWorkspace(fullIssue, repository)
         : {
-            path: `${repository.workspaceBaseDir}/${issue.identifier}`,
+            path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
             isGitWorktree: false
           }
       
@@ -981,7 +977,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Download attachments from Linear issue
    */
-  private async downloadIssueAttachments(issue: LinearWebhookIssue, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
+  private async downloadIssueAttachments(issue: LinearIssue, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
     try {
       const attachmentMap: Record<string, string> = {}
       const imageMap: Record<string, string> = {}
@@ -1004,7 +1000,7 @@ Please analyze this issue and help implement a solution.`
       await mkdir(attachmentsDir, { recursive: true })
       
       // Extract URLs from issue description
-      const descriptionUrls = this.extractAttachmentUrls('')  // LinearWebhookIssue doesn't have description
+      const descriptionUrls = this.extractAttachmentUrls(issue.description || '')
       
       // Extract URLs from comments if available
       const commentUrls: string[] = []
