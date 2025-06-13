@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { LinearClient } from '@linear/sdk'
+import { LinearClient, Issue, Comment } from '@linear/sdk'
 import { NdjsonClient } from '@cyrus/ndjson-client'
 import { ClaudeRunner, getSafeTools } from '@cyrus/claude-runner'
 import { SessionManager, Session } from '@cyrus/core'
@@ -262,7 +262,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle issue assignment
    */
-  private async handleIssueAssigned(issue: any, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueAssigned(issue: Issue | any, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
     
     // Post initial comment immediately
@@ -341,7 +341,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle new comment on issue
    */
-  private async handleNewComment(issue: any, comment: any, repository: RepositoryConfig): Promise<void> {
+  private async handleNewComment(issue: Issue | any, comment: Comment | any, repository: RepositoryConfig): Promise<void> {
     // Check if continuation is enabled
     if (!this.config.features?.enableContinuation) {
       console.log('Continuation not enabled, ignoring comment')
@@ -491,7 +491,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle issue unassignment
    */
-  private async handleIssueUnassigned(issue: any, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueUnassigned(issue: Issue | any, repository: RepositoryConfig): Promise<void> {
     // Check if there's an active session for this issue
     const session = this.sessionManager.getSession(issue.id)
     const initialCommentId = this.issueToCommentId.get(issue.id)
@@ -618,7 +618,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Fetch complete issue details from Linear API
    */
-  private async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<any> {
+  private async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<Issue | null> {
     const linearClient = this.linearClients.get(repositoryId)
     if (!linearClient) {
       console.warn(`[EdgeWorker] No Linear client found for repository ${repositoryId}`)
@@ -639,7 +639,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Build initial prompt for issue
    */
-  private async buildInitialPrompt(issue: any, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
+  private async buildInitialPrompt(issue: Issue | any, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
     let enhancedIssue = issue  // Declare at function scope for fallback access
     try {
@@ -812,7 +812,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Post initial comment when assigned to issue
    */
-  private async postInitialComment(issueId: string, repositoryId: string): Promise<{ id: string } | null> {
+  private async postInitialComment(issueId: string, repositoryId: string): Promise<Comment | null> {
     try {
       const body = "I've been assigned to this issue and am getting started right away. I'll update this comment with my plan shortly."
       
@@ -822,7 +822,7 @@ Please analyze this issue and help implement a solution.`
         throw new Error(`No Linear client found for repository ${repositoryId}`)
       }
 
-      const commentData: any = {
+      const commentData = {
         issueId,
         body
       }
@@ -846,7 +846,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Post a comment to Linear
    */
-  private async postComment(issueId: string, body: string, repositoryId: string, parentId?: string): Promise<{ id: string } | null> {
+  private async postComment(issueId: string, body: string, repositoryId: string, parentId?: string): Promise<Comment | null> {
     try {
       // Get the Linear client for this repository
       const linearClient = this.linearClients.get(repositoryId)
@@ -854,7 +854,7 @@ Please analyze this issue and help implement a solution.`
         throw new Error(`No Linear client found for repository ${repositoryId}`)
       }
 
-      const commentData: any = {
+      const commentData: { issueId: string; body: string; parentId?: string } = {
         issueId,
         body
       }
@@ -947,7 +947,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Download attachments from Linear issue
    */
-  private async downloadIssueAttachments(issue: any, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
+  private async downloadIssueAttachments(issue: Issue | any, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
     try {
       const attachmentMap: Record<string, string> = {}
       const imageMap: Record<string, string> = {}

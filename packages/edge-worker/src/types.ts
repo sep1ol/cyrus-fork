@@ -1,5 +1,6 @@
 import type { Issue, Workspace } from '@cyrus/core'
 import type { ClaudeEvent } from '@cyrus/claude-parser'
+import type { Issue as LinearIssue, Comment as LinearComment } from '@linear/sdk'
 
 /**
  * Configuration for a single repository/workspace pair
@@ -44,7 +45,7 @@ export interface EdgeWorkerConfig {
   handlers?: {
     // Called when workspace needs to be created
     // Now includes repository context
-    createWorkspace?: (issue: Issue, repository: RepositoryConfig) => Promise<Workspace>
+    createWorkspace?: (issue: LinearIssue | Issue, repository: RepositoryConfig) => Promise<Workspace>
     
     // Called with Claude events (for UI updates, logging, etc)
     // Now includes repository ID
@@ -52,7 +53,7 @@ export interface EdgeWorkerConfig {
     
     // Called when session starts/ends
     // Now includes repository ID
-    onSessionStart?: (issueId: string, issue: Issue, repositoryId: string) => void
+    onSessionStart?: (issueId: string, issue: LinearIssue | Issue, repositoryId: string) => void
     onSessionEnd?: (issueId: string, exitCode: number | null, repositoryId: string) => void
     
     // Called on errors
@@ -79,7 +80,7 @@ export interface IssueAssignedWebhook {
     type: 'AppUserNotification'
     notification: {
       type: 'issueAssignedToYou'
-      issue: any  // Linear issue data
+      issue: LinearIssue  // Linear issue data
     }
     createdAt: string
     eventId?: string
@@ -95,8 +96,8 @@ export interface CommentCreatedWebhook {
     action: 'create'
     createdAt: string
     data: {
-      issue: any
-      comment: any
+      issue: LinearIssue
+      comment: LinearComment
     }
     eventId?: string
   }
@@ -111,7 +112,7 @@ export interface EdgeWorkerEvents {
   'disconnected': (token: string, reason?: string) => void
   
   // Session events (now includes repository ID)
-  'session:started': (issueId: string, issue: Issue, repositoryId: string) => void
+  'session:started': (issueId: string, issue: LinearIssue | Issue, repositoryId: string) => void
   'session:ended': (issueId: string, exitCode: number | null, repositoryId: string) => void
   
   // Claude events (now includes repository ID)
