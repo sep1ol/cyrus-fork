@@ -265,6 +265,9 @@ export class EdgeWorker extends EventEmitter {
   private async handleIssueAssigned(issue: any, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
     
+    // Move issue to started state automatically
+    await this.moveIssueToStartedState(issue, repository.id)
+    
     // Post initial comment immediately
     const initialComment = await this.postInitialComment(issue.id, repository.id)
     
@@ -757,6 +760,51 @@ Please analyze this issue and help implement a solution.`
    */
   getActiveSessions(): string[] {
     return Array.from(this.sessionManager.getAllSessions().keys())
+  }
+
+  /**
+   * Move issue to started state when assigned
+   */
+  private async moveIssueToStartedState(issue: any, repositoryId: string): Promise<void> {
+    try {
+      const linearClient = this.linearClients.get(repositoryId)
+      if (!linearClient) {
+        console.warn(`No Linear client found for repository ${repositoryId}, skipping state update`)
+        return
+      }
+
+      // Check if issue is already in a started state
+      if (issue.state?.type === 'started') {
+        console.log(`Issue ${issue.identifier} is already in started state (${issue.state.name})`)
+        return
+      }
+
+      // Get available workflow states for the issue's team
+      const teamStates = await linearClient.workflowStates({
+        filter: { team: { id: { eq: issue.team?.id } } }
+      })
+      
+      const states = await teamStates.nodes
+      
+      // Find the first state with type 'started'
+      const startedState = states.find((state: any) => state.type === 'started')
+      
+      if (!startedState) {
+        console.warn(`No 'started' state found for team ${issue.team?.name || 'unknown'}, skipping state update`)
+        return
+      }
+
+      // Update the issue state
+      console.log(`Moving issue ${issue.identifier} to started state: ${startedState.name}`)
+      await linearClient.updateIssue(issue.id, {
+        stateId: startedState.id
+      })
+      
+      console.log(`✅ Successfully moved issue ${issue.identifier} to ${startedState.name} state`)
+    } catch (error) {
+      console.error(`Failed to move issue ${issue.identifier} to started state:`, error)
+      // Don't throw - we don't want to fail the entire assignment process due to state update failure
+    }
   }
 
   /**
