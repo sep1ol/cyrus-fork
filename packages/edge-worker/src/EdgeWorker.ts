@@ -4,7 +4,7 @@ import { NdjsonClient } from '@cyrus/ndjson-client'
 import { ClaudeRunner, getSafeTools } from '@cyrus/claude-runner'
 import { SessionManager, Session } from '@cyrus/core'
 import type { Issue as CoreIssue } from '@cyrus/core'
-import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
+import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig, WebhookIssuePayload, WebhookCommentPayload } from './types.js'
 import type { WebhookEvent, StatusUpdate } from '@cyrus/ndjson-client'
 import type { ClaudeEvent } from '@cyrus/claude-parser'
 import { readFile, writeFile, mkdir, rename, readdir } from 'fs/promises'
@@ -263,7 +263,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle issue assignment
    */
-  private async handleIssueAssigned(issue: LinearIssue, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueAssigned(issue: WebhookIssuePayload, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
     
     // Post initial comment immediately
@@ -305,9 +305,9 @@ export class EdgeWorker extends EventEmitter {
     // Spawn Claude process
     const processInfo = runner.spawn()
 
-    // Create session (convert LinearIssue to CoreIssue)
+    // Create session (convert webhook payload to CoreIssue)
     const session = new Session({
-      issue: this.convertLinearIssueToCore(issue),
+      issue: this.convertWebhookIssueToCore(issue),
       workspace,
       process: processInfo.process,
       startedAt: processInfo.startedAt
@@ -342,7 +342,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle new comment on issue
    */
-  private async handleNewComment(issue: LinearIssue, comment: Comment, repository: RepositoryConfig): Promise<void> {
+  private async handleNewComment(issue: WebhookIssuePayload, comment: WebhookCommentPayload, repository: RepositoryConfig): Promise<void> {
     // Check if continuation is enabled
     if (!this.config.features?.enableContinuation) {
       console.log('Continuation not enabled, ignoring comment')
@@ -423,9 +423,9 @@ export class EdgeWorker extends EventEmitter {
             isGitWorktree: false
           }
       
-      // Create session without spawning Claude yet (convert LinearIssue to CoreIssue)
+      // Create session without spawning Claude yet (convert webhook payload to CoreIssue)
       session = new Session({
-        issue: this.convertLinearIssueToCore(issue),
+        issue: this.convertWebhookIssueToCore(issue),
         workspace,
         process: null,
         startedAt: new Date()
@@ -492,7 +492,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle issue unassignment
    */
-  private async handleIssueUnassigned(issue: LinearIssue, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueUnassigned(issue: WebhookIssuePayload, repository: RepositoryConfig): Promise<void> {
     // Check if there's an active session for this issue
     const session = this.sessionManager.getSession(issue.id)
     const initialCommentId = this.issueToCommentId.get(issue.id)
@@ -613,21 +613,27 @@ export class EdgeWorker extends EventEmitter {
     )
 
     // Fetch fresh LinearIssue data and restart session
-    const issue = await this.fetchFullIssueDetails(issueId, repositoryId)
-    if (issue) {
-      await this.handleIssueAssigned(issue, repository)
+    const linearIssue = await this.fetchFullIssueDetails(issueId, repositoryId)
+    if (linearIssue) {
+      // Convert LinearIssue to WebhookIssuePayload for handleIssueAssigned
+      const webhookIssue: WebhookIssuePayload = {
+        id: linearIssue.id,
+        identifier: linearIssue.identifier,
+        title: linearIssue.title,
+        description: linearIssue.description,
+        team: { id: repository.linearWorkspaceId }
+      }
+      await this.handleIssueAssigned(webhookIssue, repository)
     } else {
-      // Fallback: create minimal LinearIssue from session data for restart
+      // Fallback: create minimal WebhookIssuePayload from session data for restart
       const sessionIssue = session.issue
-      const fallbackIssue = {
+      const fallbackIssue: WebhookIssuePayload = {
         id: sessionIssue.id,
         identifier: sessionIssue.identifier,
         title: sessionIssue.title,
         description: sessionIssue.description,
-        branchName: typeof sessionIssue.getBranchName === 'function' 
-          ? sessionIssue.getBranchName() 
-          : `${sessionIssue.identifier}-${sessionIssue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
-      } as any
+        team: { id: repository.linearWorkspaceId }
+      }
       await this.handleIssueAssigned(fallbackIssue, repository)
     }
   }
@@ -654,24 +660,25 @@ export class EdgeWorker extends EventEmitter {
   }
 
   /**
-   * Convert LinearIssue to CoreIssue interface for Session creation
+   * Convert webhook issue payload to CoreIssue interface for Session creation
    */
-  private convertLinearIssueToCore(issue: LinearIssue): CoreIssue {
+  private convertWebhookIssueToCore(issue: WebhookIssuePayload): CoreIssue {
     return {
       id: issue.id,
       identifier: issue.identifier,
-      title: issue.title,
+      title: issue.title || '',
       description: issue.description || undefined,
       getBranchName(): string {
-        return issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+        return `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
       }
     }
   }
 
+
   /**
    * Build initial prompt for issue
    */
-  private async buildInitialPrompt(issue: LinearIssue, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
+  private async buildInitialPrompt(issue: WebhookIssuePayload, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
     let enhancedIssue: any = issue  // Declare at function scope for fallback access, typed as any for flexibility
     try {
@@ -988,7 +995,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Download attachments from Linear issue
    */
-  private async downloadIssueAttachments(issue: LinearIssue, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
+  private async downloadIssueAttachments(issue: WebhookIssuePayload, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
     try {
       const attachmentMap: Record<string, string> = {}
       const imageMap: Record<string, string> = {}

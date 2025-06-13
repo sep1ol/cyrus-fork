@@ -1,6 +1,28 @@
 import type { Workspace } from '@cyrus/core'
 import type { ClaudeEvent } from '@cyrus/claude-parser'
-import type { Issue as LinearIssue, Comment as LinearComment } from '@linear/sdk'
+
+/**
+ * Simple webhook issue payload - NOT the full Linear SDK Issue object
+ * Webhooks only send basic fields, and structure varies by webhook type
+ */
+export interface WebhookIssuePayload {
+  id: string
+  identifier: string
+  title?: string
+  description?: string
+  team?: { id: string }
+  // Other fields may be present depending on webhook type
+  [key: string]: any
+}
+
+/**
+ * Simple webhook comment payload - NOT the full Linear SDK Comment object
+ */
+export interface WebhookCommentPayload {
+  body?: string
+  // Other fields may be present depending on webhook type
+  [key: string]: any
+}
 
 /**
  * Configuration for a single repository/workspace pair
@@ -45,7 +67,7 @@ export interface EdgeWorkerConfig {
   handlers?: {
     // Called when workspace needs to be created
     // Now includes repository context
-    createWorkspace?: (issue: LinearIssue, repository: RepositoryConfig) => Promise<Workspace>
+    createWorkspace?: (issue: WebhookIssuePayload, repository: RepositoryConfig) => Promise<Workspace>
     
     // Called with Claude events (for UI updates, logging, etc)
     // Now includes repository ID
@@ -53,7 +75,7 @@ export interface EdgeWorkerConfig {
     
     // Called when session starts/ends
     // Now includes repository ID
-    onSessionStart?: (issueId: string, issue: LinearIssue, repositoryId: string) => void
+    onSessionStart?: (issueId: string, issue: WebhookIssuePayload, repositoryId: string) => void
     onSessionEnd?: (issueId: string, exitCode: number | null, repositoryId: string) => void
     
     // Called on errors
@@ -80,7 +102,7 @@ export interface IssueAssignedWebhook {
     type: 'AppUserNotification'
     notification: {
       type: 'issueAssignedToYou'
-      issue: LinearIssue  // Linear issue data
+      issue: WebhookIssuePayload  // Simple webhook issue data
     }
     createdAt: string
     eventId?: string
@@ -96,8 +118,8 @@ export interface CommentCreatedWebhook {
     action: 'create'
     createdAt: string
     data: {
-      issue: LinearIssue
-      comment: LinearComment
+      issue: WebhookIssuePayload
+      comment: WebhookCommentPayload
     }
     eventId?: string
   }
@@ -112,7 +134,7 @@ export interface EdgeWorkerEvents {
   'disconnected': (token: string, reason?: string) => void
   
   // Session events (now includes repository ID)
-  'session:started': (issueId: string, issue: LinearIssue, repositoryId: string) => void
+  'session:started': (issueId: string, issue: WebhookIssuePayload, repositoryId: string) => void
   'session:ended': (issueId: string, exitCode: number | null, repositoryId: string) => void
   
   // Claude events (now includes repository ID)
