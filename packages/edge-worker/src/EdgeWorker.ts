@@ -261,6 +261,8 @@ export class EdgeWorker extends EventEmitter {
 
   /**
    * Handle issue assignment
+   * @param issue Linear issue object from webhook data (contains full Linear SDK properties)
+   * @param repository Repository configuration
    */
   private async handleIssueAssigned(issue: any, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
@@ -343,6 +345,9 @@ export class EdgeWorker extends EventEmitter {
 
   /**
    * Handle new comment on issue
+   * @param issue Linear issue object from webhook data
+   * @param comment Linear comment object from webhook data
+   * @param repository Repository configuration
    */
   private async handleNewComment(issue: any, comment: any, repository: RepositoryConfig): Promise<void> {
     // Check if continuation is enabled
@@ -480,7 +485,7 @@ export class EdgeWorker extends EventEmitter {
       runner.spawn()
 
       // Send comment as input
-      await runner.sendInput(comment.body || comment.text || '')
+      await runner.sendInput(comment.body || '')
     } catch (error) {
       console.error('Failed to continue conversation, starting fresh:', error)
       // Remove any partially created session
@@ -493,6 +498,8 @@ export class EdgeWorker extends EventEmitter {
 
   /**
    * Handle issue unassignment
+   * @param issue Linear issue object from webhook data
+   * @param repository Repository configuration
    */
   private async handleIssueUnassigned(issue: any, repository: RepositoryConfig): Promise<void> {
     // Check if there's an active session for this issue
@@ -620,6 +627,9 @@ export class EdgeWorker extends EventEmitter {
 
   /**
    * Build initial prompt for issue
+   * @param issue Linear issue object from webhook data
+   * @param repository Repository configuration
+   * @param attachmentManifest Generated attachment manifest text
    */
   private async buildInitialPrompt(issue: any, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
@@ -764,6 +774,8 @@ Please analyze this issue and help implement a solution.`
 
   /**
    * Move issue to started state when assigned
+   * @param issue Linear issue object from webhook data (contains full Linear SDK properties)
+   * @param repositoryId Repository ID for Linear client lookup
    */
   private async moveIssueToStartedState(issue: any, repositoryId: string): Promise<void> {
     try {
@@ -774,14 +786,22 @@ Please analyze this issue and help implement a solution.`
       }
 
       // Check if issue is already in a started state
-      if (issue.state?.type === 'started') {
-        console.log(`Issue ${issue.identifier} is already in started state (${issue.state.name})`)
+      const currentState = await issue.state
+      if (currentState?.type === 'started') {
+        console.log(`Issue ${issue.identifier} is already in started state (${currentState.name})`)
+        return
+      }
+
+      // Get team for the issue
+      const team = await issue.team
+      if (!team) {
+        console.warn(`No team found for issue ${issue.identifier}, skipping state update`)
         return
       }
 
       // Get available workflow states for the issue's team
       const teamStates = await linearClient.workflowStates({
-        filter: { team: { id: { eq: issue.team?.id } } }
+        filter: { team: { id: { eq: team.id } } }
       })
       
       const states = await teamStates.nodes
@@ -790,12 +810,17 @@ Please analyze this issue and help implement a solution.`
       const startedState = states.find((state: any) => state.type === 'started')
       
       if (!startedState) {
-        console.warn(`No 'started' state found for team ${issue.team?.name || 'unknown'}, skipping state update`)
+        console.warn(`No 'started' state found for team ${team.name || 'unknown'}, skipping state update`)
         return
       }
 
       // Update the issue state
       console.log(`Moving issue ${issue.identifier} to started state: ${startedState.name}`)
+      if (!issue.id) {
+        console.warn(`Issue ${issue.identifier} has no ID, skipping state update`)
+        return
+      }
+      
       await linearClient.updateIssue(issue.id, {
         stateId: startedState.id
       })
@@ -944,6 +969,9 @@ Please analyze this issue and help implement a solution.`
   
   /**
    * Download attachments from Linear issue
+   * @param issue Linear issue object from webhook data
+   * @param repository Repository configuration
+   * @param workspacePath Path to workspace directory
    */
   private async downloadIssueAttachments(issue: any, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
     try {
