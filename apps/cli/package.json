@@ -17,7 +17,8 @@
   "files": [
     "app.mjs",
     "services/**/*.mjs",
-    "utils/**/*.mjs"
+    "utils/**/*.mjs",
+    "README.md"
   ],
   "publishConfig": {
     "access": "public"
