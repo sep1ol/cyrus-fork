@@ -709,12 +709,16 @@ export class EdgeWorker extends EventEmitter {
           
           const commentNodes = await comments.nodes
           if (commentNodes.length > 0) {
-            commentHistory = commentNodes.map((comment: Comment, index: number) => {
-              // Note: comment.user is a LinearFetch<User> that would need to be awaited
-              // For now, we'll use a simpler approach since we just need basic info
+            // Resolve user information for each comment
+            const commentPromises = commentNodes.map(async (comment: Comment, index: number) => {
+              const user = await comment.user
+              const authorName = user?.displayName || user?.name || user?.email || 'Unknown'
               const createdAt = new Date(comment.createdAt).toLocaleString()
-              return `Comment ${index + 1} at ${createdAt}:\n${comment.body}`
-            }).join('\n\n')
+              return `Comment ${index + 1} by ${authorName} at ${createdAt}:\n${comment.body}`
+            })
+            
+            const resolvedComments = await Promise.all(commentPromises)
+            commentHistory = resolvedComments.join('\n\n')
             
             latestComment = commentNodes[commentNodes.length - 1]?.body || ''
             console.log(`[EdgeWorker] Processed ${commentNodes.length} comments for issue ${issue.identifier}`)
