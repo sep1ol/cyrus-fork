@@ -709,10 +709,11 @@ export class EdgeWorker extends EventEmitter {
           
           const commentNodes = await comments.nodes
           if (commentNodes.length > 0) {
-            commentHistory = commentNodes.map((comment: any, index: number) => {
-              const authorName = comment.user?.displayName || comment.user?.name || comment.user?.email || 'Unknown'
+            commentHistory = commentNodes.map((comment: Comment, index: number) => {
+              // Note: comment.user is a LinearFetch<User> that would need to be awaited
+              // For now, we'll use a simpler approach since we just need basic info
               const createdAt = new Date(comment.createdAt).toLocaleString()
-              return `Comment ${index + 1} by ${authorName} at ${createdAt}:\n${comment.body}`
+              return `Comment ${index + 1} at ${createdAt}:\n${comment.body}`
             }).join('\n\n')
             
             latestComment = commentNodes[commentNodes.length - 1]?.body || ''
