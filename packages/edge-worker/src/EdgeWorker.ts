@@ -260,12 +260,28 @@ export class EdgeWorker extends EventEmitter {
     }
     console.log(`[EdgeWorker] Fetched full issue details for ${issue.identifier}`)
     
+    await this.handleIssueAssignedWithFullIssue(fullIssue, repository)
+  }
+
+  private async handleIssueAssignedWithFullIssue(fullIssue: LinearIssue, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] handleIssueAssignedWithFullIssue started for issue ${fullIssue.identifier} (${fullIssue.id})`)
+    
     // Post initial comment immediately
-    const initialComment = await this.postInitialComment(issue.id, repository.id)
+    const initialComment = await this.postInitialComment(fullIssue.id, repository.id)
+    
+    // Create webhook-compatible issue for handlers that still need it
+    const webhookIssue: LinearWebhookIssue = {
+      id: fullIssue.id,
+      identifier: fullIssue.identifier,
+      title: fullIssue.title,
+      teamId: repository.linearWorkspaceId,
+      team: { id: repository.linearWorkspaceId, key: 'TEMP', name: 'Unknown' },
+      url: `https://linear.app/issue/${fullIssue.identifier}`
+    }
     
     // Create workspace using full issue data
     const workspace = this.config.handlers?.createWorkspace
-      ? await this.config.handlers.createWorkspace(issue, repository)
+      ? await this.config.handlers.createWorkspace(webhookIssue, repository)
       : {
           path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
           isGitWorktree: false
@@ -273,8 +289,8 @@ export class EdgeWorker extends EventEmitter {
 
     console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`)
 
-    // Download attachments before creating Claude runner (still use webhook issue for attachment extraction)
-    const attachmentResult = await this.downloadIssueAttachments(issue, repository, workspace.path)
+    // Download attachments before creating Claude runner
+    const attachmentResult = await this.downloadIssueAttachments(webhookIssue, repository, workspace.path)
     
     // Build allowed directories list
     const allowedDirectories: string[] = []
@@ -315,9 +331,9 @@ export class EdgeWorker extends EventEmitter {
     this.sessionManager.addSession(fullIssue.id, session)
     this.sessionToRepo.set(fullIssue.id, repository.id)
 
-    // Emit events (still use webhook issue for events to maintain compatibility)
-    this.emit('session:started', fullIssue.id, issue, repository.id)
-    this.config.handlers?.onSessionStart?.(fullIssue.id, issue, repository.id)
+    // Emit events (use webhook issue for events to maintain compatibility)
+    this.emit('session:started', fullIssue.id, webhookIssue, repository.id)
+    this.config.handlers?.onSessionStart?.(fullIssue.id, webhookIssue, repository.id)
 
     // Build and send initial prompt with attachment manifest using full issue
     console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
@@ -609,16 +625,7 @@ export class EdgeWorker extends EventEmitter {
     // Fetch fresh LinearIssue data and restart session
     const linearIssue = await this.fetchFullIssueDetails(issueId, repositoryId)
     if (linearIssue) {
-      // Convert LinearIssue to LinearWebhookIssue for handleIssueAssigned
-      const webhookIssue: LinearWebhookIssue = {
-        id: linearIssue.id,
-        identifier: linearIssue.identifier,
-        title: linearIssue.title,
-        teamId: repository.linearWorkspaceId,
-        team: { id: repository.linearWorkspaceId, key: 'TEMP', name: 'Unknown' },
-        url: `https://linear.app/issue/${linearIssue.identifier}`
-      }
-      await this.handleIssueAssigned(webhookIssue, repository)
+      await this.handleIssueAssignedWithFullIssue(linearIssue, repository)
     } else {
       // Fallback: create minimal LinearWebhookIssue from session data for restart
       const sessionIssue = session.issue

@@ -1,4 +1,4 @@
-import type { Workspace } from '@cyrus/core'
+import type { Workspace, LinearWebhookIssue } from '@cyrus/core'
 import type { ClaudeEvent } from '@cyrus/claude-parser'
 
 // Re-export webhook types from core for convenience
@@ -56,7 +56,7 @@ export interface EdgeWorkerConfig {
   handlers?: {
     // Called when workspace needs to be created
     // Now includes repository context
-    createWorkspace?: (issue: import('@cyrus/core').LinearWebhookIssue, repository: RepositoryConfig) => Promise<Workspace>
+    createWorkspace?: (issue: LinearWebhookIssue, repository: RepositoryConfig) => Promise<Workspace>
     
     // Called with Claude events (for UI updates, logging, etc)
     // Now includes repository ID
@@ -64,7 +64,7 @@ export interface EdgeWorkerConfig {
     
     // Called when session starts/ends
     // Now includes repository ID
-    onSessionStart?: (issueId: string, issue: import('@cyrus/core').LinearWebhookIssue, repositoryId: string) => void
+    onSessionStart?: (issueId: string, issue: LinearWebhookIssue, repositoryId: string) => void
     onSessionEnd?: (issueId: string, exitCode: number | null, repositoryId: string) => void
     
     // Called on errors
@@ -90,7 +90,7 @@ export interface EdgeWorkerEvents {
   'disconnected': (token: string, reason?: string) => void
   
   // Session events (now includes repository ID)
-  'session:started': (issueId: string, issue: import('@cyrus/core').LinearWebhookIssue, repositoryId: string) => void
+  'session:started': (issueId: string, issue: LinearWebhookIssue, repositoryId: string) => void
   'session:ended': (issueId: string, exitCode: number | null, repositoryId: string) => void
   
   // Claude events (now includes repository ID)
