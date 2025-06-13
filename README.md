@@ -44,15 +44,6 @@ When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authe
 - Your repository permissions apply to all operations
 - The only indication that Claude assisted is the "Co-Authored-By" commit trailer
 
-## Documentation Resources
-
-- [Linear Agents Documentation](https://linear.app/developers/agents)
-- [Linear API Documentation](https://developers.linear.app/docs)
-- [Linear OAuth Documentation](https://developers.linear.app/docs/oauth/authentication)
-- [Linear Webhooks Documentation](https://developers.linear.app/docs/webhooks/getting-started)
-- [Claude Code Documentation](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
-- [Anthropic Claude API Documentation](https://docs.anthropic.com/claude/reference/)
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
