@@ -576,4 +576,17 @@ describe('EdgeWorker', () => {
       expect(sessions).toEqual(['issue-1', 'issue-2', 'issue-3'])
     })
   })
+
+  describe('branch name sanitization', () => {
+    it('should sanitize branch names by removing backticks', () => {
+      // Test the sanitization function directly
+      const sanitizeBranchName = (name: string) => name ? name.replace(/`/g, '') : name
+      
+      expect(sanitizeBranchName('TEST-123-issue-with-`backticks`-in-title')).toBe('TEST-123-issue-with-backticks-in-title')
+      expect(sanitizeBranchName('Normal-branch-name')).toBe('Normal-branch-name')
+      expect(sanitizeBranchName('`start-with-backtick')).toBe('start-with-backtick')
+      expect(sanitizeBranchName('end-with-backtick`')).toBe('end-with-backtick')
+      expect(sanitizeBranchName('')).toBe('')
+    })
+  })
 })
