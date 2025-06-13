@@ -4,8 +4,22 @@ import { NdjsonClient } from '@cyrus/ndjson-client'
 import { ClaudeRunner, getSafeTools } from '@cyrus/claude-runner'
 import { SessionManager, Session } from '@cyrus/core'
 import type { Issue as CoreIssue } from '@cyrus/core'
-import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig, WebhookIssuePayload, WebhookCommentPayload } from './types.js'
-import type { WebhookEvent, StatusUpdate } from '@cyrus/ndjson-client'
+import type {
+  LinearWebhook,
+  LinearIssueAssignedWebhook,
+  LinearIssueCommentMentionWebhook,
+  LinearIssueNewCommentWebhook,
+  LinearIssueUnassignedWebhook,
+  LinearWebhookIssue,
+  LinearWebhookComment
+} from '@cyrus/core'
+import {
+  isIssueAssignedWebhook,
+  isIssueCommentMentionWebhook,
+  isIssueNewCommentWebhook,
+  isIssueUnassignedWebhook
+} from '@cyrus/core'
+import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
 import type { ClaudeEvent } from '@cyrus/claude-parser'
 import { readFile, writeFile, mkdir, rename, readdir } from 'fs/promises'
 import { resolve, dirname, join, basename, extname } from 'path'
@@ -68,8 +82,8 @@ export class EdgeWorker extends EventEmitter {
         onError: (error) => this.handleError(error)
       })
 
-      // Set up webhook handler
-      ndjsonClient.on('webhook', (data) => this.handleWebhook(data, repos))
+      // Set up webhook handler - data should be the native webhook payload
+      ndjsonClient.on('webhook', (data) => this.handleWebhook(data as LinearWebhook, repos))
       
       // Optional heartbeat logging
       if (process.env.DEBUG_EDGE === 'true') {
@@ -161,109 +175,82 @@ export class EdgeWorker extends EventEmitter {
   }
 
   /**
-   * Handle webhook events from proxy
+   * Handle webhook events from proxy - now accepts native webhook payloads
    */
-  private async handleWebhook(data: WebhookEvent['data'], repos: RepositoryConfig[]): Promise<void> {
+  private async handleWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): Promise<void> {
     // Find the appropriate repository for this webhook
-    const repository = this.findRepositoryForWebhook(data, repos)
+    const repository = this.findRepositoryForWebhook(webhook, repos)
     if (!repository) {
-      console.log('No repository configured for webhook from workspace', this.extractWorkspaceId(data))
+      console.log('No repository configured for webhook from workspace', webhook.organizationId)
       return
     }
+    
     try {
-      // Check for Agent notifications
-      if (data.type === 'AppUserNotification') {
-        await this.handleAgentNotification(data, repository)
+      // Handle specific webhook types with proper typing
+      if (isIssueAssignedWebhook(webhook)) {
+        await this.handleIssueAssignedWebhook(webhook, repository)
+      } else if (isIssueCommentMentionWebhook(webhook)) {
+        await this.handleIssueCommentMentionWebhook(webhook, repository)
+      } else if (isIssueNewCommentWebhook(webhook)) {
+        await this.handleIssueNewCommentWebhook(webhook, repository)
+      } else if (isIssueUnassignedWebhook(webhook)) {
+        await this.handleIssueUnassignedWebhook(webhook, repository)
       } else {
-        // Handle legacy webhook format
-        await this.handleLegacyWebhook(data, repository)
+        console.log(`Unhandled webhook type: ${(webhook as any).action}`)
       }
       
-      // Report success if we have an event ID
-      if ('eventId' in data && data.eventId) {
-        await this.reportStatus({
-          eventId: data.eventId as string,
-          status: 'completed'
-        })
-      }
     } catch (error) {
-      // Report failure
-      if ('eventId' in data && data.eventId) {
-        await this.reportStatus({
-          eventId: data.eventId as string,
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error'
-        })
-      }
+      console.error(`[EdgeWorker] Failed to process webhook: ${(webhook as any).action}`, error)
       throw error
     }
   }
 
   /**
-   * Handle Agent API notifications
+   * Handle issue assignment webhook
    */
-  private async handleAgentNotification(data: any, repository: RepositoryConfig): Promise<void> {
-    const notification = data.notification
-    
-    switch (notification?.type) {
-      case 'issueAssignedToYou':
-        await this.handleIssueAssigned(notification.issue, repository)
-        break
-        
-      case 'issueCommentMention':
-      case 'issueCommentReply':
-      case 'issueNewComment':
-        await this.handleNewComment(notification.issue, notification.comment, repository)
-        break
-        
-      case 'issueUnassignedFromYou':
-        await this.handleIssueUnassigned(notification.issue, repository)
-        break
-        
-      default:
-        console.log(`Unhandled notification type: ${notification?.type}`)
-    }
+  private async handleIssueAssignedWebhook(webhook: LinearIssueAssignedWebhook, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling issue assignment: ${webhook.notification.issue.identifier}`)
+    await this.handleIssueAssigned(webhook.notification.issue, repository)
   }
 
   /**
-   * Handle legacy webhook format
+   * Handle issue comment mention webhook
    */
-  private async handleLegacyWebhook(data: any, repository: RepositoryConfig): Promise<void> {
-    if (data.type === 'Comment' && data.action === 'create') {
-      const issue = data.data?.issue
-      const comment = data.data
-      if (issue && comment) {
-        await this.handleNewComment(issue, comment, repository)
-      }
-    }
+  private async handleIssueCommentMentionWebhook(webhook: LinearIssueCommentMentionWebhook, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling comment mention: ${webhook.notification.issue.identifier}`)
+    await this.handleNewComment(webhook.notification.issue, webhook.notification.comment, repository)
+  }
+
+  /**
+   * Handle issue new comment webhook
+   */
+  private async handleIssueNewCommentWebhook(webhook: LinearIssueNewCommentWebhook, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling new comment: ${webhook.notification.issue.identifier}`)
+    await this.handleNewComment(webhook.notification.issue, webhook.notification.comment, repository)
+  }
+
+  /**
+   * Handle issue unassignment webhook
+   */
+  private async handleIssueUnassignedWebhook(webhook: LinearIssueUnassignedWebhook, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling issue unassignment: ${webhook.notification.issue.identifier}`)
+    await this.handleIssueUnassigned(webhook.notification.issue, repository)
   }
 
   /**
    * Find the repository configuration for a webhook
    */
-  private findRepositoryForWebhook(data: any, repos: RepositoryConfig[]): RepositoryConfig | null {
-    const workspaceId = this.extractWorkspaceId(data)
+  private findRepositoryForWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): RepositoryConfig | null {
+    const workspaceId = webhook.notification.issue.team.id
     if (!workspaceId) return repos[0] || null // Fallback to first repo if no workspace ID
 
     return repos.find(repo => repo.linearWorkspaceId === workspaceId) || null
   }
 
   /**
-   * Extract workspace ID from webhook data
-   */
-  private extractWorkspaceId(data: any): string | null {
-    // Try different locations where workspace ID might be
-    return data.organizationId || 
-           data.workspaceId || 
-           data.data?.workspaceId || 
-           data.notification?.issue?.team?.id ||
-           null
-  }
-
-  /**
    * Handle issue assignment
    */
-  private async handleIssueAssigned(issue: WebhookIssuePayload, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueAssigned(issue: LinearWebhookIssue, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
     
     // Post initial comment immediately
@@ -342,7 +329,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle new comment on issue
    */
-  private async handleNewComment(issue: WebhookIssuePayload, comment: WebhookCommentPayload, repository: RepositoryConfig): Promise<void> {
+  private async handleNewComment(issue: LinearWebhookIssue, comment: LinearWebhookComment, repository: RepositoryConfig): Promise<void> {
     // Check if continuation is enabled
     if (!this.config.features?.enableContinuation) {
       console.log('Continuation not enabled, ignoring comment')
@@ -492,7 +479,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle issue unassignment
    */
-  private async handleIssueUnassigned(issue: WebhookIssuePayload, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueUnassigned(issue: LinearWebhookIssue, repository: RepositoryConfig): Promise<void> {
     // Check if there's an active session for this issue
     const session = this.sessionManager.getSession(issue.id)
     const initialCommentId = this.issueToCommentId.get(issue.id)
@@ -615,24 +602,26 @@ export class EdgeWorker extends EventEmitter {
     // Fetch fresh LinearIssue data and restart session
     const linearIssue = await this.fetchFullIssueDetails(issueId, repositoryId)
     if (linearIssue) {
-      // Convert LinearIssue to WebhookIssuePayload for handleIssueAssigned
-      const webhookIssue: WebhookIssuePayload = {
+      // Convert LinearIssue to LinearWebhookIssue for handleIssueAssigned
+      const webhookIssue: LinearWebhookIssue = {
         id: linearIssue.id,
         identifier: linearIssue.identifier,
         title: linearIssue.title,
-        description: linearIssue.description,
-        team: { id: repository.linearWorkspaceId }
+        teamId: repository.linearWorkspaceId,
+        team: { id: repository.linearWorkspaceId, key: 'TEMP', name: 'Unknown' },
+        url: `https://linear.app/issue/${linearIssue.identifier}`
       }
       await this.handleIssueAssigned(webhookIssue, repository)
     } else {
-      // Fallback: create minimal WebhookIssuePayload from session data for restart
+      // Fallback: create minimal LinearWebhookIssue from session data for restart
       const sessionIssue = session.issue
-      const fallbackIssue: WebhookIssuePayload = {
+      const fallbackIssue: LinearWebhookIssue = {
         id: sessionIssue.id,
         identifier: sessionIssue.identifier,
         title: sessionIssue.title,
-        description: sessionIssue.description,
-        team: { id: repository.linearWorkspaceId }
+        teamId: repository.linearWorkspaceId,
+        team: { id: repository.linearWorkspaceId, key: 'TEMP', name: 'Unknown' },
+        url: `https://linear.app/issue/${sessionIssue.identifier}`
       }
       await this.handleIssueAssigned(fallbackIssue, repository)
     }
@@ -662,12 +651,12 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Convert webhook issue payload to CoreIssue interface for Session creation
    */
-  private convertWebhookIssueToCore(issue: WebhookIssuePayload): CoreIssue {
+  private convertWebhookIssueToCore(issue: LinearWebhookIssue): CoreIssue {
     return {
       id: issue.id,
       identifier: issue.identifier,
       title: issue.title || '',
-      description: issue.description || undefined,
+      description: undefined, // LinearWebhookIssue doesn't have description
       getBranchName(): string {
         return `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
       }
@@ -678,7 +667,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Build initial prompt for issue
    */
-  private async buildInitialPrompt(issue: WebhookIssuePayload, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
+  private async buildInitialPrompt(issue: LinearWebhookIssue, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
     let enhancedIssue: any = issue  // Declare at function scope for fallback access, typed as any for flexibility
     try {
@@ -769,7 +758,7 @@ export class EdgeWorker extends EventEmitter {
         .replace(/{{working_directory}}/g, this.config.handlers?.createWorkspace ? 
           'Will be created based on issue' : repository.repositoryPath)
         .replace(/{{base_branch}}/g, repository.baseBranch)
-        .replace(/{{branch_name}}/g, enhancedIssue.branchName || issue.branchName || `${enhancedIssue.identifier}-${enhancedIssue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`)
+        .replace(/{{branch_name}}/g, `${enhancedIssue.identifier}-${enhancedIssue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`)
       
       // Append attachment manifest if provided
       if (attachmentManifest) {
@@ -823,20 +812,6 @@ Please analyze this issue and help implement a solution.`
     }
 
     return null
-  }
-
-  /**
-   * Report status back to proxy
-   */
-  private async reportStatus(update: StatusUpdate): Promise<void> {
-    // Find which client to use based on the event ID
-    // For now, send to all clients (they'll ignore if not their event)
-    const promises = Array.from(this.ndjsonClients.values()).map(client => 
-      client.sendStatus(update).catch(err => 
-        console.error('Failed to send status update:', err)
-      )
-    )
-    await Promise.all(promises)
   }
 
   /**
@@ -995,7 +970,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Download attachments from Linear issue
    */
-  private async downloadIssueAttachments(issue: WebhookIssuePayload, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
+  private async downloadIssueAttachments(issue: LinearWebhookIssue, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
     try {
       const attachmentMap: Record<string, string> = {}
       const imageMap: Record<string, string> = {}
@@ -1018,7 +993,7 @@ Please analyze this issue and help implement a solution.`
       await mkdir(attachmentsDir, { recursive: true })
       
       // Extract URLs from issue description
-      const descriptionUrls = this.extractAttachmentUrls(issue.description || '')
+      const descriptionUrls = this.extractAttachmentUrls('')  // LinearWebhookIssue doesn't have description
       
       // Extract URLs from comments if available
       const commentUrls: string[] = []

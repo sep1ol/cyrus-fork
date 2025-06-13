@@ -2,8 +2,9 @@ export { EdgeWorker } from './EdgeWorker.js'
 export type {
   EdgeWorkerConfig,
   EdgeWorkerEvents,
-  IssueAssignedWebhook,
-  CommentCreatedWebhook
+  LinearWebhookIssue,
+  LinearWebhookComment,
+  LinearWebhookNotification
 } from './types.js'
 
 // Re-export useful types from dependencies
