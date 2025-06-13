@@ -7,55 +7,55 @@
  * Linear team data from webhooks
  */
 export interface LinearWebhookTeam {
-  id: string
-  key: string
-  name: string
+  id: string    // e.g. "e66a639b-d4a1-433d-be4f-8c0438d42cd9"
+  key: string   // e.g. "CEA"
+  name: string  // e.g. "CeedarAgents"
 }
 
 /**
  * Linear issue data from webhooks
  */
 export interface LinearWebhookIssue {
-  id: string
-  title: string
-  teamId: string
+  id: string                     // e.g. "baffe010-6475-4e9a-9aa8-9544e31bf95f"
+  title: string                  // e.g. "test issue"
+  teamId: string                 // e.g. "e66a639b-d4a1-433d-be4f-8c0438d42cd9"
   team: LinearWebhookTeam
-  identifier: string
-  url: string
+  identifier: string             // e.g. "CEA-85"
+  url: string                    // e.g. "https://linear.app/ceedaragents/issue/CEA-85/test-issue"
 }
 
 /**
  * Linear comment data from webhooks
  */
 export interface LinearWebhookComment {
-  id: string
-  body: string
-  userId: string
-  issueId: string
+  id: string       // e.g. "3a5950aa-4f8c-4709-88be-e12b7f40bf78"
+  body: string     // e.g. "this is a root comment"
+  userId: string   // e.g. "4df89eff-81af-4dd9-9201-cbac79892468"
+  issueId: string  // e.g. "baffe010-6475-4e9a-9aa8-9544e31bf95f"
 }
 
 /**
  * Linear actor (user) data from webhooks
  */
 export interface LinearWebhookActor {
-  id: string
-  name: string
-  email: string
-  url: string
+  id: string     // e.g. "4df89eff-81af-4dd9-9201-cbac79892468"
+  name: string   // e.g. "Connor Turland"
+  email: string  // e.g. "connor@ceedar.ai"
+  url: string    // e.g. "https://linear.app/ceedaragents/profiles/connor"
 }
 
 /**
  * Base notification structure common to all webhook notifications
  */
 export interface LinearWebhookNotificationBase {
-  id: string
-  createdAt: string
-  updatedAt: string
-  archivedAt: string | null
-  actorId: string
-  externalUserActorId: string | null
-  userId: string
-  issueId: string
+  id: string                          // e.g. "07de24f2-c624-48cd-90c2-a04dfd54ce48"
+  createdAt: string                   // e.g. "2025-06-13T16:27:42.232Z"
+  updatedAt: string                   // e.g. "2025-06-13T16:27:42.232Z"
+  archivedAt: string | null           // null when not archived
+  actorId: string                     // e.g. "4df89eff-81af-4dd9-9201-cbac79892468"
+  externalUserActorId: string | null  // null for internal users
+  userId: string                      // e.g. "316d0aca-caf4-4c5a-88c3-628e107ce6c6"
+  issueId: string                     // e.g. "baffe010-6475-4e9a-9aa8-9544e31bf95f"
   issue: LinearWebhookIssue
   actor: LinearWebhookActor
 }
@@ -81,10 +81,10 @@ export interface LinearIssueCommentMentionNotification extends LinearWebhookNoti
  */
 export interface LinearIssueNewCommentNotification extends LinearWebhookNotificationBase {
   type: 'issueNewComment'
-  commentId: string
+  commentId: string                      // e.g. "3a5950aa-4f8c-4709-88be-e12b7f40bf78"
   comment: LinearWebhookComment
-  parentCommentId?: string
-  parentComment?: LinearWebhookComment
+  parentCommentId?: string               // Only present for reply comments
+  parentComment?: LinearWebhookComment   // Only present for reply comments
 }
 
 /**
@@ -137,15 +137,15 @@ export interface LinearIssueCommentMentionWebhook {
  * Issue new comment webhook payload
  */
 export interface LinearIssueNewCommentWebhook {
-  type: 'AppUserNotification'
-  action: 'issueNewComment'
-  createdAt: string
-  organizationId: string
-  oauthClientId: string
-  appUserId: string
+  type: 'AppUserNotification'                          // Always this value for user notifications
+  action: 'issueNewComment'                            // Webhook action type
+  createdAt: string                                    // e.g. "2025-06-13T16:27:42.280Z"
+  organizationId: string                               // e.g. "59b3d4a6-ed62-4e69-82db-b11c8dd76b84"
+  oauthClientId: string                                // e.g. "c03d5b6e-5b75-4c2a-b656-d519cec2fc25"
+  appUserId: string                                    // e.g. "316d0aca-caf4-4c5a-88c3-628e107ce6c6"
   notification: LinearIssueNewCommentNotification
-  webhookTimestamp: number
-  webhookId: string
+  webhookTimestamp: number                             // e.g. 1749832062295
+  webhookId: string                                    // e.g. "9fd215cd-b47d-4708-adca-3e7d287f0091"
 }
 
 /**
