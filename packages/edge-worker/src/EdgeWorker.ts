@@ -674,7 +674,7 @@ export class EdgeWorker extends EventEmitter {
         .replace(/{{working_directory}}/g, this.config.handlers?.createWorkspace ? 
           'Will be created based on issue' : repository.repositoryPath)
         .replace(/{{base_branch}}/g, repository.baseBranch)
-        .replace(/{{branch_name}}/g, issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`)
+        .replace(/{{branch_name}}/g, this.sanitizeBranchName(issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`))
       
       // Append attachment manifest if provided
       if (attachmentManifest) {
@@ -702,6 +702,13 @@ Base branch: ${repository.baseBranch}
 
 Please analyze this issue and help implement a solution.`
     }
+  }
+
+  /**
+   * Sanitize branch name by removing backticks to prevent command injection
+   */
+  private sanitizeBranchName(name: string): string {
+    return name ? name.replace(/`/g, '') : name
   }
 
   /**

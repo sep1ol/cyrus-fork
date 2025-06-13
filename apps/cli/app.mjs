@@ -537,8 +537,12 @@ class EdgeApp {
         throw new Error('Not a git repository')
       }
       
+      // Sanitize branch name by removing backticks to prevent command injection
+      const sanitizeBranchName = (name) => name ? name.replace(/`/g, '') : name
+      
       // Use Linear's preferred branch name, or generate one if not available
-      const branchName = issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+      const rawBranchName = issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+      const branchName = sanitizeBranchName(rawBranchName)
       const workspacePath = join(repository.workspaceBaseDir, issue.identifier)
       
       // Ensure workspace directory exists
