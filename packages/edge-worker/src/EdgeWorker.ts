@@ -620,21 +620,11 @@ export class EdgeWorker extends EventEmitter {
 
     // Fetch fresh LinearIssue data and restart session
     const linearIssue = await this.fetchFullIssueDetails(issueId, repositoryId)
-    if (linearIssue) {
-      await this.handleIssueAssignedWithFullIssue(linearIssue, repository)
-    } else {
-      // Fallback: create minimal LinearWebhookIssue from session data for restart
-      const sessionIssue = session.issue
-      const fallbackIssue: LinearWebhookIssue = {
-        id: sessionIssue.id,
-        identifier: sessionIssue.identifier,
-        title: sessionIssue.title,
-        teamId: repository.linearWorkspaceId,
-        team: { id: repository.linearWorkspaceId, key: 'TEMP', name: 'Unknown' },
-        url: `https://linear.app/issue/${sessionIssue.identifier}`
-      }
-      await this.handleIssueAssigned(fallbackIssue, repository)
+    if (!linearIssue) {
+      throw new Error(`Failed to fetch full issue details for ${issueId}`)
     }
+    
+    await this.handleIssueAssignedWithFullIssue(linearIssue, repository)
   }
 
   /**
