@@ -258,9 +258,15 @@ describe('EdgeWorker', () => {
       const webhook = mockIssueAssignedWebhook()
       await webhookHandler(webhook)
 
-      // Should create workspace
+      // Should create workspace with full Linear issue
       expect(mockConfig.handlers.createWorkspace).toHaveBeenCalledWith(
-        webhook.notification.issue,
+        expect.objectContaining({
+          id: 'issue-123',
+          identifier: 'TEST-123',
+          title: 'Test Issue',
+          description: 'Test description',
+          branchName: 'TEST-123-test-issue'
+        }),
         expect.objectContaining({ id: 'test-repo' })
       )
 
@@ -274,10 +280,16 @@ describe('EdgeWorker', () => {
         expect.any(Session)
       )
 
-      // Should emit events
+      // Should emit events with full Linear issue
       expect(mockConfig.handlers.onSessionStart).toHaveBeenCalledWith(
         'issue-123',
-        webhook.notification.issue,
+        expect.objectContaining({
+          id: 'issue-123',
+          identifier: 'TEST-123',
+          title: 'Test Issue',
+          description: 'Test description',
+          branchName: 'TEST-123-test-issue'
+        }),
         'test-repo'
       )
     })
