@@ -241,7 +241,7 @@ export class EdgeWorker extends EventEmitter {
    * Find the repository configuration for a webhook
    */
   private findRepositoryForWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): RepositoryConfig | null {
-    const workspaceId = webhook.notification.issue.team.id
+    const workspaceId = webhook.organizationId
     if (!workspaceId) return repos[0] || null // Fallback to first repo if no workspace ID
 
     return repos.find(repo => repo.linearWorkspaceId === workspaceId) || null
