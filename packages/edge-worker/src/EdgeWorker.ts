@@ -429,9 +429,9 @@ export class EdgeWorker extends EventEmitter {
             isGitWorktree: false
           }
       
-      // Create session without spawning Claude yet (convert webhook payload to CoreIssue)
+      // Create session without spawning Claude yet (use full Linear issue)
       session = new Session({
-        issue: this.convertWebhookIssueToCore(issue),
+        issue: this.convertLinearIssueToCore(fullIssue),
         workspace,
         process: null,
         startedAt: new Date()
@@ -645,21 +645,6 @@ export class EdgeWorker extends EventEmitter {
     } catch (error) {
       console.error(`[EdgeWorker] Failed to fetch full issue details for ${issueId}:`, error)
       return null
-    }
-  }
-
-  /**
-   * Convert webhook issue payload to CoreIssue interface for Session creation
-   */
-  private convertWebhookIssueToCore(issue: LinearWebhookIssue): CoreIssue {
-    return {
-      id: issue.id,
-      identifier: issue.identifier,
-      title: issue.title || '',
-      description: undefined, // LinearWebhookIssue doesn't have description
-      getBranchName(): string {
-        return `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
-      }
     }
   }
 
