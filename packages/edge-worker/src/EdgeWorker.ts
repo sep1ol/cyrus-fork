@@ -616,10 +616,32 @@ export class EdgeWorker extends EventEmitter {
   }
 
   /**
+   * Fetch complete issue details from Linear API
+   */
+  private async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<any> {
+    const linearClient = this.linearClients.get(repositoryId)
+    if (!linearClient) {
+      console.warn(`[EdgeWorker] No Linear client found for repository ${repositoryId}`)
+      return null
+    }
+
+    try {
+      console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`)
+      const fullIssue = await linearClient.issue(issueId)
+      console.log(`[EdgeWorker] Successfully fetched issue details for ${issueId}`)
+      return fullIssue
+    } catch (error) {
+      console.error(`[EdgeWorker] Failed to fetch full issue details for ${issueId}:`, error)
+      return null
+    }
+  }
+
+  /**
    * Build initial prompt for issue
    */
   private async buildInitialPrompt(issue: any, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
+    let enhancedIssue = issue  // Declare at function scope for fallback access
     try {
       // Use custom template if provided (repository-specific takes precedence)
       let templatePath = repository.promptTemplatePath || this.config.features?.promptTemplatePath
@@ -636,6 +658,27 @@ export class EdgeWorker extends EventEmitter {
       const template = await readFile(templatePath, 'utf-8')
       console.log(`[EdgeWorker] Template loaded, length: ${template.length} characters`)
       
+      // Fetch complete issue details from Linear API
+      if (issue.id) {
+        const fullIssueDetails = await this.fetchFullIssueDetails(issue.id, repository.id)
+        if (fullIssueDetails) {
+          // Merge webhook data with complete API data, prioritizing API data
+          enhancedIssue = {
+            ...issue,  // Keep webhook fields like identifier, url
+            ...fullIssueDetails,  // Override with complete API data
+            // Preserve important webhook fields that might differ
+            identifier: issue.identifier || fullIssueDetails.identifier,
+            url: issue.url || fullIssueDetails.url
+          }
+          console.log(`[EdgeWorker] Enhanced issue data with API details for ${issue.identifier}`)
+          console.log(`[EdgeWorker] Issue description: ${enhancedIssue.description ? 'present' : 'missing'}`)
+          console.log(`[EdgeWorker] Issue state: ${enhancedIssue.state?.name || 'unknown'}`)
+          console.log(`[EdgeWorker] Issue priority: ${enhancedIssue.priority || 'none'}`)
+        } else {
+          console.log(`[EdgeWorker] Using webhook data only for ${issue.identifier}`)
+        }
+      }
+      
       // Get comment history
       const linearClient = this.linearClients.get(repository.id)
       let commentHistory = ''
@@ -643,17 +686,21 @@ export class EdgeWorker extends EventEmitter {
       
       if (linearClient && issue.id) {
         try {
+          console.log(`[EdgeWorker] Fetching comments for issue ${issue.identifier}`)
           const comments = await linearClient.comments({
             filter: { issue: { id: { eq: issue.id } } }
           })
           
           const commentNodes = await comments.nodes
           if (commentNodes.length > 0) {
-            commentHistory = commentNodes.map((comment: any, index: number) => 
-              `Comment ${index + 1} by ${comment.user?.name || 'Unknown'} at ${comment.createdAt}:\n${comment.body}`
-            ).join('\n\n')
+            commentHistory = commentNodes.map((comment: any, index: number) => {
+              const authorName = comment.user?.displayName || comment.user?.name || comment.user?.email || 'Unknown'
+              const createdAt = new Date(comment.createdAt).toLocaleString()
+              return `Comment ${index + 1} by ${authorName} at ${createdAt}:\n${comment.body}`
+            }).join('\n\n')
             
             latestComment = commentNodes[commentNodes.length - 1]?.body || ''
+            console.log(`[EdgeWorker] Processed ${commentNodes.length} comments for issue ${issue.identifier}`)
           }
         } catch (error) {
           console.error('Failed to fetch comments:', error)
@@ -663,18 +710,18 @@ export class EdgeWorker extends EventEmitter {
       // Replace template variables
       const prompt = template
         .replace(/{{repository_name}}/g, repository.name)
-        .replace(/{{issue_id}}/g, issue.id || issue.identifier || '')
-        .replace(/{{issue_title}}/g, issue.title || '')
-        .replace(/{{issue_description}}/g, issue.description || 'No description provided')
-        .replace(/{{issue_state}}/g, issue.state?.name || 'Unknown')
-        .replace(/{{issue_priority}}/g, issue.priority?.toString() || 'None')
-        .replace(/{{issue_url}}/g, issue.url || '')
+        .replace(/{{issue_id}}/g, enhancedIssue.id || enhancedIssue.identifier || '')
+        .replace(/{{issue_title}}/g, enhancedIssue.title || '')
+        .replace(/{{issue_description}}/g, enhancedIssue.description || 'No description provided')
+        .replace(/{{issue_state}}/g, enhancedIssue.state?.name || 'Unknown')
+        .replace(/{{issue_priority}}/g, enhancedIssue.priority?.toString() || 'None')
+        .replace(/{{issue_url}}/g, enhancedIssue.url || '')
         .replace(/{{comment_history}}/g, commentHistory || 'No comments yet')
         .replace(/{{latest_comment}}/g, latestComment || 'No comments yet')
         .replace(/{{working_directory}}/g, this.config.handlers?.createWorkspace ? 
           'Will be created based on issue' : repository.repositoryPath)
         .replace(/{{base_branch}}/g, repository.baseBranch)
-        .replace(/{{branch_name}}/g, issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`)
+        .replace(/{{branch_name}}/g, enhancedIssue.branchName || issue.branchName || `${enhancedIssue.identifier}-${enhancedIssue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`)
       
       // Append attachment manifest if provided
       if (attachmentManifest) {
@@ -690,12 +737,15 @@ export class EdgeWorker extends EventEmitter {
       console.error('[EdgeWorker] Failed to load prompt template:', error)
       
       // Fallback to simple prompt
+      const fallbackIssue = enhancedIssue
       return `Please help me with the following Linear issue:
 
 Repository: ${repository.name}
-Issue: ${issue.identifier}
-Title: ${issue.title}
-Description: ${issue.description || 'No description provided'}
+Issue: ${fallbackIssue.identifier}
+Title: ${fallbackIssue.title}
+Description: ${fallbackIssue.description || 'No description provided'}
+State: ${fallbackIssue.state?.name || 'Unknown'}
+Priority: ${fallbackIssue.priority?.toString() || 'None'}
 
 Working directory: ${repository.repositoryPath}
 Base branch: ${repository.baseBranch}
