@@ -133,7 +133,7 @@ export class ClaudeRunner extends EventEmitter {
       // Just send the input directly, no heredoc needed
       const inputWithNewline = input.endsWith('\n') ? input : input + '\n'
 
-      console.log(`[ClaudeRunner] Writing to stdin, input: "${inputWithNewline.trim()}"`)
+      console.log(`[ClaudeRunner] Writing to stdin, input length: ${inputWithNewline.length} characters`)
       
       this.process!.stdin!.write(inputWithNewline, (err) => {
         if (err) {

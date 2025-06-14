@@ -234,6 +234,12 @@ export class EdgeWorker extends EventEmitter {
    */
   private async handleIssueUnassignedWebhook(webhook: LinearIssueUnassignedWebhook, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] Handling issue unassignment: ${webhook.notification.issue.identifier}`)
+    
+    // Log the complete webhook payload for TypeScript type definition
+    console.log('=== ISSUE UNASSIGNMENT WEBHOOK PAYLOAD ===')
+    console.log(JSON.stringify(webhook, null, 2))
+    console.log('=== END WEBHOOK PAYLOAD ===')
+    
     await this.handleIssueUnassigned(webhook.notification.issue, repository)
   }
 
@@ -501,16 +507,31 @@ export class EdgeWorker extends EventEmitter {
   private async handleIssueUnassigned(issue: LinearWebhookIssue, repository: RepositoryConfig): Promise<void> {
     // Check if there's an active session for this issue
     const session = this.sessionManager.getSession(issue.id)
-    const initialCommentId = this.issueToCommentId.get(issue.id)
     
     // Post farewell comment if there's an active session
-    if (session && initialCommentId) {
-      await this.postComment(
-        issue.id,
-        "I've been unassigned and am stopping work now.",
-        repository.id,
-        initialCommentId  // Post as reply to initial comment
-      )
+    if (session) {
+      // Use the same threading logic as regular replies
+      const replyContext = this.issueToReplyContext.get(issue.id)
+      if (replyContext) {
+        // Reply using the same context as regular comments (handles threading correctly)
+        await this.postComment(
+          issue.id,
+          "I've been unassigned and am stopping work now.",
+          repository.id,
+          replyContext.parentId
+        )
+        // Clear the reply context after using it
+        this.issueToReplyContext.delete(issue.id)
+      } else {
+        // Fall back to replying to initial comment (for direct assignments)
+        const initialCommentId = this.issueToCommentId.get(issue.id)
+        await this.postComment(
+          issue.id,
+          "I've been unassigned and am stopping work now.",
+          repository.id,
+          initialCommentId
+        )
+      }
     }
     
     // Kill Claude process

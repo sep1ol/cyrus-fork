@@ -88,10 +88,16 @@ export interface LinearIssueNewCommentNotification extends LinearWebhookNotifica
 }
 
 /**
- * Issue unassignment notification (inferred structure)
+ * Issue unassignment notification
  */
 export interface LinearIssueUnassignedNotification extends LinearWebhookNotificationBase {
-  type: 'issueUnassignedFromYou'
+  type: 'issueUnassignedFromYou'                        // e.g. "issueUnassignedFromYou"
+  actorId: string                                       // e.g. "4df89eff-81af-4dd9-9201-cbac79892468"
+  externalUserActorId: string | null                   // e.g. null
+  userId: string                                        // e.g. "316d0aca-caf4-4c5a-88c3-628e107ce6c6"
+  issueId: string                                       // e.g. "baffe010-6475-4e9a-9aa8-9544e31bf95f"
+  issue: LinearWebhookIssue
+  actor: LinearWebhookActor
 }
 
 /**
@@ -149,18 +155,18 @@ export interface LinearIssueNewCommentWebhook {
 }
 
 /**
- * Issue unassignment webhook payload (inferred structure)
+ * Issue unassignment webhook payload
  */
 export interface LinearIssueUnassignedWebhook {
-  type: 'AppUserNotification'
-  action: 'issueUnassignedFromYou'
-  createdAt: string
-  organizationId: string
-  oauthClientId: string
-  appUserId: string
+  type: 'AppUserNotification'                          // Always this value for user notifications
+  action: 'issueUnassignedFromYou'                     // Webhook action type
+  createdAt: string                                    // e.g. "2025-06-14T00:22:53.223Z"
+  organizationId: string                               // e.g. "59b3d4a6-ed62-4e69-82db-b11c8dd76b84"
+  oauthClientId: string                                // e.g. "c03d5b6e-5b75-4c2a-b656-d519cec2fc25"
+  appUserId: string                                    // e.g. "316d0aca-caf4-4c5a-88c3-628e107ce6c6"
   notification: LinearIssueUnassignedNotification
-  webhookTimestamp: number
-  webhookId: string
+  webhookTimestamp: number                             // e.g. 1749860573270
+  webhookId: string                                    // e.g. "9fd215cd-b47d-4708-adca-3e7d287f0091"
 }
 
 /**
