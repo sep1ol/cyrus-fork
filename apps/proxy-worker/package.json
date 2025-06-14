@@ -10,7 +10,8 @@
     "preview": "wrangler preview",
     "tail": "wrangler tail",
     "format": "prettier --write .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:run": "echo 'No tests configured for proxy-worker'"
   },
   "dependencies": {
     "itty-router": "^4.0.23"
