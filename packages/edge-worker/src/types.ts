@@ -1,6 +1,6 @@
-import type { Workspace } from '@cyrus/core'
+import type { Workspace } from 'cyrus-core'
 import type { Issue as LinearIssue } from '@linear/sdk'
-import type { ClaudeEvent } from '@cyrus/claude-parser'
+import type { ClaudeEvent } from 'cyrus-claude-parser'
 
 
 /**

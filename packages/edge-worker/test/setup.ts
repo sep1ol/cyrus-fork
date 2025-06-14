@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { ClaudeEvent } from '@cyrus/claude-parser'
+import type { ClaudeEvent } from 'cyrus-claude-parser'
 
 // Mock console methods to reduce noise in tests
 global.console = {

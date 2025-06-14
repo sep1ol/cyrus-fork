@@ -1,9 +1,9 @@
 import { EventEmitter } from 'events'
 import { LinearClient, Issue as LinearIssue, Comment } from '@linear/sdk'
-import { NdjsonClient } from '@cyrus/ndjson-client'
-import { ClaudeRunner, getSafeTools } from '@cyrus/claude-runner'
-import { SessionManager, Session } from '@cyrus/core'
-import type { Issue as CoreIssue } from '@cyrus/core'
+import { NdjsonClient } from 'cyrus-ndjson-client'
+import { ClaudeRunner, getSafeTools } from 'cyrus-claude-runner'
+import { SessionManager, Session } from 'cyrus-core'
+import type { Issue as CoreIssue } from 'cyrus-core'
 import type {
   LinearWebhook,
   LinearIssueAssignedWebhook,
@@ -12,15 +12,15 @@ import type {
   LinearIssueUnassignedWebhook,
   LinearWebhookIssue,
   LinearWebhookComment
-} from '@cyrus/core'
+} from 'cyrus-core'
 import {
   isIssueAssignedWebhook,
   isIssueCommentMentionWebhook,
   isIssueNewCommentWebhook,
   isIssueUnassignedWebhook
-} from '@cyrus/core'
+} from 'cyrus-core'
 import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
-import type { ClaudeEvent } from '@cyrus/claude-parser'
+import type { ClaudeEvent } from 'cyrus-claude-parser'
 import { readFile, writeFile, mkdir, rename, readdir } from 'fs/promises'
 import { resolve, dirname, join, basename, extname } from 'path'
 import { fileURLToPath } from 'url'
@@ -763,7 +763,7 @@ export class EdgeWorker extends EventEmitter {
         .replace(/{{working_directory}}/g, this.config.handlers?.createWorkspace ? 
           'Will be created based on issue' : repository.repositoryPath)
         .replace(/{{base_branch}}/g, repository.baseBranch)
-        .replace(/{{branch_name}}/g, issue.branchName) // Use the real branchName!
+        .replace(/{{branch_name}}/g, this.sanitizeBranchName(issue.branchName))
       
       // Append attachment manifest if provided
       if (attachmentManifest) {
@@ -797,6 +797,13 @@ Base branch: ${repository.baseBranch}
 
 Please analyze this issue and help implement a solution.`
     }
+  }
+
+  /**
+   * Sanitize branch name by removing backticks to prevent command injection
+   */
+  private sanitizeBranchName(name: string): string {
+    return name ? name.replace(/`/g, '') : name
   }
 
   /**

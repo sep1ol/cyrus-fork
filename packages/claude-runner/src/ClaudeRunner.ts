@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { mkdirSync, createWriteStream, type WriteStream } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { StdoutParser, type ClaudeEvent, type ErrorEvent, type ToolErrorEvent } from '@cyrus/claude-parser'
+import { StdoutParser, type ClaudeEvent, type ErrorEvent, type ToolErrorEvent } from 'cyrus-claude-parser'
 import type { ClaudeRunnerConfig, ClaudeRunnerEvents, ClaudeProcessInfo } from './types.js'
 
 export declare interface ClaudeRunner {

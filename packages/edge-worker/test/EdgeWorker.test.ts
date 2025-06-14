@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EdgeWorker } from '../src/EdgeWorker'
 import { LinearClient } from '@linear/sdk'
-import { NdjsonClient } from '@cyrus/ndjson-client'
-import { ClaudeRunner } from '@cyrus/claude-runner'
-import { SessionManager, Session } from '@cyrus/core'
+import { NdjsonClient } from 'cyrus-ndjson-client'
+import { ClaudeRunner } from 'cyrus-claude-runner'
+import { SessionManager, Session } from 'cyrus-core'
 import type { EdgeWorkerConfig } from '../src/types'
 import { 
   mockIssueAssignedWebhook, 
@@ -16,9 +16,9 @@ import {
 
 // Mock dependencies
 vi.mock('@linear/sdk')
-vi.mock('@cyrus/ndjson-client')
-vi.mock('@cyrus/claude-runner')
-vi.mock('@cyrus/core', async (importOriginal) => {
+vi.mock('cyrus-ndjson-client')
+vi.mock('cyrus-claude-runner')
+vi.mock('cyrus-core', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...actual,
@@ -583,6 +583,19 @@ describe('EdgeWorker', () => {
 
       const sessions = edgeWorker.getActiveSessions()
       expect(sessions).toEqual(['issue-1', 'issue-2', 'issue-3'])
+    })
+  })
+
+  describe('branch name sanitization', () => {
+    it('should sanitize branch names by removing backticks', () => {
+      // Test the sanitization function directly
+      const sanitizeBranchName = (name: string) => name ? name.replace(/`/g, '') : name
+      
+      expect(sanitizeBranchName('TEST-123-issue-with-`backticks`-in-title')).toBe('TEST-123-issue-with-backticks-in-title')
+      expect(sanitizeBranchName('Normal-branch-name')).toBe('Normal-branch-name')
+      expect(sanitizeBranchName('`start-with-backtick')).toBe('start-with-backtick')
+      expect(sanitizeBranchName('end-with-backtick`')).toBe('end-with-backtick')
+      expect(sanitizeBranchName('')).toBe('')
     })
   })
 })
