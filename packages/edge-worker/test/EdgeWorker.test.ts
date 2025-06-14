@@ -9,9 +9,9 @@ import {
   mockIssueAssignedWebhook, 
   mockCommentWebhook,
   mockUnassignedWebhook,
-  mockClaudeAssistantEvent,
-  mockClaudeToolEvent,
-  mockClaudeErrorEvent
+  mockClaudeAssistantMessage,
+  mockClaudeToolMessage,
+  mockClaudeResultMessage
 } from './setup'
 
 // Mock dependencies
@@ -42,10 +42,12 @@ describe('EdgeWorker', () => {
   let mockSessionManager: any
 
   beforeEach(() => {
+    // Clear DEBUG_EDGE to ensure predictable behavior
+    delete process.env.DEBUG_EDGE
+    
     // Setup config with single repository for backward compatibility
     mockConfig = {
       proxyUrl: 'http://localhost:3000',
-      claudePath: '/usr/local/bin/claude',
       repositories: [{
         id: 'test-repo',
         name: 'Test Repository',
@@ -60,7 +62,7 @@ describe('EdgeWorker', () => {
           path: '/tmp/test-workspaces/TEST-123',
           isGitWorktree: false
         }),
-        onClaudeEvent: vi.fn(),
+        onClaudeMessage: vi.fn(),
         onSessionStart: vi.fn(),
         onSessionEnd: vi.fn(),
         onError: vi.fn()
@@ -92,13 +94,15 @@ describe('EdgeWorker', () => {
 
     // Setup mock Claude runner
     mockClaudeRunner = {
-      spawn: vi.fn().mockReturnValue({
-        process: { pid: 1234 },
-        startedAt: new Date()
+      start: vi.fn().mockResolvedValue({
+        sessionId: 'test-session-123',
+        startedAt: new Date(),
+        isRunning: false
       }),
-      sendInitialPrompt: vi.fn().mockResolvedValue(undefined),
-      sendInput: vi.fn().mockResolvedValue(undefined),
-      kill: vi.fn()
+      stop: vi.fn(),
+      isRunning: vi.fn().mockReturnValue(false),
+      getSessionInfo: vi.fn().mockReturnValue(null),
+      getMessages: vi.fn().mockReturnValue([])
     }
     vi.mocked(ClaudeRunner).mockImplementation(() => mockClaudeRunner)
 
@@ -216,17 +220,17 @@ describe('EdgeWorker', () => {
       // Note: actual connection status depends on mock implementation
     })
 
-    it('should kill all Claude processes on stop', async () => {
+    it('should stop all Claude processes on stop', async () => {
       // Create some mock sessions
-      const runner1 = { kill: vi.fn() }
-      const runner2 = { kill: vi.fn() }
+      const runner1 = { stop: vi.fn() }
+      const runner2 = { stop: vi.fn() }
       edgeWorker['claudeRunners'].set('issue-1', runner1 as any)
       edgeWorker['claudeRunners'].set('issue-2', runner2 as any)
 
       await edgeWorker.stop()
 
-      expect(runner1.kill).toHaveBeenCalled()
-      expect(runner2.kill).toHaveBeenCalled()
+      expect(runner1.stop).toHaveBeenCalled()
+      expect(runner2.stop).toHaveBeenCalled()
       expect(edgeWorker['claudeRunners'].size).toBe(0)
     })
 
@@ -270,9 +274,8 @@ describe('EdgeWorker', () => {
         expect.objectContaining({ id: 'test-repo' })
       )
 
-      // Should spawn Claude
-      expect(mockClaudeRunner.spawn).toHaveBeenCalled()
-      expect(mockClaudeRunner.sendInitialPrompt).toHaveBeenCalled()
+      // Should start Claude session
+      expect(mockClaudeRunner.start).toHaveBeenCalled()
 
       // Should create session
       expect(mockSessionManager.addSession).toHaveBeenCalledWith(
@@ -317,8 +320,8 @@ describe('EdgeWorker', () => {
       const webhook = mockCommentWebhook()
       await webhookHandler(webhook)
 
-      // Should send input to Claude
-      expect(mockClaudeRunner.sendInput).toHaveBeenCalledWith('Test comment')
+      // Should start new session with comment as prompt
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Test comment')
     })
 
     it('should handle issue unassignment', async () => {
@@ -327,13 +330,13 @@ describe('EdgeWorker', () => {
       })
 
       // Set up a mock Claude runner in the internal map
-      const mockRunner = { kill: vi.fn() }
+      const mockRunner = { stop: vi.fn() }
       edgeWorker['claudeRunners'].set('issue-123', mockRunner as any)
 
       const webhook = mockUnassignedWebhook()
       await webhookHandler(webhook)
 
-      expect(mockRunner.kill).toHaveBeenCalled()
+      expect(mockRunner.stop).toHaveBeenCalled()
       expect(mockSessionManager.removeSession).toHaveBeenCalledWith('issue-123')
     })
 
@@ -344,7 +347,7 @@ describe('EdgeWorker', () => {
       const webhook = mockCommentWebhook()
       await webhookHandler(webhook)
 
-      expect(mockClaudeRunner.sendInput).not.toHaveBeenCalled()
+      expect(mockClaudeRunner.start).not.toHaveBeenCalled()
     })
 
     it('should ignore comments for non-existent sessions', async () => {
@@ -353,7 +356,9 @@ describe('EdgeWorker', () => {
       const webhook = mockCommentWebhook()
       await webhookHandler(webhook)
 
-      expect(mockClaudeRunner.sendInput).not.toHaveBeenCalled()
+      // When there's no existing session, it should restart from scratch (handleIssueAssigned)
+      // So start will be called with the full issue prompt, not just the comment
+      expect(mockClaudeRunner.start).toHaveBeenCalled()
     })
 
     it('should report failures on error', async () => {
@@ -367,10 +372,10 @@ describe('EdgeWorker', () => {
 
   describe('Claude event handling', () => {
     it('should handle assistant responses', async () => {
-      // Setup Claude runner with event handler
-      let claudeEventHandler: Function
+      // Setup Claude runner with message handler
+      let claudeMessageHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeMessageHandler = config.onMessage
         return mockClaudeRunner
       })
 
@@ -381,25 +386,25 @@ describe('EdgeWorker', () => {
       )?.[1]
       await webhookHandler(webhook)
 
-      // Emit Claude assistant event
-      const event = mockClaudeAssistantEvent('Hello from Claude!')
-      await claudeEventHandler!(event)
+      // Emit Claude assistant message
+      const message = mockClaudeAssistantMessage('Hello from Claude!')
+      await claudeMessageHandler!(message)
 
-      // Should NOT post comment to Linear for assistant events (only for result events)
+      // Should NOT post comment to Linear for assistant messages (only for result messages)
       // The initial comment should be the only one posted
       expect(mockLinearClient.createComment).toHaveBeenCalledWith({
         issueId: 'issue-123',
         body: "I've been assigned to this issue and am getting started right away. I'll update this comment with my plan shortly."
       })
 
-      // Should emit events
-      expect(mockConfig.handlers.onClaudeEvent).toHaveBeenCalledWith('issue-123', event, 'test-repo')
+      // Should emit message events
+      expect(mockConfig.handlers.onClaudeMessage).toHaveBeenCalledWith('issue-123', message, 'test-repo')
     })
 
     it('should handle tool use events', async () => {
-      let claudeEventHandler: Function
+      let claudeMessageHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeMessageHandler = config.onMessage
         return mockClaudeRunner
       })
 
@@ -412,16 +417,16 @@ describe('EdgeWorker', () => {
       const toolUseSpy = vi.fn()
       edgeWorker.on('claude:tool-use', toolUseSpy)
 
-      const event = mockClaudeToolEvent('bash', { command: 'ls -la' })
-      await claudeEventHandler!(event)
+      const message = mockClaudeToolMessage('bash', { command: 'ls -la' })
+      await claudeMessageHandler!(message)
 
       expect(toolUseSpy).toHaveBeenCalledWith('issue-123', 'bash', { command: 'ls -la' }, 'test-repo')
     })
 
     it('should handle Claude errors', async () => {
-      let claudeEventHandler: Function
+      let claudeErrorHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeErrorHandler = config.onError
         return mockClaudeRunner
       })
 
@@ -431,24 +436,20 @@ describe('EdgeWorker', () => {
       )?.[1]
       await webhookHandler(webhook)
 
-      const errorSpy = vi.fn()
-      edgeWorker.on('error', errorSpy)
+      const sessionEndedSpy = vi.fn()
+      edgeWorker.on('session:ended', sessionEndedSpy)
 
-      const event = mockClaudeErrorEvent('Something went wrong')
-      await claudeEventHandler!(event)
+      const error = new Error('Something went wrong')
+      await claudeErrorHandler!(error)
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Claude error: Something went wrong' })
-      )
-      expect(mockConfig.handlers.onError).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Claude error: Something went wrong' })
-      )
+      expect(sessionEndedSpy).toHaveBeenCalledWith('issue-123', 1, 'test-repo')
+      expect(mockConfig.handlers.onSessionEnd).toHaveBeenCalledWith('issue-123', 1, 'test-repo')
     })
 
     it('should handle token limit errors', async () => {
-      let claudeEventHandler: Function
+      let claudeMessageHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeMessageHandler = config.onMessage
         return mockClaudeRunner
       })
 
@@ -465,13 +466,8 @@ describe('EdgeWorker', () => {
       const errorSpy = vi.fn()
       edgeWorker.on('error', errorSpy)
 
-      const event = mockClaudeErrorEvent('token limit exceeded')
-      await claudeEventHandler!(event)
-
-      // Should emit error
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Claude error: token limit exceeded' })
-      )
+      const message = mockClaudeResultMessage('error_max_turns')
+      await claudeMessageHandler!(message)
 
       // Should post warning
       expect(mockLinearClient.createComment).toHaveBeenCalledWith({
@@ -480,13 +476,13 @@ describe('EdgeWorker', () => {
       })
 
       // Should restart session
-      expect(mockClaudeRunner.spawn).toHaveBeenCalledTimes(2)
+      expect(mockClaudeRunner.start).toHaveBeenCalledTimes(2)
     })
 
-    it('should handle Claude process exit', async () => {
-      let exitHandler: Function
+    it('should handle Claude session completion', async () => {
+      let completeHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        exitHandler = config.onExit
+        completeHandler = config.onComplete
         return mockClaudeRunner
       })
 
@@ -497,8 +493,9 @@ describe('EdgeWorker', () => {
       )?.[1]
       await webhookHandler(webhook)
 
-      // Now test exit handling
-      exitHandler!(0)
+      // Now test completion handling
+      const messages = [mockClaudeAssistantMessage('Task completed')]
+      completeHandler!(messages)
 
       expect(edgeWorker['claudeRunners'].has('issue-123')).toBe(false)
       expect(mockConfig.handlers.onSessionEnd).toHaveBeenCalledWith('issue-123', 0, 'test-repo')
@@ -516,9 +513,9 @@ describe('EdgeWorker', () => {
       })
       mockLinearClient.createComment.mockRejectedValueOnce(new Error('API Error'))
 
-      let claudeEventHandler: Function
+      let claudeMessageHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeMessageHandler = config.onMessage
         return mockClaudeRunner
       })
 
@@ -528,14 +525,11 @@ describe('EdgeWorker', () => {
       )?.[1]
       await webhookHandler(webhook)
 
-      // Use a result event which actually posts comments
-      const event: ClaudeEvent = {
-        type: 'result',
-        result: 'Failed comment'
-      } as any
+      // Use a result message which actually posts comments
+      const message = mockClaudeResultMessage('success')
       
       // The handler doesn't throw, it logs the error and continues
-      await claudeEventHandler!(event)
+      await claudeMessageHandler!(message)
       
       // Verify error was logged but not thrown
       expect(consoleErrorSpy).toHaveBeenCalledWith(

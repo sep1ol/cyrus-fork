@@ -1,32 +1,33 @@
-import type { ChildProcess } from 'child_process'
-import type { ClaudeEvent } from 'cyrus-claude-parser'
+import type { SDKMessage } from '@anthropic-ai/claude-code'
 
 export interface ClaudeRunnerConfig {
-  claudePath: string
   workingDirectory?: string
   allowedTools?: string[]
   allowedDirectories?: string[]
   continueSession?: boolean
   workspaceName?: string
-  onEvent?: (event: ClaudeEvent) => void
+  maxTurns?: number
+  systemPrompt?: string
+  onMessage?: (message: SDKMessage) => void
   onError?: (error: Error) => void
-  onExit?: (code: number | null) => void
+  onComplete?: (messages: SDKMessage[]) => void
 }
 
-export interface ClaudeProcessInfo {
-  process: ChildProcess
-  pid: number | undefined
+export interface ClaudeSessionInfo {
+  sessionId: string
   startedAt: Date
+  isRunning: boolean
 }
 
 export interface ClaudeRunnerEvents {
-  'message': (event: ClaudeEvent) => void
-  'assistant': (event: ClaudeEvent) => void
+  'message': (message: SDKMessage) => void
+  'assistant': (content: string) => void
   'tool-use': (toolName: string, input: any) => void
   'text': (text: string) => void
   'end-turn': (lastText: string) => void
-  'result': (event: ClaudeEvent) => void
   'error': (error: Error) => void
-  'token-limit': () => void
-  'exit': (code: number | null) => void
+  'complete': (messages: SDKMessage[]) => void
 }
+
+// Re-export SDK types for convenience
+export type { SDKMessage } from '@anthropic-ai/claude-code'

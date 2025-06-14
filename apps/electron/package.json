@@ -11,6 +11,7 @@
     "build:all": "npm run build:electron && npm run build:renderer && electron-builder",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test:run": "echo 'No tests configured for electron app'",
     "electron": "npm run build:electron && electron .",
     "electron:dev": "concurrently \"npm run dev\" \"npm run build:electron && wait-on http://localhost:5173 && cross-env ELECTRON_RENDERER_URL=http://localhost:5173 electron .\"",
     "electron:build": "npm run build:all",

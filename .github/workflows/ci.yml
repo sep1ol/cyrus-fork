@@ -29,7 +29,6 @@ jobs:
         cat > .env << EOF
         LINEAR_WEBHOOK_SECRET=test
         WEBHOOK_PORT=3000
-        CLAUDE_PATH=/bin/echo
         WORKSPACE_BASE_DIR=./tmp/workspaces
         PROMPT_TEMPLATE_PATH=./examples/prompt-template.txt
         ANTHROPIC_API_KEY=test

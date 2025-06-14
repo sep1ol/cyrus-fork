@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { ClaudeEvent } from 'cyrus-claude-parser'
+import type { SDKMessage } from 'cyrus-claude-runner'
 
 // Mock console methods to reduce noise in tests
 global.console = {
@@ -131,27 +131,45 @@ export const mockUnassignedWebhook = (issue: any = {}) => ({
   webhookId: 'webhook-789'
 })
 
-export const mockClaudeAssistantEvent = (content: string): ClaudeEvent => ({
+export const mockClaudeAssistantMessage = (content: string): SDKMessage => ({
   type: 'assistant',
   message: {
-    content: content
-  }
+    content: [{ type: 'text', text: content }]
+  },
+  parent_tool_use_id: null,
+  session_id: 'test-session'
 } as any)
 
-export const mockClaudeToolEvent = (toolName: string, input: any): ClaudeEvent => ({
+export const mockClaudeToolMessage = (toolName: string, input: any): SDKMessage => ({
   type: 'assistant',
   message: {
     content: [{
       type: 'tool_use',
       name: toolName,
-      input
+      input,
+      id: `tool_${toolName}_${Date.now()}`
     }]
-  }
+  },
+  parent_tool_use_id: null,
+  session_id: 'test-session'
 } as any)
 
-export const mockClaudeErrorEvent = (message: string): ClaudeEvent => ({
-  type: 'error',
-  message
+export const mockClaudeResultMessage = (subtype: 'success' | 'error_max_turns' | 'error_during_execution' = 'success'): SDKMessage => ({
+  type: 'result',
+  subtype,
+  duration_ms: 1000,
+  duration_api_ms: 500,
+  is_error: subtype !== 'success',
+  num_turns: 1,
+  session_id: 'test-session',
+  total_cost_usd: 0.01,
+  usage: {
+    input_tokens: 100,
+    output_tokens: 50,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0
+  },
+  ...(subtype === 'success' && { result: 'Task completed successfully' })
 } as any)
 
 // Reset all mocks after each test

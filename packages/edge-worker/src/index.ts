@@ -5,6 +5,6 @@ export type {
 } from './types.js'
 
 // Re-export useful types from dependencies
-export type { ClaudeEvent } from 'cyrus-claude-parser'
+export type { SDKMessage } from 'cyrus-claude-runner'
 export type { Issue, Workspace, Session } from 'cyrus-core'
 export { getAllTools, readOnlyTools } from 'cyrus-claude-runner'
