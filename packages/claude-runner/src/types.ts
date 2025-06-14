@@ -8,6 +8,7 @@ export interface ClaudeRunnerConfig {
   workspaceName?: string
   maxTurns?: number
   systemPrompt?: string
+  mcpConfigPath?: string
   onMessage?: (message: SDKMessage) => void
   onError?: (error: Error) => void
   onComplete?: (messages: SDKMessage[]) => void

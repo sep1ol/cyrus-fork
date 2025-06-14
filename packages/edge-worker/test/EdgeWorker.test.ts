@@ -311,6 +311,36 @@ describe('EdgeWorker', () => {
       )
     })
 
+    it('should pass mcpConfigPath to ClaudeRunner when configured', async () => {
+      // Add mcpConfigPath to repository config
+      mockConfig.repositories[0].mcpConfigPath = '/path/to/mcp-config.json'
+      
+      const webhook = mockIssueAssignedWebhook()
+      await webhookHandler(webhook)
+
+      // Should pass mcpConfigPath to ClaudeRunner
+      expect(vi.mocked(ClaudeRunner)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mcpConfigPath: '/path/to/mcp-config.json'
+        })
+      )
+    })
+
+    it('should not pass mcpConfigPath to ClaudeRunner when not configured', async () => {
+      // Ensure mcpConfigPath is not set
+      delete mockConfig.repositories[0].mcpConfigPath
+      
+      const webhook = mockIssueAssignedWebhook()
+      await webhookHandler(webhook)
+
+      // Should not pass mcpConfigPath to ClaudeRunner
+      expect(vi.mocked(ClaudeRunner)).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          mcpConfigPath: expect.anything()
+        })
+      )
+    })
+
     it('should handle new comment notifications', async () => {
       // Setup existing session
       mockSessionManager.getSession.mockReturnValue({

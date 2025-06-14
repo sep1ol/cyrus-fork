@@ -305,6 +305,7 @@ export class EdgeWorker extends EventEmitter {
       allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
       allowedDirectories,
       workspaceName: fullIssue.identifier,
+      mcpConfigPath: repository.mcpConfigPath,
       onMessage: (message) => this.handleClaudeMessage(fullIssue.id, message, repository.id),
       onComplete: (messages) => this.handleClaudeComplete(fullIssue.id, messages, repository.id),
       onError: (error) => this.handleClaudeError(fullIssue.id, error, repository.id)
@@ -464,6 +465,7 @@ export class EdgeWorker extends EventEmitter {
         allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
         continueSession: true,
         workspaceName: issue.identifier,
+        mcpConfigPath: repository.mcpConfigPath,
         onMessage: (message) => {
           // Check for continuation errors
           if (message.type === 'assistant' && 'message' in message && message.message?.content) {
