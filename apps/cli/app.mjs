@@ -57,20 +57,6 @@ class EdgeApp {
       } catch (e) {
         console.error('Failed to load edge config:', e.message)
       }
-    } else {
-      // Check for repositories.json for backward compatibility
-      const configPath = process.env.REPOSITORIES_CONFIG_PATH || './repositories.json'
-      try {
-        const configContent = readFileSync(resolve(configPath), 'utf-8')
-        const legacyConfig = JSON.parse(configContent)
-        
-        if (legacyConfig.repositories && legacyConfig.repositories.length > 0) {
-          console.log(`Loaded ${legacyConfig.repositories.length} repository configurations from ${configPath}`)
-          config = { repositories: legacyConfig.repositories }
-        }
-      } catch (error) {
-        // No config file found
-      }
     }
     
     // Strip promptTemplatePath from all repositories to ensure built-in template is used
@@ -78,7 +64,7 @@ class EdgeApp {
       config.repositories = config.repositories.map(repo => {
         const { promptTemplatePath, ...repoWithoutTemplate } = repo
         if (promptTemplatePath) {
-          console.log(`Removing custom prompt template path from repository: ${repo.name}`)
+          console.log(`Ignoring custom prompt template for repository: ${repo.name} (using built-in template)`)
         }
         return repoWithoutTemplate
       })
@@ -89,18 +75,9 @@ class EdgeApp {
   
   /**
    * Save edge configuration
-   * Note: Ensures promptTemplatePath is not saved to disk
    */
   saveEdgeConfig(config) {
-    // Ensure no promptTemplatePath is saved
-    const cleanConfig = {
-      ...config,
-      repositories: config.repositories?.map(repo => {
-        const { promptTemplatePath, ...repoWithoutTemplate } = repo
-        return repoWithoutTemplate
-      })
-    }
-    writeFileSync('./.edge-config.json', JSON.stringify(cleanConfig, null, 2))
+    writeFileSync('./.edge-config.json', JSON.stringify(config, null, 2))
   }
   
   /**
