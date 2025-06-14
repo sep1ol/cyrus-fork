@@ -10,8 +10,25 @@ import { URL } from 'url'
 import open from 'open'
 import readline from 'readline'
 
+// Parse command line arguments
+const args = process.argv.slice(2)
+const envFileArg = args.find(arg => arg.startsWith('--env-file='))
+const envFile = envFileArg ? envFileArg.split('=')[1] : '.env.cyrus'
+
+// Handle --version argument
+if (args.includes('--version')) {
+  try {
+    const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
+    console.log(pkg.version)
+  } catch {
+    console.log('0.1.3') // fallback version
+  }
+  process.exit(0)
+}
+
 // Load environment variables
-dotenv.config({ path: '.env.cyrus' })
+dotenv.config({ path: envFile })
+
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -85,9 +102,7 @@ class EdgeApp {
       const baseBranch = await question('Base branch (default: main): ') || 'main'
       const workspaceBaseDir = await question(`Workspace directory (default: ${repositoryPath}/workspaces): `) || `${repositoryPath}/workspaces`
       
-      console.log('\n📝 Prompt Template (optional)')
-      console.log('Leave blank to use the built-in default template')
-      const promptTemplatePath = await question('Custom prompt template path (press Enter to skip): ')
+      // Note: Prompt template is now hardcoded - no longer configurable
       
       // Ask for allowed tools configuration
       console.log('\n🔧 Tool Configuration')
@@ -116,7 +131,6 @@ class EdgeApp {
         linearToken: linearCredentials.linearToken,
         workspaceBaseDir: resolve(workspaceBaseDir),
         isActive: true,
-        ...(promptTemplatePath && { promptTemplatePath: resolve(promptTemplatePath) }),
         ...(allowedTools && { allowedTools })
       }
       
@@ -256,15 +270,8 @@ class EdgeApp {
    */
   async start() {
     try {
-      // Validate proxy URL
-      const proxyUrl = process.env.PROXY_URL
-      if (!proxyUrl) {
-        console.error('❌ PROXY_URL environment variable is required')
-        console.log('\nPlease add the following to your .env.cyrus file:')
-        console.log('PROXY_URL=https://cyrus-proxy.ceedar.workers.dev')
-        console.log('\nThis connects to the secure public Cyrus proxy for Linear OAuth and webhooks.')
-        process.exit(1)
-      }
+      // Set proxy URL with default
+      const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
       
       // Validate Claude CLI
       const claudePath = process.env.CLAUDE_PATH || 'claude'
