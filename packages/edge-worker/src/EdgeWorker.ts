@@ -831,7 +831,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Extract text content from Claude message
    */
-  private extractTextContent(sdkMessage: any): string | null {
+  private extractTextContent(sdkMessage: SDKMessage): string | null {
     if (sdkMessage.type !== 'assistant') return null
     
     const message = sdkMessage.message
@@ -842,10 +842,13 @@ Please analyze this issue and help implement a solution.`
     }
 
     if (Array.isArray(message.content)) {
-      return message.content
-        .filter((block: any) => block.type === 'text')
-        .map((block: any) => block.text)
-        .join('')
+      const textBlocks: string[] = []
+      for (const block of message.content) {
+        if (typeof block === 'object' && block !== null && 'type' in block && block.type === 'text' && 'text' in block) {
+          textBlocks.push(block.text as string)
+        }
+      }
+      return textBlocks.join('')
     }
 
     return null
