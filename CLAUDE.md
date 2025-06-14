@@ -134,6 +134,24 @@ The agent automatically moves issues to the "started" state when assigned. Linea
 
 4. **Testing**: Uses Vitest for all packages. Run tests before committing changes.
 
+## Development Workflow
+
+When working on this codebase, follow these practices:
+
+1. **Before submitting a Pull Request**:
+   - Update `CHANGELOG.md` under the `## [Unreleased]` section with your changes
+   - Use appropriate subsections: `### Added`, `### Changed`, `### Fixed`, `### Removed`
+   - Include brief, clear descriptions of what was changed and why
+   - Run `pnpm test:packages` to ensure all package tests pass
+   - Run `pnpm typecheck` to verify TypeScript compilation
+   - Consider running `pnpm build` to ensure the build succeeds
+
+2. **Changelog Format**:
+   - Follow [Keep a Changelog](https://keepachangelog.com/) format
+   - Be concise but descriptive
+   - Focus on what users/developers need to know
+   - Group related changes together
+
 ## Key Code Paths
 
 - **Linear Integration**: `apps/cli/services/LinearIssueService.mjs`

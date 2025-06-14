@@ -7,6 +7,7 @@ export interface ClaudeRunnerConfig {
   continueSession?: boolean
   workspaceName?: string
   systemPrompt?: string
+  mcpConfigPath?: string
   onMessage?: (message: SDKMessage) => void
   onError?: (error: Error) => void
   onComplete?: (messages: SDKMessage[]) => void

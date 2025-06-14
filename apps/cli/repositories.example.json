@@ -9,7 +9,8 @@
       "linearToken": "your-linear-oauth-token-1",
       "workspaceBaseDir": "/path/to/workspaces/repo1",
       "isActive": true,
-      "promptTemplatePath": "./agent-prompt-template.md"
+      "promptTemplatePath": "./agent-prompt-template.md",
+      "mcpConfigPath": "./mcp-config.json"
     },
     {
       "id": "repo2",

@@ -107,6 +107,15 @@ class EdgeApp {
       
       // Note: Prompt template is now hardcoded - no longer configurable
       
+      // Ask for MCP configuration
+      console.log('\n🔧 MCP (Model Context Protocol) Configuration')
+      console.log('MCP allows Claude to access external tools and data sources.')
+      console.log('Examples: filesystem access, database connections, API integrations')
+      console.log('See: https://docs.anthropic.com/en/docs/claude-code/mcp')
+      console.log('')
+      const mcpConfigInput = await question('MCP config file path (optional, e.g., ./mcp-config.json): ')
+      const mcpConfigPath = mcpConfigInput.trim() || undefined
+      
       // Ask for allowed tools configuration
       console.log('\n🔧 Tool Configuration')
       console.log('Available tools: Read,Write,Edit,MultiEdit,Glob,Grep,LS,Task,WebFetch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch')
@@ -134,7 +143,8 @@ class EdgeApp {
         linearToken: linearCredentials.linearToken,
         workspaceBaseDir: resolve(workspaceBaseDir),
         isActive: true,
-        ...(allowedTools && { allowedTools })
+        ...(allowedTools && { allowedTools }),
+        ...(mcpConfigPath && { mcpConfigPath: resolve(mcpConfigPath) })
       }
       
       return repository

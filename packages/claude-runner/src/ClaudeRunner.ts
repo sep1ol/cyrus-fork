@@ -86,7 +86,8 @@ export class ClaudeRunner extends EventEmitter {
           ...(this.config.workingDirectory && { cwd: this.config.workingDirectory }),
           ...(this.config.systemPrompt && { systemPrompt: this.config.systemPrompt }),
           ...(processedAllowedTools && { allowedTools: processedAllowedTools }),
-          ...(this.config.continueSession && { continue: this.config.continueSession })
+          ...(this.config.continueSession && { continue: this.config.continueSession }),
+          ...(this.config.mcpConfigPath && { mcpConfig: this.config.mcpConfigPath })
         }
       }
 
