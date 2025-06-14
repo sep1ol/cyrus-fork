@@ -160,3 +160,6 @@ When working on this codebase, follow these practices:
 - **Edge Worker**: `packages/edge-worker/src/EdgeWorker.ts`
 - **OAuth Flow**: `apps/proxy/src/services/OAuthService.mjs`
 
+## Publishing
+
+- To publish the apps/cli (cyrus-ai) cd to apps/cli and do `pnpm publish --access public`
