@@ -18,10 +18,15 @@ class MockNdjsonClient extends EventEmitter {
 }
 
 class MockClaudeRunner {
-  spawn = vi.fn().mockReturnValue({ process: {}, startedAt: new Date() })
-  sendInitialPrompt = vi.fn().mockResolvedValue(undefined)
-  sendInput = vi.fn().mockResolvedValue(undefined)
-  kill = vi.fn()
+  start = vi.fn().mockResolvedValue({ 
+    sessionId: 'test-session', 
+    startedAt: new Date(), 
+    isRunning: false 
+  })
+  stop = vi.fn()
+  isRunning = vi.fn().mockReturnValue(false)
+  getSessionInfo = vi.fn().mockReturnValue(null)
+  getMessages = vi.fn().mockReturnValue([])
 }
 
 class MockSessionManager {
@@ -124,8 +129,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
   it('should initialize with multiple repositories', () => {
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories
+            repositories: mockRepositories
     })
 
     // Should create 3 Linear clients (one per repository)
@@ -143,8 +147,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
 
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories,
+            repositories: mockRepositories,
       handlers: {
         createWorkspace: createWorkspaceMock
       }
@@ -232,11 +235,10 @@ describe('EdgeWorker - Multi-Repository Support', () => {
 
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories,
+            repositories: mockRepositories,
       handlers: {
         onSessionStart: onSessionStartMock,
-        onClaudeEvent: onClaudeEventMock
+        onClaudeMessage: onClaudeEventMock
       }
     })
 
@@ -335,8 +337,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
 
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: reposWithInactive
+            repositories: reposWithInactive
     })
 
     // Should only create 3 Linear clients (not 4)
@@ -351,8 +352,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
 
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: reposWithTemplates
+            repositories: reposWithTemplates
     })
 
     const buildPromptMethod = (edgeWorker as any).buildInitialPrompt.bind(edgeWorker)
@@ -380,8 +380,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
   it('should post comments using correct Linear client', async () => {
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories
+            repositories: mockRepositories
     })
 
     // Get the linear clients map
@@ -412,8 +411,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
   it('should handle connection status per token', () => {
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories
+            repositories: mockRepositories
     })
 
     const status = edgeWorker.getConnectionStatus()
