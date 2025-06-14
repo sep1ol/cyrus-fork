@@ -1,11 +1,26 @@
 import { EventEmitter } from 'events'
-import { LinearClient } from '@linear/sdk'
-import { NdjsonClient } from '@cyrus/ndjson-client'
-import { ClaudeRunner, getSafeTools } from '@cyrus/claude-runner'
-import { SessionManager, Session } from '@cyrus/core'
+import { LinearClient, Issue as LinearIssue, Comment } from '@linear/sdk'
+import { NdjsonClient } from 'cyrus-ndjson-client'
+import { ClaudeRunner, getSafeTools } from 'cyrus-claude-runner'
+import { SessionManager, Session } from 'cyrus-core'
+import type { Issue as CoreIssue } from 'cyrus-core'
+import type {
+  LinearWebhook,
+  LinearIssueAssignedWebhook,
+  LinearIssueCommentMentionWebhook,
+  LinearIssueNewCommentWebhook,
+  LinearIssueUnassignedWebhook,
+  LinearWebhookIssue,
+  LinearWebhookComment
+} from 'cyrus-core'
+import {
+  isIssueAssignedWebhook,
+  isIssueCommentMentionWebhook,
+  isIssueNewCommentWebhook,
+  isIssueUnassignedWebhook
+} from 'cyrus-core'
 import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
-import type { WebhookEvent, StatusUpdate } from '@cyrus/ndjson-client'
-import type { ClaudeEvent } from '@cyrus/claude-parser'
+import type { ClaudeEvent } from 'cyrus-claude-parser'
 import { readFile, writeFile, mkdir, rename, readdir } from 'fs/promises'
 import { resolve, dirname, join, basename, extname } from 'path'
 import { fileURLToPath } from 'url'
@@ -67,8 +82,8 @@ export class EdgeWorker extends EventEmitter {
         onError: (error) => this.handleError(error)
       })
 
-      // Set up webhook handler
-      ndjsonClient.on('webhook', (data) => this.handleWebhook(data, repos))
+      // Set up webhook handler - data should be the native webhook payload
+      ndjsonClient.on('webhook', (data) => this.handleWebhook(data as LinearWebhook, repos))
       
       // Optional heartbeat logging
       if (process.env.DEBUG_EDGE === 'true') {
@@ -160,103 +175,82 @@ export class EdgeWorker extends EventEmitter {
   }
 
   /**
-   * Handle webhook events from proxy
+   * Handle webhook events from proxy - now accepts native webhook payloads
    */
-  private async handleWebhook(data: WebhookEvent['data'], repos: RepositoryConfig[]): Promise<void> {
+  private async handleWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): Promise<void> {
     // Find the appropriate repository for this webhook
-    const repository = this.findRepositoryForWebhook(data, repos)
+    const repository = this.findRepositoryForWebhook(webhook, repos)
     if (!repository) {
-      console.log('No repository configured for webhook from workspace', this.extractWorkspaceId(data))
+      console.log('No repository configured for webhook from workspace', webhook.organizationId)
       return
     }
+    
     try {
-      // Check for Agent notifications
-      if (data.type === 'AppUserNotification') {
-        await this.handleAgentNotification(data, repository)
+      // Handle specific webhook types with proper typing
+      if (isIssueAssignedWebhook(webhook)) {
+        await this.handleIssueAssignedWebhook(webhook, repository)
+      } else if (isIssueCommentMentionWebhook(webhook)) {
+        await this.handleIssueCommentMentionWebhook(webhook, repository)
+      } else if (isIssueNewCommentWebhook(webhook)) {
+        await this.handleIssueNewCommentWebhook(webhook, repository)
+      } else if (isIssueUnassignedWebhook(webhook)) {
+        await this.handleIssueUnassignedWebhook(webhook, repository)
       } else {
-        // Handle legacy webhook format
-        await this.handleLegacyWebhook(data, repository)
+        console.log(`Unhandled webhook type: ${(webhook as any).action}`)
       }
       
-      // Report success if we have an event ID
-      if ('eventId' in data && data.eventId) {
-        await this.reportStatus({
-          eventId: data.eventId as string,
-          status: 'completed'
-        })
-      }
     } catch (error) {
-      // Report failure
-      if ('eventId' in data && data.eventId) {
-        await this.reportStatus({
-          eventId: data.eventId as string,
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error'
-        })
-      }
+      console.error(`[EdgeWorker] Failed to process webhook: ${(webhook as any).action}`, error)
       throw error
     }
   }
 
   /**
-   * Handle Agent API notifications
+   * Handle issue assignment webhook
    */
-  private async handleAgentNotification(data: any, repository: RepositoryConfig): Promise<void> {
-    const notification = data.notification
-    
-    switch (notification?.type) {
-      case 'issueAssignedToYou':
-        await this.handleIssueAssigned(notification.issue, repository)
-        break
-        
-      case 'issueCommentMention':
-      case 'issueCommentReply':
-      case 'issueNewComment':
-        await this.handleNewComment(notification.issue, notification.comment, repository)
-        break
-        
-      case 'issueUnassignedFromYou':
-        await this.handleIssueUnassigned(notification.issue, repository)
-        break
-        
-      default:
-        console.log(`Unhandled notification type: ${notification?.type}`)
-    }
+  private async handleIssueAssignedWebhook(webhook: LinearIssueAssignedWebhook, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling issue assignment: ${webhook.notification.issue.identifier}`)
+    await this.handleIssueAssigned(webhook.notification.issue, repository)
   }
 
   /**
-   * Handle legacy webhook format
+   * Handle issue comment mention webhook
    */
-  private async handleLegacyWebhook(data: any, repository: RepositoryConfig): Promise<void> {
-    if (data.type === 'Comment' && data.action === 'create') {
-      const issue = data.data?.issue
-      const comment = data.data
-      if (issue && comment) {
-        await this.handleNewComment(issue, comment, repository)
-      }
-    }
+  private async handleIssueCommentMentionWebhook(webhook: LinearIssueCommentMentionWebhook, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling comment mention: ${webhook.notification.issue.identifier}`)
+    await this.handleNewComment(webhook.notification.issue, webhook.notification.comment, repository)
+  }
+
+  /**
+   * Handle issue new comment webhook
+   */
+  private async handleIssueNewCommentWebhook(webhook: LinearIssueNewCommentWebhook, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling new comment: ${webhook.notification.issue.identifier}`)
+    await this.handleNewComment(webhook.notification.issue, webhook.notification.comment, repository)
+  }
+
+  /**
+   * Handle issue unassignment webhook
+   */
+  private async handleIssueUnassignedWebhook(webhook: LinearIssueUnassignedWebhook, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling issue unassignment: ${webhook.notification.issue.identifier}`)
+    
+    // Log the complete webhook payload for TypeScript type definition
+    // console.log('=== ISSUE UNASSIGNMENT WEBHOOK PAYLOAD ===')
+    // console.log(JSON.stringify(webhook, null, 2))
+    // console.log('=== END WEBHOOK PAYLOAD ===')
+    
+    await this.handleIssueUnassigned(webhook.notification.issue, repository)
   }
 
   /**
    * Find the repository configuration for a webhook
    */
-  private findRepositoryForWebhook(data: any, repos: RepositoryConfig[]): RepositoryConfig | null {
-    const workspaceId = this.extractWorkspaceId(data)
+  private findRepositoryForWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): RepositoryConfig | null {
+    const workspaceId = webhook.organizationId
     if (!workspaceId) return repos[0] || null // Fallback to first repo if no workspace ID
 
     return repos.find(repo => repo.linearWorkspaceId === workspaceId) || null
-  }
-
-  /**
-   * Extract workspace ID from webhook data
-   */
-  private extractWorkspaceId(data: any): string | null {
-    // Try different locations where workspace ID might be
-    return data.organizationId || 
-           data.workspaceId || 
-           data.data?.workspaceId || 
-           data.notification?.issue?.team?.id ||
-           null
   }
 
   /**
@@ -264,27 +258,40 @@ export class EdgeWorker extends EventEmitter {
    * @param issue Linear issue object from webhook data (contains full Linear SDK properties)
    * @param repository Repository configuration
    */
-  private async handleIssueAssigned(issue: any, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueAssigned(issue: LinearWebhookIssue, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] handleIssueAssigned started for issue ${issue.identifier} (${issue.id})`)
     
+    // Fetch full Linear issue details immediately
+    const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id)
+    if (!fullIssue) {
+      throw new Error(`Failed to fetch full issue details for ${issue.id}`)
+    }
+    console.log(`[EdgeWorker] Fetched full issue details for ${issue.identifier}`)
+    
+    await this.handleIssueAssignedWithFullIssue(fullIssue, repository)
+  }
+
+  private async handleIssueAssignedWithFullIssue(fullIssue: LinearIssue, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] handleIssueAssignedWithFullIssue started for issue ${fullIssue.identifier} (${fullIssue.id})`)
+    
     // Move issue to started state automatically
-    await this.moveIssueToStartedState(issue, repository.id)
+    await this.moveIssueToStartedState(fullIssue, repository.id)
     
     // Post initial comment immediately
-    const initialComment = await this.postInitialComment(issue.id, repository.id)
+    const initialComment = await this.postInitialComment(fullIssue.id, repository.id)
     
-    // Create workspace
+    // Create workspace using full issue data
     const workspace = this.config.handlers?.createWorkspace
-      ? await this.config.handlers.createWorkspace(issue, repository)
+      ? await this.config.handlers.createWorkspace(fullIssue, repository)
       : {
-          path: `${repository.workspaceBaseDir}/${issue.identifier}`,
+          path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
           isGitWorktree: false
         }
 
     console.log(`[EdgeWorker] Workspace created at: ${workspace.path}`)
 
     // Download attachments before creating Claude runner
-    const attachmentResult = await this.downloadIssueAttachments(issue, repository, workspace.path)
+    const attachmentResult = await this.downloadIssueAttachments(fullIssue, repository, workspace.path)
     
     // Build allowed directories list
     const allowedDirectories: string[] = []
@@ -298,20 +305,20 @@ export class EdgeWorker extends EventEmitter {
       workingDirectory: workspace.path,
       allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
       allowedDirectories,
-      workspaceName: issue.identifier,
-      onEvent: (event) => this.handleClaudeEvent(issue.id, event, repository.id),
-      onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
+      workspaceName: fullIssue.identifier,
+      onEvent: (event) => this.handleClaudeEvent(fullIssue.id, event, repository.id),
+      onExit: (code) => this.handleClaudeExit(fullIssue.id, code, repository.id)
     })
 
     // Store runner
-    this.claudeRunners.set(issue.id, runner)
+    this.claudeRunners.set(fullIssue.id, runner)
 
     // Spawn Claude process
     const processInfo = runner.spawn()
 
-    // Create session
+    // Create session using full Linear issue (convert LinearIssue to CoreIssue)
     const session = new Session({
-      issue,
+      issue: this.convertLinearIssueToCore(fullIssue),
       workspace,
       process: processInfo.process,
       startedAt: processInfo.startedAt
@@ -319,20 +326,20 @@ export class EdgeWorker extends EventEmitter {
     
     // Store initial comment ID if we have one
     if (initialComment?.id) {
-      this.issueToCommentId.set(issue.id, initialComment.id)
+      this.issueToCommentId.set(fullIssue.id, initialComment.id)
     }
     
-    this.sessionManager.addSession(issue.id, session)
-    this.sessionToRepo.set(issue.id, repository.id)
+    this.sessionManager.addSession(fullIssue.id, session)
+    this.sessionToRepo.set(fullIssue.id, repository.id)
 
-    // Emit events
-    this.emit('session:started', issue.id, issue, repository.id)
-    this.config.handlers?.onSessionStart?.(issue.id, issue, repository.id)
+    // Emit events using full Linear issue
+    this.emit('session:started', fullIssue.id, fullIssue, repository.id)
+    this.config.handlers?.onSessionStart?.(fullIssue.id, fullIssue, repository.id)
 
-    // Build and send initial prompt with attachment manifest
-    console.log(`[EdgeWorker] Building initial prompt for issue ${issue.identifier}`)
+    // Build and send initial prompt with attachment manifest using full issue
+    console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
     try {
-      const prompt = await this.buildInitialPrompt(issue, repository, attachmentResult.manifest)
+      const prompt = await this.buildInitialPrompt(fullIssue, repository, attachmentResult.manifest)
       console.log(`[EdgeWorker] Initial prompt built successfully, length: ${prompt.length} characters`)
       console.log(`[EdgeWorker] Sending initial prompt to Claude runner`)
       await runner.sendInitialPrompt(prompt)
@@ -349,11 +356,17 @@ export class EdgeWorker extends EventEmitter {
    * @param comment Linear comment object from webhook data
    * @param repository Repository configuration
    */
-  private async handleNewComment(issue: any, comment: any, repository: RepositoryConfig): Promise<void> {
+  private async handleNewComment(issue: LinearWebhookIssue, comment: LinearWebhookComment, repository: RepositoryConfig): Promise<void> {
     // Check if continuation is enabled
     if (!this.config.features?.enableContinuation) {
       console.log('Continuation not enabled, ignoring comment')
       return
+    }
+
+    // Fetch full Linear issue details
+    const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id)
+    if (!fullIssue) {
+      throw new Error(`Failed to fetch full issue details for ${issue.id}`)
     }
 
     // The webhook doesn't include parentId, so we need to fetch the full comment
@@ -424,15 +437,15 @@ export class EdgeWorker extends EventEmitter {
       
       // Create workspace (or get existing one)
       const workspace = this.config.handlers?.createWorkspace
-        ? await this.config.handlers.createWorkspace(issue, repository)
+        ? await this.config.handlers.createWorkspace(fullIssue, repository)
         : {
-            path: `${repository.workspaceBaseDir}/${issue.identifier}`,
+            path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
             isGitWorktree: false
           }
       
-      // Create session without spawning Claude yet
+      // Create session without spawning Claude yet (use full Linear issue)
       session = new Session({
-        issue,
+        issue: this.convertLinearIssueToCore(fullIssue),
         workspace,
         process: null,
         startedAt: new Date()
@@ -501,19 +514,34 @@ export class EdgeWorker extends EventEmitter {
    * @param issue Linear issue object from webhook data
    * @param repository Repository configuration
    */
-  private async handleIssueUnassigned(issue: any, repository: RepositoryConfig): Promise<void> {
+  private async handleIssueUnassigned(issue: LinearWebhookIssue, repository: RepositoryConfig): Promise<void> {
     // Check if there's an active session for this issue
     const session = this.sessionManager.getSession(issue.id)
-    const initialCommentId = this.issueToCommentId.get(issue.id)
     
     // Post farewell comment if there's an active session
-    if (session && initialCommentId) {
-      await this.postComment(
-        issue.id,
-        "I've been unassigned and am stopping work now.",
-        repository.id,
-        initialCommentId  // Post as reply to initial comment
-      )
+    if (session) {
+      // Use the same threading logic as regular replies
+      const replyContext = this.issueToReplyContext.get(issue.id)
+      if (replyContext) {
+        // Reply using the same context as regular comments (handles threading correctly)
+        await this.postComment(
+          issue.id,
+          "I've been unassigned and am stopping work now.",
+          repository.id,
+          replyContext.parentId
+        )
+        // Clear the reply context after using it
+        this.issueToReplyContext.delete(issue.id)
+      } else {
+        // Fall back to replying to initial comment (for direct assignments)
+        const initialCommentId = this.issueToCommentId.get(issue.id)
+        await this.postComment(
+          issue.id,
+          "I've been unassigned and am stopping work now.",
+          repository.id,
+          initialCommentId
+        )
+      }
     }
     
     // Kill Claude process
@@ -621,9 +649,51 @@ export class EdgeWorker extends EventEmitter {
       repositoryId
     )
 
-    // Restart session
-    await this.handleIssueAssigned(session.issue, repository)
+    // Fetch fresh LinearIssue data and restart session
+    const linearIssue = await this.fetchFullIssueDetails(issueId, repositoryId)
+    if (!linearIssue) {
+      throw new Error(`Failed to fetch full issue details for ${issueId}`)
+    }
+    
+    await this.handleIssueAssignedWithFullIssue(linearIssue, repository)
   }
+
+  /**
+   * Fetch complete issue details from Linear API
+   */
+  private async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<LinearIssue | null> {
+    const linearClient = this.linearClients.get(repositoryId)
+    if (!linearClient) {
+      console.warn(`[EdgeWorker] No Linear client found for repository ${repositoryId}`)
+      return null
+    }
+
+    try {
+      console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`)
+      const fullIssue = await linearClient.issue(issueId)
+      console.log(`[EdgeWorker] Successfully fetched issue details for ${issueId}`)
+      return fullIssue
+    } catch (error) {
+      console.error(`[EdgeWorker] Failed to fetch full issue details for ${issueId}:`, error)
+      return null
+    }
+  }
+
+  /**
+   * Convert full Linear SDK issue to CoreIssue interface for Session creation
+   */
+  private convertLinearIssueToCore(issue: LinearIssue): CoreIssue {
+    return {
+      id: issue.id,
+      identifier: issue.identifier,
+      title: issue.title || '',
+      description: issue.description || undefined,
+      getBranchName(): string {
+        return issue.branchName // Use the real branchName property!
+      }
+    }
+  }
+
 
   /**
    * Build initial prompt for issue
@@ -631,8 +701,9 @@ export class EdgeWorker extends EventEmitter {
    * @param repository Repository configuration
    * @param attachmentManifest Generated attachment manifest text
    */
-  private async buildInitialPrompt(issue: any, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
+  private async buildInitialPrompt(issue: LinearIssue, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
     console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
+    // No need for enhancedIssue anymore - we already have the full Linear issue!
     try {
       // Use custom template if provided (repository-specific takes precedence)
       let templatePath = repository.promptTemplatePath || this.config.features?.promptTemplatePath
@@ -649,6 +720,15 @@ export class EdgeWorker extends EventEmitter {
       const template = await readFile(templatePath, 'utf-8')
       console.log(`[EdgeWorker] Template loaded, length: ${template.length} characters`)
       
+      // Get state name from Linear API
+      const state = await issue.state
+      const stateName = state?.name || 'Unknown'
+      
+      console.log(`[EdgeWorker] Issue description: ${issue.description ? 'present' : 'missing'}`)
+      console.log(`[EdgeWorker] Issue state: ${stateName}`)
+      console.log(`[EdgeWorker] Issue priority: ${issue.priority || 'none'}`)
+      console.log(`[EdgeWorker] Issue branchName: ${issue.branchName}`)
+      
       // Get comment history
       const linearClient = this.linearClients.get(repository.id)
       let commentHistory = ''
@@ -656,30 +736,39 @@ export class EdgeWorker extends EventEmitter {
       
       if (linearClient && issue.id) {
         try {
+          console.log(`[EdgeWorker] Fetching comments for issue ${issue.identifier}`)
           const comments = await linearClient.comments({
             filter: { issue: { id: { eq: issue.id } } }
           })
           
           const commentNodes = await comments.nodes
           if (commentNodes.length > 0) {
-            commentHistory = commentNodes.map((comment: any, index: number) => 
-              `Comment ${index + 1} by ${comment.user?.name || 'Unknown'} at ${comment.createdAt}:\n${comment.body}`
-            ).join('\n\n')
+            // Resolve user information for each comment
+            const commentPromises = commentNodes.map(async (comment: Comment, index: number) => {
+              const user = await comment.user
+              const authorName = user?.displayName || user?.name || user?.email || 'Unknown'
+              const createdAt = new Date(comment.createdAt).toLocaleString()
+              return `Comment ${index + 1} by ${authorName} at ${createdAt}:\n${comment.body}`
+            })
+            
+            const resolvedComments = await Promise.all(commentPromises)
+            commentHistory = resolvedComments.join('\n\n')
             
             latestComment = commentNodes[commentNodes.length - 1]?.body || ''
+            console.log(`[EdgeWorker] Processed ${commentNodes.length} comments for issue ${issue.identifier}`)
           }
         } catch (error) {
           console.error('Failed to fetch comments:', error)
         }
       }
       
-      // Replace template variables
+      // Replace template variables using the full Linear issue
       const prompt = template
         .replace(/{{repository_name}}/g, repository.name)
         .replace(/{{issue_id}}/g, issue.id || issue.identifier || '')
         .replace(/{{issue_title}}/g, issue.title || '')
         .replace(/{{issue_description}}/g, issue.description || 'No description provided')
-        .replace(/{{issue_state}}/g, issue.state?.name || 'Unknown')
+        .replace(/{{issue_state}}/g, stateName)
         .replace(/{{issue_priority}}/g, issue.priority?.toString() || 'None')
         .replace(/{{issue_url}}/g, issue.url || '')
         .replace(/{{comment_history}}/g, commentHistory || 'No comments yet')
@@ -687,7 +776,7 @@ export class EdgeWorker extends EventEmitter {
         .replace(/{{working_directory}}/g, this.config.handlers?.createWorkspace ? 
           'Will be created based on issue' : repository.repositoryPath)
         .replace(/{{base_branch}}/g, repository.baseBranch)
-        .replace(/{{branch_name}}/g, issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`)
+        .replace(/{{branch_name}}/g, this.sanitizeBranchName(issue.branchName))
       
       // Append attachment manifest if provided
       if (attachmentManifest) {
@@ -702,19 +791,32 @@ export class EdgeWorker extends EventEmitter {
     } catch (error) {
       console.error('[EdgeWorker] Failed to load prompt template:', error)
       
-      // Fallback to simple prompt
+      // Fallback to simple prompt using the full Linear issue
+      const state = await issue.state
+      const stateName = state?.name || 'Unknown'
+      
       return `Please help me with the following Linear issue:
 
 Repository: ${repository.name}
 Issue: ${issue.identifier}
 Title: ${issue.title}
 Description: ${issue.description || 'No description provided'}
+State: ${stateName}
+Priority: ${issue.priority?.toString() || 'None'}
+Branch: ${issue.branchName}
 
 Working directory: ${repository.repositoryPath}
 Base branch: ${repository.baseBranch}
 
 Please analyze this issue and help implement a solution.`
     }
+  }
+
+  /**
+   * Sanitize branch name by removing backticks to prevent command injection
+   */
+  private sanitizeBranchName(name: string): string {
+    return name ? name.replace(/`/g, '') : name
   }
 
   /**
@@ -741,20 +843,6 @@ Please analyze this issue and help implement a solution.`
   }
 
   /**
-   * Report status back to proxy
-   */
-  private async reportStatus(update: StatusUpdate): Promise<void> {
-    // Find which client to use based on the event ID
-    // For now, send to all clients (they'll ignore if not their event)
-    const promises = Array.from(this.ndjsonClients.values()).map(client => 
-      client.sendStatus(update).catch(err => 
-        console.error('Failed to send status update:', err)
-      )
-    )
-    await Promise.all(promises)
-  }
-
-  /**
    * Get connection status
    */
   getConnectionStatus(): Map<string, boolean> {
@@ -774,10 +862,10 @@ Please analyze this issue and help implement a solution.`
 
   /**
    * Move issue to started state when assigned
-   * @param issue Linear issue object from webhook data (contains full Linear SDK properties)
+   * @param issue Full Linear issue object from Linear SDK
    * @param repositoryId Repository ID for Linear client lookup
    */
-  private async moveIssueToStartedState(issue: any, repositoryId: string): Promise<void> {
+  private async moveIssueToStartedState(issue: LinearIssue, repositoryId: string): Promise<void> {
     try {
       const linearClient = this.linearClients.get(repositoryId)
       if (!linearClient) {
@@ -835,7 +923,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Post initial comment when assigned to issue
    */
-  private async postInitialComment(issueId: string, repositoryId: string): Promise<{ id: string } | null> {
+  private async postInitialComment(issueId: string, repositoryId: string): Promise<Comment | null> {
     try {
       const body = "I've been assigned to this issue and am getting started right away. I'll update this comment with my plan shortly."
       
@@ -845,7 +933,7 @@ Please analyze this issue and help implement a solution.`
         throw new Error(`No Linear client found for repository ${repositoryId}`)
       }
 
-      const commentData: any = {
+      const commentData = {
         issueId,
         body
       }
@@ -869,7 +957,7 @@ Please analyze this issue and help implement a solution.`
   /**
    * Post a comment to Linear
    */
-  private async postComment(issueId: string, body: string, repositoryId: string, parentId?: string): Promise<{ id: string } | null> {
+  private async postComment(issueId: string, body: string, repositoryId: string, parentId?: string): Promise<Comment | null> {
     try {
       // Get the Linear client for this repository
       const linearClient = this.linearClients.get(repositoryId)
@@ -877,7 +965,7 @@ Please analyze this issue and help implement a solution.`
         throw new Error(`No Linear client found for repository ${repositoryId}`)
       }
 
-      const commentData: any = {
+      const commentData: { issueId: string; body: string; parentId?: string } = {
         issueId,
         body
       }
@@ -973,7 +1061,7 @@ Please analyze this issue and help implement a solution.`
    * @param repository Repository configuration
    * @param workspacePath Path to workspace directory
    */
-  private async downloadIssueAttachments(issue: any, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
+  private async downloadIssueAttachments(issue: LinearIssue, repository: RepositoryConfig, workspacePath: string): Promise<{ manifest: string, attachmentsDir: string | null }> {
     try {
       const attachmentMap: Record<string, string> = {}
       const imageMap: Record<string, string> = {}
@@ -996,7 +1084,7 @@ Please analyze this issue and help implement a solution.`
       await mkdir(attachmentsDir, { recursive: true })
       
       // Extract URLs from issue description
-      const descriptionUrls = this.extractAttachmentUrls(issue.description)
+      const descriptionUrls = this.extractAttachmentUrls(issue.description || '')
       
       // Extract URLs from comments if available
       const commentUrls: string[] = []

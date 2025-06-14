@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { mkdirSync, createWriteStream, type WriteStream } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { StdoutParser, type ClaudeEvent, type ErrorEvent, type ToolErrorEvent } from '@cyrus/claude-parser'
+import { StdoutParser, type ClaudeEvent, type ErrorEvent, type ToolErrorEvent } from 'cyrus-claude-parser'
 import type { ClaudeRunnerConfig, ClaudeRunnerEvents, ClaudeProcessInfo } from './types.js'
 
 export declare interface ClaudeRunner {
@@ -133,7 +133,7 @@ export class ClaudeRunner extends EventEmitter {
       // Just send the input directly, no heredoc needed
       const inputWithNewline = input.endsWith('\n') ? input : input + '\n'
 
-      console.log(`[ClaudeRunner] Writing to stdin, input: "${inputWithNewline.trim()}"`)
+      console.log(`[ClaudeRunner] Writing to stdin, input length: ${inputWithNewline.length} characters`)
       
       this.process!.stdin!.write(inputWithNewline, (err) => {
         if (err) {
