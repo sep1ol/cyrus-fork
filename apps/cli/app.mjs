@@ -13,7 +13,6 @@ import readline from 'readline'
 // Parse command line arguments
 const args = process.argv.slice(2)
 const envFileArg = args.find(arg => arg.startsWith('--env-file='))
-const envFile = envFileArg ? envFileArg.split('=')[1] : '.env.cyrus'
 
 // Handle --version argument
 if (args.includes('--version')) {
@@ -26,8 +25,11 @@ if (args.includes('--version')) {
   process.exit(0)
 }
 
-// Load environment variables
-dotenv.config({ path: envFile })
+// Load environment variables only if --env-file is specified
+if (envFileArg) {
+  const envFile = envFileArg.split('=')[1]
+  dotenv.config({ path: envFile })
+}
 
 
 
