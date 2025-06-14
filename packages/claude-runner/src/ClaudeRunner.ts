@@ -78,7 +78,8 @@ export class ClaudeRunner extends EventEmitter {
         options: {
           maxTurns: this.config.maxTurns || 10,
           ...(this.config.workingDirectory && { cwd: this.config.workingDirectory }),
-          ...(this.config.systemPrompt && { systemPrompt: this.config.systemPrompt })
+          ...(this.config.systemPrompt && { systemPrompt: this.config.systemPrompt }),
+          ...(this.config.mcpConfigPath && { mcpConfig: this.config.mcpConfigPath })
         }
       }
 
