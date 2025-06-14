@@ -20,7 +20,7 @@ import {
   isIssueUnassignedWebhook
 } from 'cyrus-core'
 import type { EdgeWorkerConfig, EdgeWorkerEvents, RepositoryConfig } from './types.js'
-import type { ClaudeEvent } from 'cyrus-claude-parser'
+import type { SDKMessage } from 'cyrus-claude-runner'
 import { readFile, writeFile, mkdir, rename, readdir } from 'fs/promises'
 import { resolve, dirname, join, basename, extname } from 'path'
 import { fileURLToPath } from 'url'
@@ -113,7 +113,7 @@ export class EdgeWorker extends EventEmitter {
   async stop(): Promise<void> {
     // Kill all Claude processes
     for (const [, runner] of this.claudeRunners) {
-      runner.kill()
+      runner.stop()
     }
     this.claudeRunners.clear()
     
@@ -301,27 +301,23 @@ export class EdgeWorker extends EventEmitter {
 
     // Create Claude runner with attachment directory access
     const runner = new ClaudeRunner({
-      claudePath: this.config.claudePath,
       workingDirectory: workspace.path,
       allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
       allowedDirectories,
       workspaceName: fullIssue.identifier,
-      onEvent: (event) => this.handleClaudeEvent(fullIssue.id, event, repository.id),
-      onExit: (code) => this.handleClaudeExit(fullIssue.id, code, repository.id)
+      onMessage: (message) => this.handleClaudeMessage(fullIssue.id, message, repository.id),
+      onComplete: (messages) => this.handleClaudeComplete(fullIssue.id, messages, repository.id),
+      onError: (error) => this.handleClaudeError(fullIssue.id, error, repository.id)
     })
 
     // Store runner
     this.claudeRunners.set(fullIssue.id, runner)
 
-    // Spawn Claude process
-    const processInfo = runner.spawn()
-
     // Create session using full Linear issue (convert LinearIssue to CoreIssue)
     const session = new Session({
       issue: this.convertLinearIssueToCore(fullIssue),
       workspace,
-      process: processInfo.process,
-      startedAt: processInfo.startedAt
+      startedAt: new Date()
     })
     
     // Store initial comment ID if we have one
@@ -336,16 +332,16 @@ export class EdgeWorker extends EventEmitter {
     this.emit('session:started', fullIssue.id, fullIssue, repository.id)
     this.config.handlers?.onSessionStart?.(fullIssue.id, fullIssue, repository.id)
 
-    // Build and send initial prompt with attachment manifest using full issue
+    // Build and start Claude with initial prompt using full issue
     console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
     try {
       const prompt = await this.buildInitialPrompt(fullIssue, repository, attachmentResult.manifest)
       console.log(`[EdgeWorker] Initial prompt built successfully, length: ${prompt.length} characters`)
-      console.log(`[EdgeWorker] Sending initial prompt to Claude runner`)
-      await runner.sendInitialPrompt(prompt)
-      console.log(`[EdgeWorker] Initial prompt sent successfully`)
+      console.log(`[EdgeWorker] Starting Claude session`)
+      const sessionInfo = await runner.start(prompt)
+      console.log(`[EdgeWorker] Claude session started: ${sessionInfo.sessionId}`)
     } catch (error) {
-      console.error(`[EdgeWorker] Error in prompt building/sending:`, error)
+      console.error(`[EdgeWorker] Error in prompt building/starting:`, error)
       throw error
     }
   }
@@ -458,26 +454,25 @@ export class EdgeWorker extends EventEmitter {
     // Kill existing Claude process if running
     const existingRunner = this.claudeRunners.get(issue.id)
     if (existingRunner) {
-      existingRunner.kill()
+      existingRunner.stop()
     }
 
     try {
       // Create new runner with --continue flag
       const runner = new ClaudeRunner({
-        claudePath: this.config.claudePath,
         workingDirectory: session.workspace.path,
         allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
         continueSession: true,
         workspaceName: issue.identifier,
-        onEvent: (event) => {
+        onMessage: (message) => {
           // Check for continuation errors
-          if (event.type === 'assistant' && 'message' in event && event.message?.content) {
-            const content = Array.isArray(event.message.content) ? event.message.content : [event.message.content]
+          if (message.type === 'assistant' && 'message' in message && message.message?.content) {
+            const content = Array.isArray(message.message.content) ? message.message.content : [message.message.content]
             for (const item of content) {
               if (item?.type === 'text' && item.text?.includes('tool_use` ids were found without `tool_result` blocks')) {
                 console.log('Detected corrupted conversation history, will restart fresh')
                 // Kill this runner
-                runner.kill()
+                runner.stop()
                 // Remove from map
                 this.claudeRunners.delete(issue.id)
                 // Start fresh
@@ -486,19 +481,17 @@ export class EdgeWorker extends EventEmitter {
               }
             }
           }
-          this.handleClaudeEvent(issue.id, event, repository.id)
+          this.handleClaudeMessage(issue.id, message, repository.id)
         },
-        onExit: (code) => this.handleClaudeExit(issue.id, code, repository.id)
+        onComplete: (messages) => this.handleClaudeComplete(issue.id, messages, repository.id),
+        onError: (error) => this.handleClaudeError(issue.id, error, repository.id)
       })
 
       // Store new runner
       this.claudeRunners.set(issue.id, runner)
 
-      // Spawn new process
-      runner.spawn()
-
-      // Send comment as input
-      await runner.sendInput(comment.body || '')
+      // Start continuation session with the comment as prompt
+      await runner.start(comment.body || '')
     } catch (error) {
       console.error('Failed to continue conversation, starting fresh:', error)
       // Remove any partially created session
@@ -547,7 +540,7 @@ export class EdgeWorker extends EventEmitter {
     // Kill Claude process
     const runner = this.claudeRunners.get(issue.id)
     if (runner) {
-      runner.kill()
+      runner.stop()
       this.claudeRunners.delete(issue.id)
     }
 
@@ -565,24 +558,24 @@ export class EdgeWorker extends EventEmitter {
   }
 
   /**
-   * Handle Claude events
+   * Handle Claude messages
    */
-  private async handleClaudeEvent(issueId: string, event: ClaudeEvent, repositoryId: string): Promise<void> {
-    // Emit generic event
-    this.emit('claude:event', issueId, event, repositoryId)
-    this.config.handlers?.onClaudeEvent?.(issueId, event, repositoryId)
+  private async handleClaudeMessage(issueId: string, message: SDKMessage, repositoryId: string): Promise<void> {
+    // Emit generic message event
+    this.emit('claude:message', issueId, message, repositoryId)
+    this.config.handlers?.onClaudeMessage?.(issueId, message, repositoryId)
 
-    // Handle specific events
-    if (event.type === 'assistant') {
-      const content = this.extractTextContent(event)
+    // Handle specific messages
+    if (message.type === 'assistant') {
+      const content = this.extractTextContent(message)
       if (content) {
         this.emit('claude:response', issueId, content, repositoryId)
         // Don't post assistant messages anymore - wait for result
       }
       
       // Also check for tool use in assistant messages
-      if ('message' in event && event.message && 'content' in event.message) {
-        const messageContent = Array.isArray(event.message.content) ? event.message.content : [event.message.content]
+      if ('message' in message && message.message && 'content' in message.message) {
+        const messageContent = Array.isArray(message.message.content) ? message.message.content : [message.message.content]
         for (const item of messageContent) {
           if (item && typeof item === 'object' && 'type' in item && item.type === 'tool_use') {
             this.emit('claude:tool-use', issueId, item.name, item.input, repositoryId)
@@ -595,42 +588,58 @@ export class EdgeWorker extends EventEmitter {
           }
         }
       }
-    } else if (event.type === 'result' && 'result' in event && event.result) {
-      // Post the final result to Linear
-      // Check if we have reply context (from a comment mention)
-      const replyContext = this.issueToReplyContext.get(issueId)
-      if (replyContext) {
-        // Reply to the comment that mentioned us, using appropriate parentId
-        await this.postComment(issueId, event.result, repositoryId, replyContext.parentId)
-        // Clear the reply context after using it
-        this.issueToReplyContext.delete(issueId)
-      } else {
-        // Fall back to replying to initial comment (for direct assignments)
-        const initialCommentId = this.issueToCommentId.get(issueId)
-        await this.postComment(issueId, event.result, repositoryId, initialCommentId)
-      }
-    } else if (event.type === 'error' || event.type === 'tool_error') {
-      const errorMessage = 'message' in event ? event.message : 'error' in event ? event.error : 'Unknown error'
-      this.handleError(new Error(`Claude error: ${errorMessage}`))
-    }
-
-    // Handle token limit
-    if (this.config.features?.enableTokenLimitHandling && event.type === 'error') {
-      if ('message' in event && event.message?.includes('token')) {
-        await this.handleTokenLimit(issueId, repositoryId)
+    } else if (message.type === 'result') {
+      if (message.subtype === 'success' && 'result' in message && message.result) {
+        // Post the successful result to Linear
+        // Check if we have reply context (from a comment mention)
+        const replyContext = this.issueToReplyContext.get(issueId)
+        if (replyContext) {
+          // Reply to the comment that mentioned us, using appropriate parentId
+          await this.postComment(issueId, message.result, repositoryId, replyContext.parentId)
+          // Clear the reply context after using it
+          this.issueToReplyContext.delete(issueId)
+        } else {
+          // Fall back to replying to initial comment (for direct assignments)
+          const initialCommentId = this.issueToCommentId.get(issueId)
+          await this.postComment(issueId, message.result, repositoryId, initialCommentId)
+        }
+      } else if (message.subtype === 'error_max_turns' || message.subtype === 'error_during_execution') {
+        // Handle error results
+        const errorMessage = message.subtype === 'error_max_turns' 
+          ? 'Maximum turns reached' 
+          : 'Error during execution'
+        this.handleError(new Error(`Claude error: ${errorMessage}`))
+        
+        // Handle token limit specifically for max turns error
+        if (this.config.features?.enableTokenLimitHandling && message.subtype === 'error_max_turns') {
+          await this.handleTokenLimit(issueId, repositoryId)
+        }
       }
     }
   }
 
   /**
-   * Handle Claude process exit
+   * Handle Claude session completion (successful)
    */
-  private handleClaudeExit(issueId: string, code: number | null, repositoryId: string): void {
+  private handleClaudeComplete(issueId: string, messages: SDKMessage[], repositoryId: string): void {
+    console.log(`[EdgeWorker] Claude session completed for issue ${issueId} with ${messages.length} messages`)
     this.claudeRunners.delete(issueId)
     this.sessionToRepo.delete(issueId)
-    this.emit('session:ended', issueId, code, repositoryId)
-    this.config.handlers?.onSessionEnd?.(issueId, code, repositoryId)
+    this.emit('session:ended', issueId, 0, repositoryId)  // 0 indicates success
+    this.config.handlers?.onSessionEnd?.(issueId, 0, repositoryId)
   }
+
+  /**
+   * Handle Claude session error
+   */
+  private handleClaudeError(issueId: string, error: Error, repositoryId: string): void {
+    console.error(`[EdgeWorker] Claude session error for issue ${issueId}:`, error)
+    this.claudeRunners.delete(issueId)
+    this.sessionToRepo.delete(issueId)
+    this.emit('session:ended', issueId, 1, repositoryId)  // 1 indicates error
+    this.config.handlers?.onSessionEnd?.(issueId, 1, repositoryId)
+  }
+
 
   /**
    * Handle token limit by restarting session
@@ -820,12 +829,12 @@ Please analyze this issue and help implement a solution.`
   }
 
   /**
-   * Extract text content from Claude event
+   * Extract text content from Claude message
    */
-  private extractTextContent(event: any): string | null {
-    if (event.type !== 'assistant') return null
+  private extractTextContent(sdkMessage: any): string | null {
+    if (sdkMessage.type !== 'assistant') return null
     
-    const message = event.message
+    const message = sdkMessage.message
     if (!message?.content) return null
 
     if (typeof message.content === 'string') {

@@ -1,6 +1,6 @@
 import type { Workspace } from 'cyrus-core'
 import type { Issue as LinearIssue } from '@linear/sdk'
-import type { ClaudeEvent } from 'cyrus-claude-parser'
+import type { SDKMessage } from 'cyrus-claude-runner'
 
 
 /**
@@ -36,7 +36,6 @@ export interface EdgeWorkerConfig {
   proxyUrl: string
   
   // Claude config (shared across all repos)
-  claudePath: string
   defaultAllowedTools?: string[]
   
   // Repository configurations
@@ -48,9 +47,9 @@ export interface EdgeWorkerConfig {
     // Now includes repository context
     createWorkspace?: (issue: LinearIssue, repository: RepositoryConfig) => Promise<Workspace>
     
-    // Called with Claude events (for UI updates, logging, etc)
+    // Called with Claude messages (for UI updates, logging, etc)
     // Now includes repository ID
-    onClaudeEvent?: (issueId: string, event: ClaudeEvent, repositoryId: string) => void
+    onClaudeMessage?: (issueId: string, message: SDKMessage, repositoryId: string) => void
     
     // Called when session starts/ends
     // Now includes repository ID
@@ -83,8 +82,8 @@ export interface EdgeWorkerEvents {
   'session:started': (issueId: string, issue: LinearIssue, repositoryId: string) => void
   'session:ended': (issueId: string, exitCode: number | null, repositoryId: string) => void
   
-  // Claude events (now includes repository ID)
-  'claude:event': (issueId: string, event: ClaudeEvent, repositoryId: string) => void
+  // Claude messages (now includes repository ID)
+  'claude:message': (issueId: string, message: SDKMessage, repositoryId: string) => void
   'claude:response': (issueId: string, text: string, repositoryId: string) => void
   'claude:tool-use': (issueId: string, tool: string, input: any, repositoryId: string) => void
   

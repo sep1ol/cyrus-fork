@@ -276,20 +276,7 @@ class EdgeApp {
       // Set proxy URL with default
       const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
       
-      // Validate Claude CLI
-      const claudePath = process.env.CLAUDE_PATH || 'claude'
-      try {
-        const { execSync } = await import('child_process')
-        execSync(`which ${claudePath}`, { stdio: 'ignore' })
-      } catch (error) {
-        console.error(`❌ Claude CLI not found at: ${claudePath}`)
-        console.log('\nPlease ensure Claude Code is installed:')
-        console.log('• Claude Pro/Max users: Install from https://claude.ai/code')
-        console.log('• API users: Set ANTHROPIC_API_KEY in .env.cyrus and install claude-ai CLI')
-        console.log('\nIf Claude is installed in a custom location, set CLAUDE_PATH in .env.cyrus:')
-        console.log('CLAUDE_PATH=/path/to/claude')
-        process.exit(1)
-      }
+      // No need to validate Claude CLI - using Claude TypeScript SDK now
       
       // Start OAuth server immediately for easy access
       const oauthPort = 3457
@@ -447,8 +434,7 @@ class EdgeApp {
       const config = {
         proxyUrl,
         repositories,
-        claudePath,
-        allowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
+        defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
         features: {
           enableContinuation: true
         },
