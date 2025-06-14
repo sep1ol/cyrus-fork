@@ -30,6 +30,7 @@ if (args.includes('--version')) {
 dotenv.config({ path: envFile })
 
 
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /**
@@ -44,39 +45,62 @@ class EdgeApp {
   
   /**
    * Load edge configuration (credentials and repositories)
+   * Note: Strips promptTemplatePath from all repositories to ensure built-in template is used
    */
   loadEdgeConfig() {
     const edgeConfigPath = './.edge-config.json'
+    let config = { repositories: [] }
+    
     if (existsSync(edgeConfigPath)) {
       try {
-        return JSON.parse(readFileSync(edgeConfigPath, 'utf-8'))
+        config = JSON.parse(readFileSync(edgeConfigPath, 'utf-8'))
       } catch (e) {
         console.error('Failed to load edge config:', e.message)
       }
-    }
-    
-    // Check for repositories.json for backward compatibility
-    const configPath = process.env.REPOSITORIES_CONFIG_PATH || './repositories.json'
-    try {
-      const configContent = readFileSync(resolve(configPath), 'utf-8')
-      const config = JSON.parse(configContent)
-      
-      if (config.repositories && config.repositories.length > 0) {
-        console.log(`Loaded ${config.repositories.length} repository configurations from ${configPath}`)
-        return { repositories: config.repositories }
+    } else {
+      // Check for repositories.json for backward compatibility
+      const configPath = process.env.REPOSITORIES_CONFIG_PATH || './repositories.json'
+      try {
+        const configContent = readFileSync(resolve(configPath), 'utf-8')
+        const legacyConfig = JSON.parse(configContent)
+        
+        if (legacyConfig.repositories && legacyConfig.repositories.length > 0) {
+          console.log(`Loaded ${legacyConfig.repositories.length} repository configurations from ${configPath}`)
+          config = { repositories: legacyConfig.repositories }
+        }
+      } catch (error) {
+        // No config file found
       }
-    } catch (error) {
-      // No config file found
     }
     
-    return { repositories: [] }
+    // Strip promptTemplatePath from all repositories to ensure built-in template is used
+    if (config.repositories) {
+      config.repositories = config.repositories.map(repo => {
+        const { promptTemplatePath, ...repoWithoutTemplate } = repo
+        if (promptTemplatePath) {
+          console.log(`Removing custom prompt template path from repository: ${repo.name}`)
+        }
+        return repoWithoutTemplate
+      })
+    }
+    
+    return config
   }
   
   /**
    * Save edge configuration
+   * Note: Ensures promptTemplatePath is not saved to disk
    */
   saveEdgeConfig(config) {
-    writeFileSync('./.edge-config.json', JSON.stringify(config, null, 2))
+    // Ensure no promptTemplatePath is saved
+    const cleanConfig = {
+      ...config,
+      repositories: config.repositories?.map(repo => {
+        const { promptTemplatePath, ...repoWithoutTemplate } = repo
+        return repoWithoutTemplate
+      })
+    }
+    writeFileSync('./.edge-config.json', JSON.stringify(cleanConfig, null, 2))
   }
   
   /**
