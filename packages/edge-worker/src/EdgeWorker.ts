@@ -236,9 +236,9 @@ export class EdgeWorker extends EventEmitter {
     console.log(`[EdgeWorker] Handling issue unassignment: ${webhook.notification.issue.identifier}`)
     
     // Log the complete webhook payload for TypeScript type definition
-    console.log('=== ISSUE UNASSIGNMENT WEBHOOK PAYLOAD ===')
-    console.log(JSON.stringify(webhook, null, 2))
-    console.log('=== END WEBHOOK PAYLOAD ===')
+    // console.log('=== ISSUE UNASSIGNMENT WEBHOOK PAYLOAD ===')
+    // console.log(JSON.stringify(webhook, null, 2))
+    // console.log('=== END WEBHOOK PAYLOAD ===')
     
     await this.handleIssueUnassigned(webhook.notification.issue, repository)
   }
