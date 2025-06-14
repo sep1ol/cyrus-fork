@@ -9,6 +9,21 @@ vi.mock('@anthropic-ai/claude-code', () => ({
   }
 }))
 
+// Mock file system operations
+vi.mock('fs', () => ({
+  mkdirSync: vi.fn(),
+  createWriteStream: vi.fn(() => ({
+    write: vi.fn(),
+    end: vi.fn(),
+    on: vi.fn()
+  }))
+}))
+
+// Mock os module
+vi.mock('os', () => ({
+  homedir: vi.fn(() => '/mock/home')
+}))
+
 import { query, AbortError } from '@anthropic-ai/claude-code'
 import { ClaudeRunner } from '../src/ClaudeRunner'
 import type { ClaudeRunnerConfig, SDKMessage } from '../src/types'
