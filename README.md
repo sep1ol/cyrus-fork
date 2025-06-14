@@ -9,7 +9,8 @@
   </a>
 </div>
 
-AI development agent for Linear powered by Claude Code. Cyrus monitors Linear issues assigned to it, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments.
+
+AI development agent for Linear powered by Claude Code. Cyrus monitors Linear issues assigned to it, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments, all from the safety and security of your own computer.
 
 ## Installation
 
@@ -21,17 +22,31 @@ npm install -g cyrus-ai
 
 ## Quick Start
 
-1. Run the setup wizard:
-   ```bash
-   cyrus
-   ```
+#### Pre-requisites:
+Have [`claude`](https://docs.anthropic.com/en/docs/claude-code/overview) installed. If you don't already have it, that's `npm install -g @anthropic-ai/claude-code`
+Then, make sure you run `claude` so that you get the authentication to your Claude account arranged. If you're feeling fancy you might set up some MCP servers.
 
-2. Follow the prompts to:
-   - Connect your Linear workspace via OAuth
-   - Configure your repository settings
-   - Set up allowed tools (security configuration)
+(optional, if you want Cyrus to push PRs to Github): Have [`gh`](https://cli.github.com/) (Github) installed. `brew install gh` or find your platform instructions at [this link](https://cli.github.com/). Authenticate using `gh auth login` as the user you want PRs to be submitted via.
 
-3. The agent will start monitoring issues assigned to you in Linear and process them automatically.
+####  Set up a `.env.cyrus` file.
+In it,
+```
+CLAUDE_PATH=/path/to/your/claude
+PROXY_URL=https://cyrus-proxy.ceedar.workers.dev
+```
+
+####  Run the main program:
+```bash
+cyrus
+```
+
+####  Follow the prompts to:
+ - Connect your Linear workspace via OAuth
+ - Configure your repository settings
+ - Set up allowed tools (security configuration)
+
+####  Benefit
+Keep `cyrus` running, and the agent will start monitoring issues assigned to you in Linear and process them automatically, on your very own device.
 
 ## Submitting Work To GitHub
 
@@ -42,15 +57,6 @@ When Claude creates PRs using the `gh` CLI tool, it uses your local GitHub authe
 - Review requests will be attributed to you
 - Your repository permissions apply to all operations
 - The only indication that Claude assisted is the "Co-Authored-By" commit trailer
-
-## Documentation Resources
-
-- [Linear Agents Documentation](https://linear.app/developers/agents)
-- [Linear API Documentation](https://developers.linear.app/docs)
-- [Linear OAuth Documentation](https://developers.linear.app/docs/oauth/authentication)
-- [Linear Webhooks Documentation](https://developers.linear.app/docs/webhooks/getting-started)
-- [Claude Code Documentation](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
-- [Anthropic Claude API Documentation](https://docs.anthropic.com/claude/reference/)
 
 ## License
 

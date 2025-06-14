@@ -18,10 +18,15 @@ class MockNdjsonClient extends EventEmitter {
 }
 
 class MockClaudeRunner {
-  spawn = vi.fn().mockReturnValue({ process: {}, startedAt: new Date() })
-  sendInitialPrompt = vi.fn().mockResolvedValue(undefined)
-  sendInput = vi.fn().mockResolvedValue(undefined)
-  kill = vi.fn()
+  start = vi.fn().mockResolvedValue({ 
+    sessionId: 'test-session', 
+    startedAt: new Date(), 
+    isRunning: false 
+  })
+  stop = vi.fn()
+  isRunning = vi.fn().mockReturnValue(false)
+  getSessionInfo = vi.fn().mockReturnValue(null)
+  getMessages = vi.fn().mockReturnValue([])
 }
 
 class MockSessionManager {
@@ -57,10 +62,20 @@ vi.mock('cyrus-claude-runner', () => ({
   getSafeTools: vi.fn(() => ['edit', 'read'])
 }))
 
-vi.mock('cyrus-core', () => ({
-  SessionManager: vi.fn(() => new MockSessionManager()),
-  Session: vi.fn((props) => props)
-}))
+vi.mock('cyrus-core', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // Keep the actual type guard functions
+    isIssueAssignedWebhook: actual.isIssueAssignedWebhook,
+    isIssueCommentMentionWebhook: actual.isIssueCommentMentionWebhook,
+    isIssueNewCommentWebhook: actual.isIssueNewCommentWebhook,
+    isIssueUnassignedWebhook: actual.isIssueUnassignedWebhook,
+    // Mock Session and SessionManager
+    SessionManager: vi.fn(() => new MockSessionManager()),
+    Session: vi.fn((props) => props)
+  }
+})
 
 // Now import after mocks
 import { EdgeWorker } from '../src/EdgeWorker'
@@ -114,8 +129,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
   it('should initialize with multiple repositories', () => {
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories
+            repositories: mockRepositories
     })
 
     // Should create 3 Linear clients (one per repository)
@@ -133,11 +147,22 @@ describe('EdgeWorker - Multi-Repository Support', () => {
 
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories,
+            repositories: mockRepositories,
       handlers: {
         createWorkspace: createWorkspaceMock
       }
+    })
+
+    // Mock the fetchFullIssueDetails method
+    vi.spyOn(edgeWorker as any, 'fetchFullIssueDetails').mockResolvedValue({
+      id: 'issue-123',
+      identifier: 'MOB-123',
+      title: 'Fix mobile bug',
+      description: 'Mobile issue description',
+      branchName: 'MOB-123-fix-mobile-bug',
+      priority: 2,
+      state: Promise.resolve({ name: 'To Do' }),
+      url: 'https://linear.app/test/issue/MOB-123'
     })
 
     // Get the ndjson clients
@@ -157,23 +182,45 @@ describe('EdgeWorker - Multi-Repository Support', () => {
     // Simulate webhook for workspace-2 (mobile repo)
     const webhookData = {
       type: 'AppUserNotification',
+      action: 'issueAssignedToYou',
+      createdAt: new Date().toISOString(),
+      organizationId: 'workspace-2',
+      oauthClientId: 'test-oauth-client',
+      appUserId: 'test-app-user',
       notification: {
         type: 'issueAssignedToYou',
+        id: 'notification-123',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        archivedAt: null,
+        actorId: 'actor-123',
+        externalUserActorId: null,
+        userId: 'user-123',
+        issueId: 'issue-123',
         issue: {
           id: 'issue-123',
           identifier: 'MOB-123',
           title: 'Fix mobile bug',
-          team: { id: 'workspace-2' }
+          teamId: 'workspace-2',
+          team: { id: 'workspace-2', key: 'MOB', name: 'Mobile Team' },
+          url: 'https://linear.app/issue/MOB-123'
+        },
+        actor: {
+          id: 'actor-123',
+          name: 'Test Actor',
+          email: 'test@example.com',
+          url: 'https://linear.app/user/actor-123'
         }
       },
-      eventId: 'evt-123'
+      webhookTimestamp: Date.now(),
+      webhookId: 'webhook-123'
     }
 
     // Trigger webhook handling
     mobilClient!.emit('webhook', webhookData)
 
     // Wait for async processing
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     // Should have called createWorkspace with mobile repository
     expect(createWorkspaceMock).toHaveBeenCalledWith(
@@ -188,12 +235,23 @@ describe('EdgeWorker - Multi-Repository Support', () => {
 
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories,
+            repositories: mockRepositories,
       handlers: {
         onSessionStart: onSessionStartMock,
-        onClaudeEvent: onClaudeEventMock
+        onClaudeMessage: onClaudeEventMock
       }
+    })
+
+    // Mock the fetchFullIssueDetails method for the second test
+    vi.spyOn(edgeWorker as any, 'fetchFullIssueDetails').mockResolvedValue({
+      id: 'issue-456',
+      identifier: 'BACK-456',
+      title: 'Update API',
+      description: 'Backend issue description',
+      branchName: 'BACK-456-update-api',
+      priority: 1,
+      state: Promise.resolve({ name: 'In Progress' }),
+      url: 'https://linear.app/test/issue/BACK-456'
     })
 
     // Listen for events
@@ -213,22 +271,44 @@ describe('EdgeWorker - Multi-Repository Support', () => {
     // Simulate issue assignment for backend repo
     const webhookData = {
       type: 'AppUserNotification',
+      action: 'issueAssignedToYou',
+      createdAt: new Date().toISOString(),
+      organizationId: 'workspace-1',
+      oauthClientId: 'test-oauth-client',
+      appUserId: 'test-app-user',
       notification: {
         type: 'issueAssignedToYou',
+        id: 'notification-456',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        archivedAt: null,
+        actorId: 'actor-456',
+        externalUserActorId: null,
+        userId: 'user-456',
+        issueId: 'issue-456',
         issue: {
           id: 'issue-456',
           identifier: 'BACK-456',
           title: 'Update API',
-          team: { id: 'workspace-1' }
+          teamId: 'workspace-1',
+          team: { id: 'workspace-1', key: 'BACK', name: 'Backend Team' },
+          url: 'https://linear.app/issue/BACK-456'
+        },
+        actor: {
+          id: 'actor-456',
+          name: 'Test Actor',
+          email: 'test@example.com',
+          url: 'https://linear.app/user/actor-456'
         }
       },
-      organizationId: 'workspace-1'
+      webhookTimestamp: Date.now(),
+      webhookId: 'webhook-456'
     }
 
     // Trigger webhook
     backendClient!.emit('webhook', webhookData)
 
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     // Should have been called with some repository ID
     expect(onSessionStartMock).toHaveBeenCalled()
@@ -257,8 +337,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
 
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: reposWithInactive
+            repositories: reposWithInactive
     })
 
     // Should only create 3 Linear clients (not 4)
@@ -273,8 +352,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
 
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: reposWithTemplates
+            repositories: reposWithTemplates
     })
 
     const buildPromptMethod = (edgeWorker as any).buildInitialPrompt.bind(edgeWorker)
@@ -302,8 +380,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
   it('should post comments using correct Linear client', async () => {
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories
+            repositories: mockRepositories
     })
 
     // Get the linear clients map
@@ -334,8 +411,7 @@ describe('EdgeWorker - Multi-Repository Support', () => {
   it('should handle connection status per token', () => {
     edgeWorker = new EdgeWorker({
       proxyUrl: 'http://proxy.test',
-      claudePath: '/usr/bin/claude',
-      repositories: mockRepositories
+            repositories: mockRepositories
     })
 
     const status = edgeWorker.getConnectionStatus()

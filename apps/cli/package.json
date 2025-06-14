@@ -11,6 +11,7 @@
     "start": "node app.mjs",
     "dev": "nodemon app.mjs",
     "test": "vitest run",
+    "test:run": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "prepublishOnly": "cd ../.. && pnpm build"
   },
@@ -40,7 +41,6 @@
   "dependencies": {
     "@linear/sdk": "^39.0.0",
     "cyrus-core": "workspace:*",
-    "cyrus-claude-parser": "workspace:*",
     "cyrus-claude-runner": "workspace:*",
     "cyrus-edge-worker": "workspace:*",
     "cyrus-ndjson-client": "workspace:*",

@@ -10,6 +10,7 @@ export {
 } from './config.js'
 export type {
   ClaudeRunnerConfig,
-  ClaudeProcessInfo,
-  ClaudeRunnerEvents
+  ClaudeSessionInfo,
+  ClaudeRunnerEvents,
+  SDKMessage
 } from './types.js'

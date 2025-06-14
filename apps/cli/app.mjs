@@ -10,8 +10,28 @@ import { URL } from 'url'
 import open from 'open'
 import readline from 'readline'
 
-// Load environment variables
-dotenv.config({ path: '.env.cyrus' })
+// Parse command line arguments
+const args = process.argv.slice(2)
+const envFileArg = args.find(arg => arg.startsWith('--env-file='))
+
+// Handle --version argument
+if (args.includes('--version')) {
+  try {
+    const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
+    console.log(pkg.version)
+  } catch {
+    console.log('0.1.3') // fallback version
+  }
+  process.exit(0)
+}
+
+// Load environment variables only if --env-file is specified
+if (envFileArg) {
+  const envFile = envFileArg.split('=')[1]
+  dotenv.config({ path: envFile })
+}
+
+
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -27,32 +47,32 @@ class EdgeApp {
   
   /**
    * Load edge configuration (credentials and repositories)
+   * Note: Strips promptTemplatePath from all repositories to ensure built-in template is used
    */
   loadEdgeConfig() {
     const edgeConfigPath = './.edge-config.json'
+    let config = { repositories: [] }
+    
     if (existsSync(edgeConfigPath)) {
       try {
-        return JSON.parse(readFileSync(edgeConfigPath, 'utf-8'))
+        config = JSON.parse(readFileSync(edgeConfigPath, 'utf-8'))
       } catch (e) {
         console.error('Failed to load edge config:', e.message)
       }
     }
     
-    // Check for repositories.json for backward compatibility
-    const configPath = process.env.REPOSITORIES_CONFIG_PATH || './repositories.json'
-    try {
-      const configContent = readFileSync(resolve(configPath), 'utf-8')
-      const config = JSON.parse(configContent)
-      
-      if (config.repositories && config.repositories.length > 0) {
-        console.log(`Loaded ${config.repositories.length} repository configurations from ${configPath}`)
-        return { repositories: config.repositories }
-      }
-    } catch (error) {
-      // No config file found
+    // Strip promptTemplatePath from all repositories to ensure built-in template is used
+    if (config.repositories) {
+      config.repositories = config.repositories.map(repo => {
+        const { promptTemplatePath, ...repoWithoutTemplate } = repo
+        if (promptTemplatePath) {
+          console.log(`Ignoring custom prompt template for repository: ${repo.name} (using built-in template)`)
+        }
+        return repoWithoutTemplate
+      })
     }
     
-    return { repositories: [] }
+    return config
   }
   
   /**
@@ -85,9 +105,7 @@ class EdgeApp {
       const baseBranch = await question('Base branch (default: main): ') || 'main'
       const workspaceBaseDir = await question(`Workspace directory (default: ${repositoryPath}/workspaces): `) || `${repositoryPath}/workspaces`
       
-      console.log('\n📝 Prompt Template (optional)')
-      console.log('Leave blank to use the built-in default template')
-      const promptTemplatePath = await question('Custom prompt template path (press Enter to skip): ')
+      // Note: Prompt template is now hardcoded - no longer configurable
       
       // Ask for allowed tools configuration
       console.log('\n🔧 Tool Configuration')
@@ -116,7 +134,6 @@ class EdgeApp {
         linearToken: linearCredentials.linearToken,
         workspaceBaseDir: resolve(workspaceBaseDir),
         isActive: true,
-        ...(promptTemplatePath && { promptTemplatePath: resolve(promptTemplatePath) }),
         ...(allowedTools && { allowedTools })
       }
       
@@ -256,30 +273,10 @@ class EdgeApp {
    */
   async start() {
     try {
-      // Validate proxy URL
-      const proxyUrl = process.env.PROXY_URL
-      if (!proxyUrl) {
-        console.error('❌ PROXY_URL environment variable is required')
-        console.log('\nPlease add the following to your .env.cyrus file:')
-        console.log('PROXY_URL=https://cyrus-proxy.ceedar.workers.dev')
-        console.log('\nThis connects to the secure public Cyrus proxy for Linear OAuth and webhooks.')
-        process.exit(1)
-      }
+      // Set proxy URL with default
+      const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
       
-      // Validate Claude CLI
-      const claudePath = process.env.CLAUDE_PATH || 'claude'
-      try {
-        const { execSync } = await import('child_process')
-        execSync(`which ${claudePath}`, { stdio: 'ignore' })
-      } catch (error) {
-        console.error(`❌ Claude CLI not found at: ${claudePath}`)
-        console.log('\nPlease ensure Claude Code is installed:')
-        console.log('• Claude Pro/Max users: Install from https://claude.ai/code')
-        console.log('• API users: Set ANTHROPIC_API_KEY in .env.cyrus and install claude-ai CLI')
-        console.log('\nIf Claude is installed in a custom location, set CLAUDE_PATH in .env.cyrus:')
-        console.log('CLAUDE_PATH=/path/to/claude')
-        process.exit(1)
-      }
+      // No need to validate Claude CLI - using Claude TypeScript SDK now
       
       // Start OAuth server immediately for easy access
       const oauthPort = 3457
@@ -437,8 +434,7 @@ class EdgeApp {
       const config = {
         proxyUrl,
         repositories,
-        claudePath,
-        allowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
+        defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
         features: {
           enableContinuation: true
         },
@@ -537,8 +533,12 @@ class EdgeApp {
         throw new Error('Not a git repository')
       }
       
+      // Sanitize branch name by removing backticks to prevent command injection
+      const sanitizeBranchName = (name) => name ? name.replace(/`/g, '') : name
+      
       // Use Linear's preferred branch name, or generate one if not available
-      const branchName = issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+      const rawBranchName = issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+      const branchName = sanitizeBranchName(rawBranchName)
       const workspacePath = join(repository.workspaceBaseDir, issue.identifier)
       
       // Ensure workspace directory exists
@@ -577,10 +577,22 @@ class EdgeApp {
         // Branch doesn't exist, we'll create it
       }
       
-      // Create the worktree
-      console.log(`Creating git worktree at ${workspacePath} from ${repository.baseBranch}`)
+      // Fetch latest changes from remote
+      console.log('Fetching latest changes from remote...')
+      try {
+        execSync('git fetch origin', {
+          cwd: repository.repositoryPath,
+          stdio: 'pipe'
+        })
+      } catch (e) {
+        console.warn('Warning: git fetch failed, proceeding with local branch:', e.message)
+      }
+
+      // Create the worktree from remote branch
+      const remoteBranch = `origin/${repository.baseBranch}`
+      console.log(`Creating git worktree at ${workspacePath} from ${remoteBranch}`)
       const worktreeCmd = createBranch 
-        ? `git worktree add "${workspacePath}" -b "${branchName}" "${repository.baseBranch}"`
+        ? `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`
         : `git worktree add "${workspacePath}" "${branchName}"`
       
       execSync(worktreeCmd, {

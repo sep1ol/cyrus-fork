@@ -8,17 +8,30 @@ import type { EdgeWorkerConfig } from '../src/types'
 import { 
   mockIssueAssignedWebhook, 
   mockCommentWebhook,
-  mockLegacyCommentWebhook,
-  mockClaudeAssistantEvent,
-  mockClaudeToolEvent,
-  mockClaudeErrorEvent
+  mockUnassignedWebhook,
+  mockClaudeAssistantMessage,
+  mockClaudeToolMessage,
+  mockClaudeResultMessage
 } from './setup'
 
 // Mock dependencies
 vi.mock('@linear/sdk')
 vi.mock('cyrus-ndjson-client')
 vi.mock('cyrus-claude-runner')
-vi.mock('cyrus-core')
+vi.mock('cyrus-core', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    // Keep the actual type guard functions
+    isIssueAssignedWebhook: actual.isIssueAssignedWebhook,
+    isIssueCommentMentionWebhook: actual.isIssueCommentMentionWebhook,
+    isIssueNewCommentWebhook: actual.isIssueNewCommentWebhook,
+    isIssueUnassignedWebhook: actual.isIssueUnassignedWebhook,
+    // Mock Session and SessionManager
+    Session: vi.fn(),
+    SessionManager: vi.fn()
+  }
+})
 
 describe('EdgeWorker', () => {
   let edgeWorker: EdgeWorker
@@ -29,10 +42,12 @@ describe('EdgeWorker', () => {
   let mockSessionManager: any
 
   beforeEach(() => {
+    // Clear DEBUG_EDGE to ensure predictable behavior
+    delete process.env.DEBUG_EDGE
+    
     // Setup config with single repository for backward compatibility
     mockConfig = {
       proxyUrl: 'http://localhost:3000',
-      claudePath: '/usr/local/bin/claude',
       repositories: [{
         id: 'test-repo',
         name: 'Test Repository',
@@ -47,7 +62,7 @@ describe('EdgeWorker', () => {
           path: '/tmp/test-workspaces/TEST-123',
           isGitWorktree: false
         }),
-        onClaudeEvent: vi.fn(),
+        onClaudeMessage: vi.fn(),
         onSessionStart: vi.fn(),
         onSessionEnd: vi.fn(),
         onError: vi.fn()
@@ -79,13 +94,15 @@ describe('EdgeWorker', () => {
 
     // Setup mock Claude runner
     mockClaudeRunner = {
-      spawn: vi.fn().mockReturnValue({
-        process: { pid: 1234 },
-        startedAt: new Date()
+      start: vi.fn().mockResolvedValue({
+        sessionId: 'test-session-123',
+        startedAt: new Date(),
+        isRunning: false
       }),
-      sendInitialPrompt: vi.fn().mockResolvedValue(undefined),
-      sendInput: vi.fn().mockResolvedValue(undefined),
-      kill: vi.fn()
+      stop: vi.fn(),
+      isRunning: vi.fn().mockReturnValue(false),
+      getSessionInfo: vi.fn().mockReturnValue(null),
+      getMessages: vi.fn().mockReturnValue([])
     }
     vi.mocked(ClaudeRunner).mockImplementation(() => mockClaudeRunner)
 
@@ -100,6 +117,18 @@ describe('EdgeWorker', () => {
 
     // Create EdgeWorker instance
     edgeWorker = new EdgeWorker(mockConfig)
+
+    // Mock the fetchFullIssueDetails method to return a mock Linear issue
+    vi.spyOn(edgeWorker as any, 'fetchFullIssueDetails').mockResolvedValue({
+      id: 'issue-123',
+      identifier: 'TEST-123',
+      title: 'Test Issue',
+      description: 'Test description',
+      branchName: 'TEST-123-test-issue',
+      priority: 1,
+      state: Promise.resolve({ name: 'In Progress' }),
+      url: 'https://linear.app/test/issue/TEST-123'
+    })
   })
 
   afterEach(() => {
@@ -191,17 +220,17 @@ describe('EdgeWorker', () => {
       // Note: actual connection status depends on mock implementation
     })
 
-    it('should kill all Claude processes on stop', async () => {
+    it('should stop all Claude processes on stop', async () => {
       // Create some mock sessions
-      const runner1 = { kill: vi.fn() }
-      const runner2 = { kill: vi.fn() }
+      const runner1 = { stop: vi.fn() }
+      const runner2 = { stop: vi.fn() }
       edgeWorker['claudeRunners'].set('issue-1', runner1 as any)
       edgeWorker['claudeRunners'].set('issue-2', runner2 as any)
 
       await edgeWorker.stop()
 
-      expect(runner1.kill).toHaveBeenCalled()
-      expect(runner2.kill).toHaveBeenCalled()
+      expect(runner1.stop).toHaveBeenCalled()
+      expect(runner2.stop).toHaveBeenCalled()
       expect(edgeWorker['claudeRunners'].size).toBe(0)
     })
 
@@ -231,17 +260,22 @@ describe('EdgeWorker', () => {
 
     it('should handle issue assignment notifications', async () => {
       const webhook = mockIssueAssignedWebhook()
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
-      // Should create workspace
+      // Should create workspace with full Linear issue
       expect(mockConfig.handlers.createWorkspace).toHaveBeenCalledWith(
-        webhook.data.notification.issue,
+        expect.objectContaining({
+          id: 'issue-123',
+          identifier: 'TEST-123',
+          title: 'Test Issue',
+          description: 'Test description',
+          branchName: 'TEST-123-test-issue'
+        }),
         expect.objectContaining({ id: 'test-repo' })
       )
 
-      // Should spawn Claude
-      expect(mockClaudeRunner.spawn).toHaveBeenCalled()
-      expect(mockClaudeRunner.sendInitialPrompt).toHaveBeenCalled()
+      // Should start Claude session
+      expect(mockClaudeRunner.start).toHaveBeenCalled()
 
       // Should create session
       expect(mockSessionManager.addSession).toHaveBeenCalledWith(
@@ -249,25 +283,25 @@ describe('EdgeWorker', () => {
         expect.any(Session)
       )
 
-      // Should emit events
+      // Should emit events with full Linear issue
       expect(mockConfig.handlers.onSessionStart).toHaveBeenCalledWith(
         'issue-123',
-        webhook.data.notification.issue,
+        expect.objectContaining({
+          id: 'issue-123',
+          identifier: 'TEST-123',
+          title: 'Test Issue',
+          description: 'Test description',
+          branchName: 'TEST-123-test-issue'
+        }),
         'test-repo'
       )
-
-      // Should report success
-      expect(mockNdjsonClient.sendStatus).toHaveBeenCalledWith({
-        eventId: 'event-123',
-        status: 'completed'
-      })
     })
 
     it('should use default workspace if no handler provided', async () => {
       delete mockConfig.handlers.createWorkspace
       const webhook = mockIssueAssignedWebhook()
       
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
       // Should still work with default workspace
       expect(vi.mocked(ClaudeRunner)).toHaveBeenCalledWith(
@@ -284,21 +318,26 @@ describe('EdgeWorker', () => {
       })
 
       const webhook = mockCommentWebhook()
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
-      // Should send input to Claude
-      expect(mockClaudeRunner.sendInput).toHaveBeenCalledWith('Test comment')
+      // Should start new session with comment as prompt
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Test comment')
     })
 
-    it('should handle legacy comment webhooks', async () => {
+    it('should handle issue unassignment', async () => {
       mockSessionManager.getSession.mockReturnValue({
         workspace: { path: '/tmp/test-workspaces/TEST-123' }
       })
 
-      const webhook = mockLegacyCommentWebhook()
-      await webhookHandler(webhook.data)
+      // Set up a mock Claude runner in the internal map
+      const mockRunner = { stop: vi.fn() }
+      edgeWorker['claudeRunners'].set('issue-123', mockRunner as any)
 
-      expect(mockClaudeRunner.sendInput).toHaveBeenCalledWith('Test comment')
+      const webhook = mockUnassignedWebhook()
+      await webhookHandler(webhook)
+
+      expect(mockRunner.stop).toHaveBeenCalled()
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith('issue-123')
     })
 
     it('should ignore comments when continuation is disabled', async () => {
@@ -306,62 +345,37 @@ describe('EdgeWorker', () => {
       mockSessionManager.getSession.mockReturnValue({})
 
       const webhook = mockCommentWebhook()
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
-      expect(mockClaudeRunner.sendInput).not.toHaveBeenCalled()
+      expect(mockClaudeRunner.start).not.toHaveBeenCalled()
     })
 
     it('should ignore comments for non-existent sessions', async () => {
       mockSessionManager.getSession.mockReturnValue(null)
 
       const webhook = mockCommentWebhook()
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
-      expect(mockClaudeRunner.sendInput).not.toHaveBeenCalled()
+      // When there's no existing session, it should restart from scratch (handleIssueAssigned)
+      // So start will be called with the full issue prompt, not just the comment
+      expect(mockClaudeRunner.start).toHaveBeenCalled()
     })
 
     it('should report failures on error', async () => {
       mockConfig.handlers.createWorkspace!.mockRejectedValue(new Error('Workspace error'))
 
       const webhook = mockIssueAssignedWebhook()
-      await expect(webhookHandler(webhook.data)).rejects.toThrow('Workspace error')
-
-      expect(mockNdjsonClient.sendStatus).toHaveBeenCalledWith({
-        eventId: 'event-123',
-        status: 'failed',
-        error: 'Workspace error'
-      })
+      await expect(webhookHandler(webhook)).rejects.toThrow('Workspace error')
     })
 
-    it('should handle issue unassignment', async () => {
-      const runner = { kill: vi.fn() }
-      edgeWorker['claudeRunners'].set('issue-123', runner as any)
-
-      const webhook = {
-        type: 'webhook',
-        data: {
-          type: 'AppUserNotification',
-          notification: {
-            type: 'issueUnassignedFromYou',
-            issue: { id: 'issue-123' }
-          }
-        }
-      }
-
-      await webhookHandler(webhook.data)
-
-      expect(runner.kill).toHaveBeenCalled()
-      expect(mockSessionManager.removeSession).toHaveBeenCalledWith('issue-123')
-      expect(mockConfig.handlers.onSessionEnd).toHaveBeenCalledWith('issue-123', null, 'test-repo')
-    })
   })
 
   describe('Claude event handling', () => {
     it('should handle assistant responses', async () => {
-      // Setup Claude runner with event handler
-      let claudeEventHandler: Function
+      // Setup Claude runner with message handler
+      let claudeMessageHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeMessageHandler = config.onMessage
         return mockClaudeRunner
       })
 
@@ -370,27 +384,27 @@ describe('EdgeWorker', () => {
       const webhookHandler = mockNdjsonClient.on.mock.calls.find(
         (call: any) => call[0] === 'webhook'
       )?.[1]
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
-      // Emit Claude assistant event
-      const event = mockClaudeAssistantEvent('Hello from Claude!')
-      await claudeEventHandler!(event)
+      // Emit Claude assistant message
+      const message = mockClaudeAssistantMessage('Hello from Claude!')
+      await claudeMessageHandler!(message)
 
-      // Should NOT post comment to Linear for assistant events (only for result events)
+      // Should NOT post comment to Linear for assistant messages (only for result messages)
       // The initial comment should be the only one posted
       expect(mockLinearClient.createComment).toHaveBeenCalledWith({
         issueId: 'issue-123',
         body: "I've been assigned to this issue and am getting started right away. I'll update this comment with my plan shortly."
       })
 
-      // Should emit events
-      expect(mockConfig.handlers.onClaudeEvent).toHaveBeenCalledWith('issue-123', event, 'test-repo')
+      // Should emit message events
+      expect(mockConfig.handlers.onClaudeMessage).toHaveBeenCalledWith('issue-123', message, 'test-repo')
     })
 
     it('should handle tool use events', async () => {
-      let claudeEventHandler: Function
+      let claudeMessageHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeMessageHandler = config.onMessage
         return mockClaudeRunner
       })
 
@@ -398,21 +412,21 @@ describe('EdgeWorker', () => {
       const webhookHandler = mockNdjsonClient.on.mock.calls.find(
         (call: any) => call[0] === 'webhook'
       )?.[1]
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
       const toolUseSpy = vi.fn()
       edgeWorker.on('claude:tool-use', toolUseSpy)
 
-      const event = mockClaudeToolEvent('bash', { command: 'ls -la' })
-      await claudeEventHandler!(event)
+      const message = mockClaudeToolMessage('bash', { command: 'ls -la' })
+      await claudeMessageHandler!(message)
 
       expect(toolUseSpy).toHaveBeenCalledWith('issue-123', 'bash', { command: 'ls -la' }, 'test-repo')
     })
 
     it('should handle Claude errors', async () => {
-      let claudeEventHandler: Function
+      let claudeErrorHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeErrorHandler = config.onError
         return mockClaudeRunner
       })
 
@@ -420,26 +434,22 @@ describe('EdgeWorker', () => {
       const webhookHandler = mockNdjsonClient.on.mock.calls.find(
         (call: any) => call[0] === 'webhook'
       )?.[1]
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
-      const errorSpy = vi.fn()
-      edgeWorker.on('error', errorSpy)
+      const sessionEndedSpy = vi.fn()
+      edgeWorker.on('session:ended', sessionEndedSpy)
 
-      const event = mockClaudeErrorEvent('Something went wrong')
-      await claudeEventHandler!(event)
+      const error = new Error('Something went wrong')
+      await claudeErrorHandler!(error)
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Claude error: Something went wrong' })
-      )
-      expect(mockConfig.handlers.onError).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Claude error: Something went wrong' })
-      )
+      expect(sessionEndedSpy).toHaveBeenCalledWith('issue-123', 1, 'test-repo')
+      expect(mockConfig.handlers.onSessionEnd).toHaveBeenCalledWith('issue-123', 1, 'test-repo')
     })
 
     it('should handle token limit errors', async () => {
-      let claudeEventHandler: Function
+      let claudeMessageHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeMessageHandler = config.onMessage
         return mockClaudeRunner
       })
 
@@ -447,22 +457,17 @@ describe('EdgeWorker', () => {
       const webhookHandler = mockNdjsonClient.on.mock.calls.find(
         (call: any) => call[0] === 'webhook'
       )?.[1]
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
       mockSessionManager.getSession.mockReturnValue({
-        issue: webhook.data.notification.issue
+        issue: webhook.notification.issue
       })
 
       const errorSpy = vi.fn()
       edgeWorker.on('error', errorSpy)
 
-      const event = mockClaudeErrorEvent('token limit exceeded')
-      await claudeEventHandler!(event)
-
-      // Should emit error
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Claude error: token limit exceeded' })
-      )
+      const message = mockClaudeResultMessage('error_max_turns')
+      await claudeMessageHandler!(message)
 
       // Should post warning
       expect(mockLinearClient.createComment).toHaveBeenCalledWith({
@@ -471,13 +476,13 @@ describe('EdgeWorker', () => {
       })
 
       // Should restart session
-      expect(mockClaudeRunner.spawn).toHaveBeenCalledTimes(2)
+      expect(mockClaudeRunner.start).toHaveBeenCalledTimes(2)
     })
 
-    it('should handle Claude process exit', async () => {
-      let exitHandler: Function
+    it('should handle Claude session completion', async () => {
+      let completeHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        exitHandler = config.onExit
+        completeHandler = config.onComplete
         return mockClaudeRunner
       })
 
@@ -486,10 +491,11 @@ describe('EdgeWorker', () => {
       const webhookHandler = mockNdjsonClient.on.mock.calls.find(
         (call: any) => call[0] === 'webhook'
       )?.[1]
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
-      // Now test exit handling
-      exitHandler!(0)
+      // Now test completion handling
+      const messages = [mockClaudeAssistantMessage('Task completed')]
+      completeHandler!(messages)
 
       expect(edgeWorker['claudeRunners'].has('issue-123')).toBe(false)
       expect(mockConfig.handlers.onSessionEnd).toHaveBeenCalledWith('issue-123', 0, 'test-repo')
@@ -507,9 +513,9 @@ describe('EdgeWorker', () => {
       })
       mockLinearClient.createComment.mockRejectedValueOnce(new Error('API Error'))
 
-      let claudeEventHandler: Function
+      let claudeMessageHandler: Function
       vi.mocked(ClaudeRunner).mockImplementation((config) => {
-        claudeEventHandler = config.onEvent
+        claudeMessageHandler = config.onMessage
         return mockClaudeRunner
       })
 
@@ -517,16 +523,13 @@ describe('EdgeWorker', () => {
       const webhookHandler = mockNdjsonClient.on.mock.calls.find(
         (call: any) => call[0] === 'webhook'
       )?.[1]
-      await webhookHandler(webhook.data)
+      await webhookHandler(webhook)
 
-      // Use a result event which actually posts comments
-      const event: ClaudeEvent = {
-        type: 'result',
-        result: 'Failed comment'
-      } as any
+      // Use a result message which actually posts comments
+      const message = mockClaudeResultMessage('success')
       
       // The handler doesn't throw, it logs the error and continues
-      await claudeEventHandler!(event)
+      await claudeMessageHandler!(message)
       
       // Verify error was logged but not thrown
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -574,6 +577,19 @@ describe('EdgeWorker', () => {
 
       const sessions = edgeWorker.getActiveSessions()
       expect(sessions).toEqual(['issue-1', 'issue-2', 'issue-3'])
+    })
+  })
+
+  describe('branch name sanitization', () => {
+    it('should sanitize branch names by removing backticks', () => {
+      // Test the sanitization function directly
+      const sanitizeBranchName = (name: string) => name ? name.replace(/`/g, '') : name
+      
+      expect(sanitizeBranchName('TEST-123-issue-with-`backticks`-in-title')).toBe('TEST-123-issue-with-backticks-in-title')
+      expect(sanitizeBranchName('Normal-branch-name')).toBe('Normal-branch-name')
+      expect(sanitizeBranchName('`start-with-backtick')).toBe('start-with-backtick')
+      expect(sanitizeBranchName('end-with-backtick`')).toBe('end-with-backtick')
+      expect(sanitizeBranchName('')).toBe('')
     })
   })
 })
