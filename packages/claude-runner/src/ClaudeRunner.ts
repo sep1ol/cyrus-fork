@@ -72,13 +72,21 @@ export class ClaudeRunner extends EventEmitter {
       // Start the query
       console.log(`[ClaudeRunner] Starting query with prompt length: ${prompt.length} characters`)
       
+      // Process allowed directories by adding Read patterns to allowedTools
+      let processedAllowedTools = this.config.allowedTools ? [...this.config.allowedTools] : undefined
+      if (this.config.allowedDirectories && this.config.allowedDirectories.length > 0) {
+        const directoryTools = this.config.allowedDirectories.map(dir => `Read(${dir}/**)`)
+        processedAllowedTools = processedAllowedTools ? [...processedAllowedTools, ...directoryTools] : directoryTools
+      }
+
       const queryOptions: Parameters<typeof query>[0] = {
         prompt,
         abortController: this.abortController,
         options: {
-          maxTurns: this.config.maxTurns || 10,
           ...(this.config.workingDirectory && { cwd: this.config.workingDirectory }),
-          ...(this.config.systemPrompt && { systemPrompt: this.config.systemPrompt })
+          ...(this.config.systemPrompt && { systemPrompt: this.config.systemPrompt }),
+          ...(processedAllowedTools && { allowedTools: processedAllowedTools }),
+          ...(this.config.continueSession && { continue: this.config.continueSession })
         }
       }
 

@@ -6,7 +6,6 @@ export interface ClaudeRunnerConfig {
   allowedDirectories?: string[]
   continueSession?: boolean
   workspaceName?: string
-  maxTurns?: number
   systemPrompt?: string
   onMessage?: (message: SDKMessage) => void
   onError?: (error: Error) => void
