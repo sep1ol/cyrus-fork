@@ -22,18 +22,9 @@ npm install -g cyrus-ai
 
 ## Quick Start
 
-#### Pre-requisites:
-Have [`claude`](https://docs.anthropic.com/en/docs/claude-code/overview) installed. If you don't already have it, that's `npm install -g @anthropic-ai/claude-code`
-Then, make sure you run `claude` so that you get the authentication to your Claude account arranged. If you're feeling fancy you might set up some MCP servers.
+#### Optional
 
 (optional, if you want Cyrus to push PRs to Github): Have [`gh`](https://cli.github.com/) (Github) installed. `brew install gh` or find your platform instructions at [this link](https://cli.github.com/). Authenticate using `gh auth login` as the user you want PRs to be submitted via.
-
-####  Set up a `.env.cyrus` file.
-In it,
-```
-CLAUDE_PATH=/path/to/your/claude
-PROXY_URL=https://cyrus-proxy.ceedar.workers.dev
-```
 
 ####  Run the main program:
 ```bash
