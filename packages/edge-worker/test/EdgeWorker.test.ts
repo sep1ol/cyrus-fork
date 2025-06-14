@@ -42,6 +42,9 @@ describe('EdgeWorker', () => {
   let mockSessionManager: any
 
   beforeEach(() => {
+    // Clear DEBUG_EDGE to ensure predictable behavior
+    delete process.env.DEBUG_EDGE
+    
     // Setup config with single repository for backward compatibility
     mockConfig = {
       proxyUrl: 'http://localhost:3000',
@@ -151,8 +154,8 @@ describe('EdgeWorker', () => {
       expect(mockNdjsonClient.on).toHaveBeenCalledWith('webhook', expect.any(Function))
     })
 
-    it('should register heartbeat handler by default', () => {
-      expect(mockNdjsonClient.on).toHaveBeenCalledWith('heartbeat', expect.any(Function))
+    it('should not register heartbeat handler by default', () => {
+      expect(mockNdjsonClient.on).not.toHaveBeenCalledWith('heartbeat', expect.any(Function))
     })
 
     it('should register heartbeat handler when DEBUG_EDGE is true', () => {
