@@ -17,10 +17,10 @@ const envFileArg = args.find(arg => arg.startsWith('--env-file='))
 // Handle --version argument
 if (args.includes('--version')) {
   try {
-    const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'))
+    const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
     console.log(pkg.version)
   } catch {
-    console.log('0.1.3') // fallback version
+    console.log('0.1.5') // fallback version
   }
   process.exit(0)
 }
