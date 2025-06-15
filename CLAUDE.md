@@ -169,4 +169,22 @@ When working on this codebase, follow these practices:
 
 ## Publishing
 
-- To publish the apps/cli (cyrus-ai) cd to apps/cli and do `pnpm publish --access public`
+**Important: Always publish packages in the correct order to ensure proper dependency resolution.**
+
+### Publishing Workflow
+
+1. **Publish underlying packages first** (if they've changed):
+   ```bash
+   cd packages/core && pnpm publish --access public
+   cd ../claude-runner && pnpm publish --access public  
+   cd ../edge-worker && pnpm publish --access public
+   cd ../ndjson-client && pnpm publish --access public
+   ```
+
+2. **Then publish the CLI** to pick up latest package versions:
+   ```bash
+   cd apps/cli && pnpm publish --access public
+   ```
+
+This ensures that when pnpm resolves `workspace:*` references during CLI publishing, it uses the latest published package versions rather than outdated ones.
+
