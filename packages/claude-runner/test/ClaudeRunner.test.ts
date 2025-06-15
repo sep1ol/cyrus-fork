@@ -124,16 +124,15 @@ describe('ClaudeRunner', () => {
         prompt: 'Hello Claude',
         abortController: expect.any(AbortController),
         options: {
-          maxTurns: 10,
           cwd: '/tmp/test'
         }
       })
     })
 
-    it('should use custom maxTurns if provided', async () => {
-      const runnerWithMaxTurns = new ClaudeRunner({
+    it('should handle workspace configuration properly', async () => {
+      const runnerWithWorkspace = new ClaudeRunner({
         ...defaultConfig,
-        maxTurns: 5
+        workspaceName: 'test-workspace'
       })
       
       mockQuery.mockImplementation(async function* () {
@@ -145,13 +144,12 @@ describe('ClaudeRunner', () => {
         } as any
       })
       
-      await runnerWithMaxTurns.start('test')
+      await runnerWithWorkspace.start('test')
       
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: 'test',
         abortController: expect.any(AbortController),
         options: {
-          maxTurns: 5,
           cwd: '/tmp/test'
         }
       })
@@ -178,7 +176,6 @@ describe('ClaudeRunner', () => {
         prompt: 'test',
         abortController: expect.any(AbortController),
         options: {
-          maxTurns: 10,
           cwd: '/tmp/test',
           systemPrompt: 'You are a helpful assistant'
         }
