@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { mkdirSync, createWriteStream, type WriteStream } from 'fs'
+import { mkdirSync, createWriteStream, type WriteStream, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { query, type SDKMessage, AbortError } from '@anthropic-ai/claude-code'
@@ -79,6 +79,19 @@ export class ClaudeRunner extends EventEmitter {
         processedAllowedTools = processedAllowedTools ? [...processedAllowedTools, ...directoryTools] : directoryTools
       }
 
+      // Parse MCP config if provided
+      let mcpServers = {}
+      if (this.config.mcpConfigPath) {
+        try {
+          const mcpConfigContent = readFileSync(this.config.mcpConfigPath, 'utf8')
+          const mcpConfig = JSON.parse(mcpConfigContent)
+          mcpServers = mcpConfig.mcpServers || {}
+          console.log(`[ClaudeRunner] Loaded MCP servers: ${Object.keys(mcpServers).join(', ')}`)
+        } catch (error) {
+          console.error(`[ClaudeRunner] Failed to load MCP config from ${this.config.mcpConfigPath}:`, error)
+        }
+      }
+
       const queryOptions: Parameters<typeof query>[0] = {
         prompt,
         abortController: this.abortController,
@@ -87,7 +100,7 @@ export class ClaudeRunner extends EventEmitter {
           ...(this.config.systemPrompt && { systemPrompt: this.config.systemPrompt }),
           ...(processedAllowedTools && { allowedTools: processedAllowedTools }),
           ...(this.config.continueSession && { continue: this.config.continueSession }),
-          ...(this.config.mcpConfigPath && { mcpConfig: this.config.mcpConfigPath })
+          ...(Object.keys(mcpServers).length > 0 && { mcpServers })
         }
       }
 

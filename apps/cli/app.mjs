@@ -113,7 +113,7 @@ class EdgeApp {
       console.log('Examples: filesystem access, database connections, API integrations')
       console.log('See: https://docs.anthropic.com/en/docs/claude-code/mcp')
       console.log('')
-      const mcpConfigInput = await question('MCP config file path (optional, e.g., ./mcp-config.json): ')
+      const mcpConfigInput = await question('MCP config file path (optional, format: {"mcpServers": {...}}, e.g., ./mcp-config.json): ')
       const mcpConfigPath = mcpConfigInput.trim() || undefined
       
       // Ask for allowed tools configuration
