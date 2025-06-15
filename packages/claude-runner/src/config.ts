@@ -7,14 +7,13 @@
  */
 export const availableTools = [
   // File system tools
-  'Read', 'Write', 'Edit', 'MultiEdit', 
-  'Glob', 'Grep', 'LS',
+  'Read(**)', 'Edit(**)', 
   
   // Execution tools
   'Bash', 'Task',
   
   // Web tools
-  'WebFetch',
+  'WebFetch', 'WebSearch',
   
   // Task management
   'TodoRead', 'TodoWrite',
@@ -32,7 +31,7 @@ export type ToolName = typeof availableTools[number]
  * Default read-only tools that are safe to enable
  */
 export const readOnlyTools: ToolName[] = [
-  'Read', 'Glob', 'Grep', 'LS', 'WebFetch', 
+  'Read(**)', 'WebFetch', 'WebSearch',
   'TodoRead', 'NotebookRead', 'Task', 'Batch'
 ]
 
@@ -40,7 +39,7 @@ export const readOnlyTools: ToolName[] = [
  * Tools that can modify the file system
  */
 export const writeTools: ToolName[] = [
-  'Write', 'Edit', 'MultiEdit', 'Bash', 
+  'Edit(**)', 'Bash', 
   'TodoWrite', 'NotebookEdit'
 ]
 
@@ -62,5 +61,8 @@ export function getAllTools(): string[] {
  * Get all tools except Bash (safer default for repository configuration)
  */
 export function getSafeTools(): string[] {
-  return availableTools.filter(tool => tool !== 'Bash')
+  return [
+    'Read(**)', 'Edit(**)', 'Task', 'WebFetch', 'WebSearch',
+    'TodoRead', 'TodoWrite', 'NotebookRead', 'NotebookEdit', 'Batch'
+  ]
 }
