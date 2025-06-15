@@ -14,13 +14,16 @@ import readline from 'readline'
 const args = process.argv.slice(2)
 const envFileArg = args.find(arg => arg.startsWith('--env-file='))
 
+// Get __dirname for ES modules
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
 // Handle --version argument
 if (args.includes('--version')) {
   try {
     const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
     console.log(pkg.version)
   } catch {
-    console.log('0.1.5') // fallback version
+    console.log('0.1.7') // fallback version
   }
   process.exit(0)
 }
@@ -31,9 +34,6 @@ if (envFileArg) {
   dotenv.config({ path: envFile })
 }
 
-
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /**
  * Edge application that uses EdgeWorker from package
