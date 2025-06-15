@@ -15,20 +15,20 @@ describe('config', () => {
         'Read', 'Write', 'Edit', 'MultiEdit',
         'Glob', 'Grep', 'LS',
         'Bash', 'Task',
-        'WebFetch',
+        'WebFetch', 'WebSearch',
         'TodoRead', 'TodoWrite',
         'NotebookRead', 'NotebookEdit',
         'Batch'
       ])
-      expect(availableTools).toHaveLength(15)
+      expect(availableTools).toHaveLength(16)
     })
 
     it('should define read-only tools', () => {
       expect(readOnlyTools).toEqual([
-        'Read', 'Glob', 'Grep', 'LS', 'WebFetch',
+        'Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch',
         'TodoRead', 'NotebookRead', 'Task', 'Batch'
       ])
-      expect(readOnlyTools).toHaveLength(9)
+      expect(readOnlyTools).toHaveLength(10)
     })
 
     it('should define write tools', () => {
@@ -132,6 +132,11 @@ describe('config', () => {
     it('WebFetch should be read-only', () => {
       expect(readOnlyTools).toContain('WebFetch')
       expect(writeTools).not.toContain('WebFetch')
+    })
+
+    it('WebSearch should be read-only', () => {
+      expect(readOnlyTools).toContain('WebSearch')
+      expect(writeTools).not.toContain('WebSearch')
     })
 
     it('Todo tools should be categorized correctly', () => {
