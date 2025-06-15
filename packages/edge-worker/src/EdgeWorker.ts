@@ -1069,9 +1069,8 @@ Please analyze this issue and help implement a solution.`
   private formatTodosAsChecklist(todos: Array<{id: string, content: string, status: string, priority: string}>): string {
     return todos.map(todo => {
       const checkbox = todo.status === 'completed' ? '[x]' : '[ ]'
-      const priorityEmoji = todo.priority === 'high' ? '🔴' : todo.priority === 'medium' ? '🟡' : '🟢'
       const statusEmoji = todo.status === 'in_progress' ? ' 🔄' : ''
-      return `- ${checkbox} ${priorityEmoji} ${todo.content}${statusEmoji}`
+      return `- ${checkbox} ${todo.content}${statusEmoji}`
     }).join('\n')
   }
   
