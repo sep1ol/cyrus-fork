@@ -34,7 +34,7 @@ cyrus
 ####  Follow the prompts to:
  - Connect your Linear workspace via OAuth
  - Configure your repository settings
- - Set up allowed tools (security configuration)
+ - Set up allowed tools (security configuration), and optionally, mcp servers
 
 ####  Benefit
 Keep `cyrus` running, and the agent will start monitoring issues assigned to you in Linear and process them automatically, on your very own device.
