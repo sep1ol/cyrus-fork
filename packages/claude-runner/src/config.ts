@@ -7,8 +7,7 @@
  */
 export const availableTools = [
   // File system tools
-  'Read', 'Write', 'Edit', 'MultiEdit', 
-  'Glob', 'Grep', 'LS',
+  'Read(**)', 'Edit(**)', 
   
   // Execution tools
   'Bash', 'Task',
@@ -32,7 +31,7 @@ export type ToolName = typeof availableTools[number]
  * Default read-only tools that are safe to enable
  */
 export const readOnlyTools: ToolName[] = [
-  'Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch',
+  'Read(**)', 'WebFetch', 'WebSearch',
   'TodoRead', 'NotebookRead', 'Task', 'Batch'
 ]
 
@@ -40,7 +39,7 @@ export const readOnlyTools: ToolName[] = [
  * Tools that can modify the file system
  */
 export const writeTools: ToolName[] = [
-  'Write', 'Edit', 'MultiEdit', 'Bash', 
+  'Edit(**)', 'Bash', 
   'TodoWrite', 'NotebookEdit'
 ]
 

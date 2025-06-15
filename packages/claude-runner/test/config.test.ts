@@ -12,31 +12,30 @@ describe('config', () => {
   describe('Tool Lists', () => {
     it('should define all available tools', () => {
       expect(availableTools).toEqual([
-        'Read', 'Write', 'Edit', 'MultiEdit',
-        'Glob', 'Grep', 'LS',
+        'Read(**)', 'Edit(**)',
         'Bash', 'Task',
         'WebFetch', 'WebSearch',
         'TodoRead', 'TodoWrite',
         'NotebookRead', 'NotebookEdit',
         'Batch'
       ])
-      expect(availableTools).toHaveLength(16)
+      expect(availableTools).toHaveLength(11)
     })
 
     it('should define read-only tools', () => {
       expect(readOnlyTools).toEqual([
-        'Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch',
+        'Read(**)', 'WebFetch', 'WebSearch',
         'TodoRead', 'NotebookRead', 'Task', 'Batch'
       ])
-      expect(readOnlyTools).toHaveLength(10)
+      expect(readOnlyTools).toHaveLength(7)
     })
 
     it('should define write tools', () => {
       expect(writeTools).toEqual([
-        'Write', 'Edit', 'MultiEdit', 'Bash',
+        'Edit(**)', 'Bash',
         'TodoWrite', 'NotebookEdit'
       ])
-      expect(writeTools).toHaveLength(6)
+      expect(writeTools).toHaveLength(4)
     })
 
     it('should have no overlap between read-only and write tools', () => {
@@ -85,7 +84,7 @@ describe('config', () => {
   describe('Type Safety', () => {
     it('should allow valid tool names in typed contexts', () => {
       // This is a compile-time check, but we can verify runtime behavior
-      const validTool: ToolName = 'Read'
+      const validTool: ToolName = 'Read(**)'
       expect(availableTools).toContain(validTool)
     })
 
@@ -105,18 +104,14 @@ describe('config', () => {
   })
 
   describe('Tool Categorization Logic', () => {
-    it('Read, Glob, Grep, LS should be read-only', () => {
-      ['Read', 'Glob', 'Grep', 'LS'].forEach(tool => {
-        expect(readOnlyTools).toContain(tool as ToolName)
-        expect(writeTools).not.toContain(tool as ToolName)
-      })
+    it('Read(**) should be read-only', () => {
+      expect(readOnlyTools).toContain('Read(**)')
+      expect(writeTools).not.toContain('Read(**)')
     })
 
-    it('Write, Edit, MultiEdit should be write tools', () => {
-      ['Write', 'Edit', 'MultiEdit'].forEach(tool => {
-        expect(writeTools).toContain(tool as ToolName)
-        expect(readOnlyTools).not.toContain(tool as ToolName)
-      })
+    it('Edit(**) should be a write tool', () => {
+      expect(writeTools).toContain('Edit(**)')
+      expect(readOnlyTools).not.toContain('Edit(**)')
     })
 
     it('Bash should be a write tool (can modify system)', () => {
