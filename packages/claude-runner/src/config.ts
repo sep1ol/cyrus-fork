@@ -63,7 +63,7 @@ export function getAllTools(): string[] {
  */
 export function getSafeTools(): string[] {
   return [
-    'Read(***)', 'Edit(***)', 'Task', 'WebFetch', 'WebSearch',
+    'Read(**)', 'Edit(**)', 'Task', 'WebFetch', 'WebSearch',
     'TodoRead', 'TodoWrite', 'NotebookRead', 'NotebookEdit', 'Batch'
   ]
 }
