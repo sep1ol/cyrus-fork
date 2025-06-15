@@ -75,7 +75,12 @@ export class ClaudeRunner extends EventEmitter {
       // Process allowed directories by adding Read patterns to allowedTools
       let processedAllowedTools = this.config.allowedTools ? [...this.config.allowedTools] : undefined
       if (this.config.allowedDirectories && this.config.allowedDirectories.length > 0) {
-        const directoryTools = this.config.allowedDirectories.map(dir => `Read(${dir}/**)`)
+        const directoryTools = this.config.allowedDirectories.map(dir => {
+          // Add extra / prefix for absolute paths to ensure Claude Code recognizes them properly
+          // See: https://docs.anthropic.com/en/docs/claude-code/settings#read-%26-edit
+          const prefixedPath = dir.startsWith('/') ? `/${dir}` : dir
+          return `Read(${prefixedPath}/**)`
+        })
         processedAllowedTools = processedAllowedTools ? [...processedAllowedTools, ...directoryTools] : directoryTools
       }
 

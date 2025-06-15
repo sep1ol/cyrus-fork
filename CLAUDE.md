@@ -130,7 +130,7 @@ The agent automatically moves issues to the "started" state when assigned. Linea
 
 ## Important Development Notes
 
-1. **Edge-Proxy Architecture**: The project is transitioning to separate OAuth/webhook handling from Claude processing. See `EDGE-PROXY-MASTER.md` for current status.
+1. **Edge-Proxy Architecture**: The project is transitioning to separate OAuth/webhook handling from Claude processing.
 
 2. **Dependencies**: 
    - The claude-parser package requires `jq` to be installed on the system

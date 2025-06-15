@@ -130,6 +130,14 @@ class EdgeApp {
       const allowedToolsInput = await question('Allowed tools (comma-separated, default: all except Bash): ')
       const allowedTools = allowedToolsInput ? allowedToolsInput.split(',').map(t => t.trim()) : undefined
       
+      // Ask for team keys configuration
+      console.log('\n🏷️ Team-Based Routing (Optional)')
+      console.log('Configure specific Linear team keys to route issues to this repository.')
+      console.log('Example: CEE,FRONT,BACK for teams with those prefixes')
+      console.log('Leave blank to receive all issues from the workspace.')
+      const teamKeysInput = await question('Team keys (comma-separated, optional): ')
+      const teamKeys = teamKeysInput ? teamKeysInput.split(',').map(t => t.trim().toUpperCase()) : undefined
+      
       rl.close()
       
       // Create repository configuration
@@ -144,7 +152,8 @@ class EdgeApp {
         workspaceBaseDir: resolve(workspaceBaseDir),
         isActive: true,
         ...(allowedTools && { allowedTools }),
-        ...(mcpConfigPath && { mcpConfigPath: resolve(mcpConfigPath) })
+        ...(mcpConfigPath && { mcpConfigPath: resolve(mcpConfigPath) }),
+        ...(teamKeys && { teamKeys })
       }
       
       return repository

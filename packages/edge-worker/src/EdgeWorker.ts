@@ -250,7 +250,27 @@ export class EdgeWorker extends EventEmitter {
     const workspaceId = webhook.organizationId
     if (!workspaceId) return repos[0] || null // Fallback to first repo if no workspace ID
 
-    return repos.find(repo => repo.linearWorkspaceId === workspaceId) || null
+    // Try team-based routing first
+    const teamKey = webhook.notification?.issue?.team?.key
+    if (teamKey) {
+      const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(teamKey))
+      if (repo) return repo
+    }
+    
+    // Try parsing issue identifier as fallback
+    const issueId = webhook.notification?.issue?.identifier
+    if (issueId && issueId.includes('-')) {
+      const prefix = issueId.split('-')[0]
+      if (prefix) {
+        const repo = repos.find(r => r.teamKeys && r.teamKeys.includes(prefix))
+        if (repo) return repo
+      }
+    }
+    
+    // Original workspace fallback - find first repo without teamKeys or matching workspace
+    return repos.find(repo => 
+      repo.linearWorkspaceId === workspaceId && (!repo.teamKeys || repo.teamKeys.length === 0)
+    ) || repos.find(repo => repo.linearWorkspaceId === workspaceId) || null
   }
 
   /**

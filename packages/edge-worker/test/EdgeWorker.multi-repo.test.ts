@@ -8,6 +8,22 @@ class MockLinearClient {
     success: true,
     lastSyncId: 1
   })
+  
+  issue = vi.fn((id: string) => ({
+    id,
+    title: `Mock issue ${id}`,
+    description: `Mock description for ${id}`,
+    identifier: id.includes('cee') ? 'CEE-123' : id.includes('book') ? 'BOOK-456' : 'OTHER-999',
+    url: `https://linear.app/issue/${id}`,
+    state: { name: 'Todo', type: 'unstarted' },
+    team: { 
+      id: id.includes('cee') ? 'team-cee' : id.includes('book') ? 'team-book' : 'team-other',
+      key: id.includes('cee') ? 'CEE' : id.includes('book') ? 'BOOK' : 'OTHER',
+      name: id.includes('cee') ? 'Ceedar Team' : id.includes('book') ? 'Bookkeeping Team' : 'Other Team'
+    },
+    assignee: { id: 'user-123', name: 'Test User' },
+    comments: { nodes: [] }
+  }))
 }
 
 class MockNdjsonClient extends EventEmitter {
@@ -423,5 +439,315 @@ describe('EdgeWorker - Multi-Repository Support', () => {
     for (const [token, isConnected] of status) {
       expect(isConnected).toBe(true)
     }
+  })
+
+  describe('team-based routing', () => {
+    it('should route webhooks based on team key', async () => {
+      const reposWithTeamKeys = [
+        {
+          id: 'ceedar',
+          name: 'Ceedar Repository',
+          repositoryPath: '/repos/ceedar',
+          baseBranch: 'main',
+          linearWorkspaceId: 'workspace-shared',
+          linearToken: 'token-shared',
+          workspaceBaseDir: '/workspaces/ceedar',
+          teamKeys: ['CEE', 'FRONT']
+        },
+        {
+          id: 'bookkeeping',
+          name: 'Bookkeeping Repository', 
+          repositoryPath: '/repos/bookkeeping',
+          baseBranch: 'main',
+          linearWorkspaceId: 'workspace-shared',
+          linearToken: 'token-shared',
+          workspaceBaseDir: '/workspaces/bookkeeping',
+          teamKeys: ['BOOK', 'FIN']
+        },
+        {
+          id: 'catch-all',
+          name: 'Catch All Repository',
+          repositoryPath: '/repos/catch-all',
+          baseBranch: 'main', 
+          linearWorkspaceId: 'workspace-shared',
+          linearToken: 'token-shared',
+          workspaceBaseDir: '/workspaces/catch-all'
+          // No teamKeys - should catch issues from workspace that don't match other repos
+        }
+      ]
+
+      edgeWorker = new EdgeWorker({
+        proxyUrl: 'http://proxy.test',
+        repositories: reposWithTeamKeys
+      })
+
+      const onSessionStartMock = vi.fn()
+      edgeWorker.on('session:started', onSessionStartMock)
+
+      // Get the shared client (token-shared) - EdgeWorker should have created it
+      const ndjsonClients = (edgeWorker as any).ndjsonClients
+      let sharedClient: MockNdjsonClient | undefined
+      for (const [token, client] of ndjsonClients) {
+        if (token === 'token-shared') {
+          sharedClient = client as unknown as MockNdjsonClient
+          break
+        }
+      }
+
+      if (!sharedClient) {
+        throw new Error('Expected to find NDJSON client for token-shared')
+      }
+
+      // Test routing to ceedar repo via team key
+      const ceedarWebhook = {
+        type: 'AppUserNotification' as const,
+        action: 'issueAssignedToYou' as const,
+        createdAt: new Date().toISOString(),
+        organizationId: 'workspace-shared',
+        oauthClientId: 'test-oauth-client',
+        appUserId: 'test-app-user',
+        notification: {
+          type: 'issueAssignedToYou' as const,
+          id: 'notification-cee-123',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          archivedAt: null,
+          actorId: 'actor-123',
+          externalUserActorId: null,
+          userId: 'user-123',
+          issueId: 'issue-cee-123',
+          issue: {
+            id: 'issue-cee-123',
+            identifier: 'CEE-123',
+            title: 'Ceedar feature',
+            teamId: 'team-cee',
+            team: {
+              id: 'team-cee',
+              key: 'CEE',
+              name: 'Ceedar Team'
+            },
+            url: 'https://linear.app/issue/CEE-123'
+          },
+          actor: {
+            id: 'actor-123',
+            name: 'Test User',
+            email: 'test@example.com',
+            url: 'https://linear.app/user/actor-123'
+          }
+        },
+        webhookTimestamp: Date.now(),
+        webhookId: 'webhook-cee-123'
+      }
+
+      sharedClient.emit('webhook', ceedarWebhook)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      // Debug: Check if webhook handler was called
+      if (onSessionStartMock.mock.calls.length === 0) {
+        console.log('Expected call not received. Webhook structure:')
+        console.log(JSON.stringify(ceedarWebhook, null, 2))
+      }
+
+      expect(onSessionStartMock).toHaveBeenCalledWith('issue-cee-123', expect.any(Object), 'ceedar')
+
+      // Test routing to bookkeeping repo via team key  
+      onSessionStartMock.mockClear()
+      const bookkeepingWebhook = {
+        type: 'AppUserNotification' as const,
+        action: 'issueAssignedToYou' as const,
+        createdAt: new Date().toISOString(),
+        organizationId: 'workspace-shared',
+        oauthClientId: 'test-oauth-client',
+        appUserId: 'test-app-user',
+        notification: {
+          type: 'issueAssignedToYou' as const,
+          id: 'notification-book-456',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          archivedAt: null,
+          actorId: 'actor-456',
+          externalUserActorId: null,
+          userId: 'user-456',
+          issueId: 'issue-book-456',
+          issue: {
+            id: 'issue-book-456',
+            identifier: 'BOOK-456',
+            title: 'Bookkeeping feature',
+            teamId: 'team-book',
+            team: {
+              id: 'team-book',
+              key: 'BOOK', 
+              name: 'Bookkeeping Team'
+            },
+            url: 'https://linear.app/issue/BOOK-456'
+          },
+          actor: {
+            id: 'actor-456',
+            name: 'Test User',
+            email: 'test@example.com',
+            url: 'https://linear.app/user/actor-456'
+          }
+        },
+        webhookTimestamp: Date.now(),
+        webhookId: 'webhook-book-456'
+      }
+
+      sharedClient.emit('webhook', bookkeepingWebhook)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      expect(onSessionStartMock).toHaveBeenCalledWith('issue-book-456', expect.any(Object), 'bookkeeping')
+    })
+
+    it('should fallback to parsing issue identifier when team key is missing', async () => {
+      const reposWithTeamKeys = [
+        {
+          id: 'ceedar',
+          name: 'Ceedar Repository',
+          repositoryPath: '/repos/ceedar',
+          baseBranch: 'main',
+          linearWorkspaceId: 'workspace-shared',
+          linearToken: 'token-shared',
+          workspaceBaseDir: '/workspaces/ceedar',
+          teamKeys: ['CEE']
+        }
+      ]
+
+      edgeWorker = new EdgeWorker({
+        proxyUrl: 'http://proxy.test',
+        repositories: reposWithTeamKeys
+      })
+
+      const onSessionStartMock = vi.fn()
+      edgeWorker.on('session:started', onSessionStartMock)
+
+      // Get the shared client (token-shared)
+      const ndjsonClients = (edgeWorker as any).ndjsonClients
+      const sharedClient = ndjsonClients.get('token-shared') as MockNdjsonClient
+
+      // Webhook without team key but with matching identifier
+      const webhookNoTeam = {
+        type: 'AppUserNotification' as const,
+        action: 'issueAssignedToYou' as const,
+        createdAt: new Date().toISOString(),
+        organizationId: 'workspace-shared',
+        oauthClientId: 'test-oauth-client',
+        appUserId: 'test-app-user',
+        notification: {
+          type: 'issueAssignedToYou' as const,
+          id: 'notification-cee-789',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          archivedAt: null,
+          actorId: 'actor-789',
+          externalUserActorId: null,
+          userId: 'user-789',
+          issueId: 'issue-cee-789',
+          issue: {
+            id: 'issue-cee-789',
+            identifier: 'CEE-789',
+            title: 'Ceedar feature',
+            teamId: 'team-cee',
+            url: 'https://linear.app/issue/CEE-789'
+            // No team object
+          },
+          actor: {
+            id: 'actor-789',
+            name: 'Test User',
+            email: 'test@example.com',
+            url: 'https://linear.app/user/actor-789'
+          }
+        },
+        webhookTimestamp: Date.now(),
+        webhookId: 'webhook-cee-789'
+      }
+
+      sharedClient.emit('webhook', webhookNoTeam)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      expect(onSessionStartMock).toHaveBeenCalledWith('issue-cee-789', expect.any(Object), 'ceedar')
+    })
+
+    it('should route to catch-all repo when no team keys match', async () => {
+      const reposWithTeamKeys = [
+        {
+          id: 'specialized',
+          name: 'Specialized Repository',
+          repositoryPath: '/repos/specialized',
+          baseBranch: 'main',
+          linearWorkspaceId: 'workspace-shared',
+          linearToken: 'token-shared',
+          workspaceBaseDir: '/workspaces/specialized',
+          teamKeys: ['SPEC']
+        },
+        {
+          id: 'catch-all',
+          name: 'Catch All Repository',
+          repositoryPath: '/repos/catch-all',
+          baseBranch: 'main',
+          linearWorkspaceId: 'workspace-shared',
+          linearToken: 'token-shared',
+          workspaceBaseDir: '/workspaces/catch-all'
+          // No teamKeys
+        }
+      ]
+
+      edgeWorker = new EdgeWorker({
+        proxyUrl: 'http://proxy.test',
+        repositories: reposWithTeamKeys
+      })
+
+      const onSessionStartMock = vi.fn()
+      edgeWorker.on('session:started', onSessionStartMock)
+
+      // Get the shared client (token-shared)
+      const ndjsonClients = (edgeWorker as any).ndjsonClients
+      const sharedClient = ndjsonClients.get('token-shared') as MockNdjsonClient
+
+      // Webhook with team key that doesn't match any repository
+      const unmatchedWebhook = {
+        type: 'AppUserNotification' as const,
+        action: 'issueAssignedToYou' as const,
+        createdAt: new Date().toISOString(),
+        organizationId: 'workspace-shared',
+        oauthClientId: 'test-oauth-client',
+        appUserId: 'test-app-user',
+        notification: {
+          type: 'issueAssignedToYou' as const,
+          id: 'notification-other-999',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          archivedAt: null,
+          actorId: 'actor-999',
+          externalUserActorId: null,
+          userId: 'user-999',
+          issueId: 'issue-other-999',
+          issue: {
+            id: 'issue-other-999',
+            identifier: 'OTHER-999',
+            title: 'Other feature',
+            teamId: 'team-other',
+            team: {
+              id: 'team-other',
+              key: 'OTHER',
+              name: 'Other Team'
+            },
+            url: 'https://linear.app/issue/OTHER-999'
+          },
+          actor: {
+            id: 'actor-999',
+            name: 'Test User',
+            email: 'test@example.com',
+            url: 'https://linear.app/user/actor-999'
+          }
+        },
+        webhookTimestamp: Date.now(),
+        webhookId: 'webhook-other-999'
+      }
+
+      sharedClient.emit('webhook', unmatchedWebhook)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      expect(onSessionStartMock).toHaveBeenCalledWith('issue-other-999', expect.any(Object), 'catch-all')
+    })
   })
 })
