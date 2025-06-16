@@ -226,6 +226,13 @@ export class EdgeWorker extends EventEmitter {
    */
   private async handleIssueNewCommentWebhook(webhook: LinearIssueNewCommentWebhook, repository: RepositoryConfig): Promise<void> {
     console.log(`[EdgeWorker] Handling new comment: ${webhook.notification.issue.identifier}`)
+    
+    // Check if the comment mentions the agent (Cyrus) before proceeding
+    if (!(await this.isAgentMentionedInComment(webhook.notification.comment, repository))) {
+      console.log(`[EdgeWorker] Comment does not mention agent, ignoring: ${webhook.notification.issue.identifier}`)
+      return
+    }
+    
     await this.handleNewComment(webhook.notification.issue, webhook.notification.comment, repository)
   }
 
@@ -1327,5 +1334,68 @@ Please analyze this issue and help implement a solution.`
     }
     
     return manifest
+  }
+
+  /**
+   * Check if the agent (Cyrus) is mentioned in a comment
+   * @param comment Linear comment object from webhook data
+   * @param repository Repository configuration
+   * @returns true if the agent is mentioned, false otherwise
+   */
+  private async isAgentMentionedInComment(comment: LinearWebhookComment, repository: RepositoryConfig): Promise<boolean> {
+    try {
+      const linearClient = this.linearClients.get(repository.id)
+      if (!linearClient) {
+        console.warn(`No Linear client found for repository ${repository.id}`)
+        return false
+      }
+
+      // Get the current user (agent) information
+      const viewer = await linearClient.viewer
+      if (!viewer) {
+        console.warn('Unable to fetch viewer information')
+        return false
+      }
+
+      // Check for mentions in the comment body
+      // Linear mentions can be in formats like:
+      // @username, @"Display Name", or @userId
+      const commentBody = comment.body
+      
+      // Check for mention by user ID (most reliable)
+      if (commentBody.includes(`@${viewer.id}`)) {
+        return true
+      }
+      
+      // Check for mention by name (case-insensitive)
+      if (viewer.name) {
+        const namePattern = new RegExp(`@"?${viewer.name}"?`, 'i')
+        if (namePattern.test(commentBody)) {
+          return true
+        }
+      }
+      
+      // Check for mention by display name (case-insensitive)
+      if (viewer.displayName && viewer.displayName !== viewer.name) {
+        const displayNamePattern = new RegExp(`@"?${viewer.displayName}"?`, 'i')
+        if (displayNamePattern.test(commentBody)) {
+          return true
+        }
+      }
+
+      // Check for mention by email (less common but possible)
+      if (viewer.email) {
+        const emailPattern = new RegExp(`@"?${viewer.email}"?`, 'i')
+        if (emailPattern.test(commentBody)) {
+          return true
+        }
+      }
+
+      return false
+    } catch (error) {
+      console.error('Failed to check if agent is mentioned in comment:', error)
+      // If we can't determine, err on the side of caution and allow the trigger
+      return true
+    }
   }
 }
