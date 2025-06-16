@@ -354,7 +354,9 @@ class EdgeApp {
               
               // Add to existing repositories
               let edgeConfig = this.loadEdgeConfig()
+              console.log(`📊 Current config has ${edgeConfig.repositories?.length || 0} repositories`)
               edgeConfig.repositories = [...(edgeConfig.repositories || []), newRepo]
+              console.log(`📊 Adding repository "${newRepo.name}", new total: ${edgeConfig.repositories.length}`)
               this.saveEdgeConfig(edgeConfig)
               
               console.log('\n✅ Repository configured successfully!')
@@ -365,8 +367,13 @@ class EdgeApp {
               await this.edgeWorker.stop()
               this.edgeWorker = null
               
+              // Give a small delay to ensure file is written
+              await new Promise(resolve => setTimeout(resolve, 100))
+              
               // Reload configuration and restart worker without going through setup
               const updatedConfig = this.loadEdgeConfig()
+              console.log(`\n🔄 Reloading with ${updatedConfig.repositories?.length || 0} repositories from config file`)
+              
               const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
               return this.startEdgeWorker({ 
                 proxyUrl, 
