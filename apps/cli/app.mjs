@@ -288,6 +288,42 @@ class EdgeApp {
   }
   
   /**
+   * Start the EdgeWorker with given configuration
+   */
+  async startEdgeWorker({ proxyUrl, repositories }) {
+    // Create EdgeWorker configuration
+    const config = {
+      proxyUrl,
+      repositories,
+      defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
+      features: {
+        enableContinuation: true
+      },
+      handlers: {
+        createWorkspace: async (issue, repository) => {
+          return this.createGitWorktree(issue, repository)
+        }
+      }
+    }
+    
+    // Create and start EdgeWorker
+    this.edgeWorker = new EdgeWorker(config)
+    
+    // Set up event handlers
+    this.setupEventHandlers()
+    
+    // Start the worker
+    await this.edgeWorker.start()
+    
+    console.log('\n✅ Edge worker started successfully')
+    console.log(`Connected to proxy: ${config.proxyUrl}`)
+    console.log(`Managing ${repositories.length} repositories:`)
+    repositories.forEach(repo => {
+      console.log(`  - ${repo.name} (${repo.repositoryPath})`)
+    })
+  }
+
+  /**
    * Start the edge application
    */
   async start() {
@@ -328,7 +364,14 @@ class EdgeApp {
               // Restart edge worker with new config
               await this.edgeWorker.stop()
               this.edgeWorker = null
-              return this.start()
+              
+              // Reload configuration and restart worker without going through setup
+              const updatedConfig = this.loadEdgeConfig()
+              const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
+              return this.startEdgeWorker({ 
+                proxyUrl, 
+                repositories: updatedConfig.repositories || [] 
+              })
               
             } catch (error) {
               console.error('\n❌ Repository setup failed:', error.message)
@@ -479,36 +522,8 @@ class EdgeApp {
         process.exit(1)
       }
       
-      // Create EdgeWorker configuration
-      const config = {
-        proxyUrl,
-        repositories,
-        defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
-        features: {
-          enableContinuation: true
-        },
-        handlers: {
-          createWorkspace: async (issue, repository) => {
-            return this.createGitWorktree(issue, repository)
-          }
-        }
-      }
-      
-      // Create and start EdgeWorker
-      this.edgeWorker = new EdgeWorker(config)
-      
-      // Set up event handlers
-      this.setupEventHandlers()
-      
-      // Start the worker
-      await this.edgeWorker.start()
-      
-      console.log('\n✅ Edge worker started successfully')
-      console.log(`Connected to proxy: ${config.proxyUrl}`)
-      console.log(`Managing ${repositories.length} repositories:`)
-      repositories.forEach(repo => {
-        console.log(`  - ${repo.name} (${repo.repositoryPath})`)
-      })
+      // Start the edge worker
+      await this.startEdgeWorker({ proxyUrl, repositories })
       
       // Handle graceful shutdown
       process.on('SIGINT', () => this.shutdown())
