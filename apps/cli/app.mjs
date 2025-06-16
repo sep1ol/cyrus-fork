@@ -118,7 +118,7 @@ class EdgeApp {
       
       // Ask for allowed tools configuration
       console.log('\n🔧 Tool Configuration')
-      console.log('Available tools: Read,Write,Edit,MultiEdit,Glob,Grep,LS,Task,WebFetch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch')
+      console.log('Available tools: Read(**),Edit(**),Bash,Task,WebFetch,WebSearch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch')
       console.log('')
       console.log('⚠️  SECURITY NOTE: Bash tool requires special configuration for safety:')
       console.log('   • Use "Bash" for full access (not recommended in production)')
