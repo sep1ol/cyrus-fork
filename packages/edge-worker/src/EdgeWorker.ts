@@ -928,8 +928,11 @@ Please analyze this issue and help implement a solution.`
       
       const states = await teamStates.nodes
       
-      // Find the first state with type 'started'
-      const startedState = states.find((state: any) => state.type === 'started')
+      // Find the appropriate started state - prefer "In Progress" if available
+      const inProgressState = states.find((state: any) => 
+        state.type === 'started' && state.name === 'In Progress'
+      )
+      const startedState = inProgressState || states.find((state: any) => state.type === 'started')
       
       if (!startedState) {
         console.warn(`No 'started' state found for team ${team.name || 'unknown'}, skipping state update`)
