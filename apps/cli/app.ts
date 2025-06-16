@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { EdgeWorker, type EdgeWorkerConfig, type RepositoryConfig } from 'cyrus-edge-worker'
+import type { Issue } from '@linear/sdk'
 import dotenv from 'dotenv'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { resolve, dirname, basename } from 'path'
@@ -58,12 +59,6 @@ interface Workspace {
   isGitWorktree: boolean
 }
 
-interface LinearIssue {
-  id: string
-  identifier: string
-  title?: string
-  branchName?: string
-}
 
 /**
  * Edge application that uses EdgeWorker from package
@@ -94,7 +89,7 @@ class EdgeApp {
     // Strip promptTemplatePath from all repositories to ensure built-in template is used
     if (config.repositories) {
       config.repositories = config.repositories.map(repo => {
-        const { promptTemplatePath, ...repoWithoutTemplate } = repo as any
+        const { promptTemplatePath, ...repoWithoutTemplate } = repo
         if (promptTemplatePath) {
           console.log(`Ignoring custom prompt template for repository: ${repo.name} (using built-in template)`)
         }
@@ -231,7 +226,7 @@ class EdgeApp {
                 <p>You can close this window and return to the terminal.</p>
                 <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
                 <p style="margin-top: 30px;">
-                  <a href="${(this.oauthServer as any)?.proxyUrl || process.env.PROXY_URL}/oauth/authorize?callback=http://localhost:${port}/callback" 
+                  <a href="${process.env.PROXY_URL}/oauth/authorize?callback=http://localhost:${port}/callback" 
                      style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                     Connect Another Workspace
                   </a>
@@ -329,7 +324,7 @@ class EdgeApp {
         enableContinuation: true
       },
       handlers: {
-        createWorkspace: async (issue: LinearIssue, repository: RepositoryConfig): Promise<Workspace> => {
+        createWorkspace: async (issue: Issue, repository: RepositoryConfig): Promise<Workspace> => {
           return this.createGitWorktree(issue, repository)
         }
       }
@@ -588,7 +583,7 @@ class EdgeApp {
     if (!this.edgeWorker) return
     
     // Session events
-    this.edgeWorker.on('session:started', (issueId: string, _issue: LinearIssue, repositoryId: string) => {
+    this.edgeWorker.on('session:started', (issueId: string, _issue: Issue, repositoryId: string) => {
       console.log(`Started session for issue ${issueId} in repository ${repositoryId}`)
     })
     
@@ -614,7 +609,7 @@ class EdgeApp {
   /**
    * Create a git worktree for an issue
    */
-  async createGitWorktree(issue: LinearIssue, repository: RepositoryConfig): Promise<Workspace> {
+  async createGitWorktree(issue: Issue, repository: RepositoryConfig): Promise<Workspace> {
     const { execSync } = await import('child_process')
     const { existsSync } = await import('fs')
     const { join } = await import('path')
