@@ -1,7 +1,8 @@
 export { EdgeWorker } from './EdgeWorker.js'
 export type {
   EdgeWorkerConfig,
-  EdgeWorkerEvents
+  EdgeWorkerEvents,
+  RepositoryConfig
 } from './types.js'
 
 // Re-export useful types from dependencies

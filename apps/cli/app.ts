@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
-import { EdgeWorker } from 'cyrus-edge-worker'
+import { EdgeWorker, type EdgeWorkerConfig, type RepositoryConfig } from 'cyrus-edge-worker'
+import type { Issue } from '@linear/sdk'
 import dotenv from 'dotenv'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { resolve, dirname, basename } from 'path'
 import { fileURLToPath } from 'url'
-import { createServer } from 'http'
+import { createServer, type Server } from 'http'
 import { URL } from 'url'
 import open from 'open'
 import readline from 'readline'
+import type { IncomingMessage, ServerResponse } from 'http'
 
 // Parse command line arguments
 const args = process.argv.slice(2)
@@ -31,7 +33,30 @@ if (args.includes('--version')) {
 // Load environment variables only if --env-file is specified
 if (envFileArg) {
   const envFile = envFileArg.split('=')[1]
-  dotenv.config({ path: envFile })
+  if (envFile) {
+    dotenv.config({ path: envFile })
+  }
+}
+
+interface LinearCredentials {
+  linearToken: string
+  linearWorkspaceId: string
+  linearWorkspaceName: string
+}
+
+interface EdgeConfig {
+  repositories: RepositoryConfig[]
+}
+
+interface OAuthCallback {
+  resolve: (credentials: LinearCredentials) => void
+  reject: (error: Error) => void
+  id: string
+}
+
+interface Workspace {
+  path: string
+  isGitWorktree: boolean
 }
 
 
@@ -39,25 +64,25 @@ if (envFileArg) {
  * Edge application that uses EdgeWorker from package
  */
 class EdgeApp {
-  constructor() {
-    this.edgeWorker = null
-    this.isShuttingDown = false
-    this.oauthServer = null
-  }
-  
+  private edgeWorker: EdgeWorker | null = null
+  private isShuttingDown = false
+  private oauthServer: Server | null = null
+  private oauthCallbacks: Map<string, OAuthCallback> = new Map()
+  private onOAuthComplete?: (credentials: LinearCredentials) => Promise<void>
+
   /**
    * Load edge configuration (credentials and repositories)
    * Note: Strips promptTemplatePath from all repositories to ensure built-in template is used
    */
-  loadEdgeConfig() {
+  loadEdgeConfig(): EdgeConfig {
     const edgeConfigPath = './.edge-config.json'
-    let config = { repositories: [] }
+    let config: EdgeConfig = { repositories: [] }
     
     if (existsSync(edgeConfigPath)) {
       try {
         config = JSON.parse(readFileSync(edgeConfigPath, 'utf-8'))
       } catch (e) {
-        console.error('Failed to load edge config:', e.message)
+        console.error('Failed to load edge config:', (e as Error).message)
       }
     }
     
@@ -78,20 +103,20 @@ class EdgeApp {
   /**
    * Save edge configuration
    */
-  saveEdgeConfig(config) {
+  saveEdgeConfig(config: EdgeConfig): void {
     writeFileSync('./.edge-config.json', JSON.stringify(config, null, 2))
   }
   
   /**
    * Interactive setup wizard for repository configuration
    */
-  async setupRepositoryWizard(linearCredentials) {
+  async setupRepositoryWizard(linearCredentials: LinearCredentials): Promise<RepositoryConfig> {
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     })
     
-    const question = (prompt) => new Promise((resolve) => {
+    const question = (prompt: string): Promise<string> => new Promise((resolve) => {
       rl.question(prompt, resolve)
     })
     
@@ -141,13 +166,12 @@ class EdgeApp {
       rl.close()
       
       // Create repository configuration
-      const repository = {
+      const repository: RepositoryConfig = {
         id: `${linearCredentials.linearWorkspaceId}-${Date.now()}`,
         name: repositoryName,
         repositoryPath: resolve(repositoryPath),
         baseBranch,
         linearWorkspaceId: linearCredentials.linearWorkspaceId,
-        linearWorkspaceName: linearCredentials.linearWorkspaceName,
         linearToken: linearCredentials.linearToken,
         workspaceBaseDir: resolve(workspaceBaseDir),
         isActive: true,
@@ -167,22 +191,22 @@ class EdgeApp {
   /**
    * Start OAuth server to handle callbacks
    */
-  startOAuthServer(port) {
+  startOAuthServer(port: number): void {
     if (this.oauthServer) return // Already running
     
     this.oauthCallbacks = new Map() // Store pending callbacks
     
-    this.oauthServer = createServer(async (req, res) => {
-      const url = new URL(req.url, `http://localhost:${port}`)
+    this.oauthServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+      const url = new URL(req.url!, `http://localhost:${port}`)
       
       if (url.pathname === '/callback') {
         const token = url.searchParams.get('token')
         const workspaceId = url.searchParams.get('workspaceId')
         const workspaceName = url.searchParams.get('workspaceName')
         
-        if (token) {
+        if (token && workspaceId && workspaceName) {
           // Success! Return the Linear credentials (don't save yet)
-          const linearCredentials = { 
+          const linearCredentials: LinearCredentials = { 
             linearToken: token,
             linearWorkspaceId: workspaceId,
             linearWorkspaceName: workspaceName
@@ -202,7 +226,7 @@ class EdgeApp {
                 <p>You can close this window and return to the terminal.</p>
                 <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
                 <p style="margin-top: 30px;">
-                  <a href="${this.oauthServer.proxyUrl || process.env.PROXY_URL}/oauth/authorize?callback=http://localhost:${port}/callback" 
+                  <a href="${process.env.PROXY_URL}/oauth/authorize?callback=http://localhost:${port}/callback" 
                      style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                     Connect Another Workspace
                   </a>
@@ -249,7 +273,7 @@ class EdgeApp {
   /**
    * Start OAuth flow to get Linear token
    */
-  async startOAuthFlow(proxyUrl) {
+  async startOAuthFlow(proxyUrl: string): Promise<LinearCredentials> {
     const port = 3457 // Different from proxy port
     
     // Ensure OAuth server is running
@@ -257,7 +281,7 @@ class EdgeApp {
       this.startOAuthServer(port)
     }
     
-    return new Promise((resolve, reject) => {
+    return new Promise<LinearCredentials>((resolve, reject) => {
       // Generate unique ID for this flow
       const flowId = Date.now().toString()
       
@@ -290,9 +314,9 @@ class EdgeApp {
   /**
    * Start the EdgeWorker with given configuration
    */
-  async startEdgeWorker({ proxyUrl, repositories }) {
+  async startEdgeWorker({ proxyUrl, repositories }: { proxyUrl: string; repositories: RepositoryConfig[] }): Promise<void> {
     // Create EdgeWorker configuration
-    const config = {
+    const config: EdgeWorkerConfig = {
       proxyUrl,
       repositories,
       defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
@@ -300,7 +324,7 @@ class EdgeApp {
         enableContinuation: true
       },
       handlers: {
-        createWorkspace: async (issue, repository) => {
+        createWorkspace: async (issue: Issue, repository: RepositoryConfig): Promise<Workspace> => {
           return this.createGitWorktree(issue, repository)
         }
       }
@@ -326,7 +350,7 @@ class EdgeApp {
   /**
    * Start the edge application
    */
-  async start() {
+  async start(): Promise<void> {
     try {
       // Set proxy URL with default
       const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
@@ -343,7 +367,7 @@ class EdgeApp {
         console.log('─'.repeat(70))
         
         // Set up handler for OAuth completions to automatically trigger repository setup
-        this.onOAuthComplete = async (linearCredentials) => {
+        this.onOAuthComplete = async (linearCredentials: LinearCredentials): Promise<void> => {
           if (this.edgeWorker) {
             // If edge worker is already running, just set up a new repository
             console.log('\n📋 Setting up new repository for workspace:', linearCredentials.linearWorkspaceName)
@@ -364,7 +388,7 @@ class EdgeApp {
               console.log('💡 You can edit this file and restart Cyrus at any time to modify settings.')
               
               // Restart edge worker with new config
-              await this.edgeWorker.stop()
+              await this.edgeWorker!.stop()
               this.edgeWorker = null
               
               // Give a small delay to ensure file is written
@@ -381,7 +405,7 @@ class EdgeApp {
               })
               
             } catch (error) {
-              console.error('\n❌ Repository setup failed:', error.message)
+              console.error('\n❌ Repository setup failed:', (error as Error).message)
             }
           }
         }
@@ -399,16 +423,16 @@ class EdgeApp {
         console.log('🚀 Welcome to Cyrus Edge Worker!')
         
         // Check if they want to use existing credentials or add new workspace
-        let linearCredentials
+        let linearCredentials: LinearCredentials | null = null
         
         if (hasLinearCredentials) {
           // Show available workspaces from existing repos
-          const workspaces = new Map()
+          const workspaces = new Map<string, { id: string; name: string; token: string }>()
           for (const repo of (edgeConfig.repositories || [])) {
             if (!workspaces.has(repo.linearWorkspaceId)) {
               workspaces.set(repo.linearWorkspaceId, {
                 id: repo.linearWorkspaceId,
-                name: repo.linearWorkspaceName,
+                name: 'Unknown Workspace',
                 token: repo.linearToken
               })
             }
@@ -417,12 +441,14 @@ class EdgeApp {
           if (workspaces.size === 1) {
             // Only one workspace, use it
             const ws = Array.from(workspaces.values())[0]
-            linearCredentials = {
-              linearToken: ws.token,
-              linearWorkspaceId: ws.id,
-              linearWorkspaceName: ws.name
+            if (ws) {
+              linearCredentials = {
+                linearToken: ws.token,
+                linearWorkspaceId: ws.id,
+                linearWorkspaceName: ws.name
+              }
+              console.log(`\n📋 Using Linear workspace: ${linearCredentials.linearWorkspaceName}`)
             }
-            console.log(`\n📋 Using Linear workspace: ${linearCredentials.linearWorkspaceName}`)
           } else if (workspaces.size > 1) {
             // Multiple workspaces, let user choose
             console.log('\n📋 Available Linear workspaces:')
@@ -436,7 +462,7 @@ class EdgeApp {
               output: process.stdout
             })
             
-            const choice = await new Promise(resolve => {
+            const choice = await new Promise<string>(resolve => {
               rl.question('\nSelect workspace (number) or press Enter for new: ', resolve)
             })
             rl.close()
@@ -444,12 +470,14 @@ class EdgeApp {
             const index = parseInt(choice) - 1
             if (index >= 0 && index < workspaceList.length) {
               const ws = workspaceList[index]
-              linearCredentials = {
-                linearToken: ws.token,
-                linearWorkspaceId: ws.id,
-                linearWorkspaceName: ws.name
+              if (ws) {
+                linearCredentials = {
+                  linearToken: ws.token,
+                  linearWorkspaceId: ws.id,
+                  linearWorkspaceName: ws.name
+                }
+                console.log(`Using workspace: ${linearCredentials.linearWorkspaceName}`)
               }
-              console.log(`Using workspace: ${linearCredentials.linearWorkspaceName}`)
             } else {
               // Get new credentials
               linearCredentials = null
@@ -458,7 +486,7 @@ class EdgeApp {
             // Use env vars
             linearCredentials = {
               linearToken: process.env.LINEAR_OAUTH_TOKEN,
-              linearWorkspaceId: process.env.LINEAR_WORKSPACE_ID,
+              linearWorkspaceId: process.env.LINEAR_WORKSPACE_ID || 'unknown',
               linearWorkspaceName: 'Your Workspace'
             }
           }
@@ -475,13 +503,18 @@ class EdgeApp {
             linearCredentials = await this.startOAuthFlow(proxyUrl)
             console.log('\n✅ Linear connected successfully!')
           } catch (error) {
-            console.error('\n❌ OAuth flow failed:', error.message)
+            console.error('\n❌ OAuth flow failed:', (error as Error).message)
             console.log('\nAlternatively, you can:')
             console.log('1. Visit', `${proxyUrl}/oauth/authorize`, 'in your browser')
             console.log('2. Copy the token after authorization')
             console.log('3. Add it to your .env.cyrus file as LINEAR_OAUTH_TOKEN')
             process.exit(1)
           }
+        }
+        
+        if (!linearCredentials) {
+          console.error('❌ No Linear credentials available')
+          process.exit(1)
         }
         
         // Now set up repository
@@ -505,7 +538,7 @@ class EdgeApp {
             input: process.stdin,
             output: process.stdout
           })
-          const addAnother = await new Promise(resolve => {
+          const addAnother = await new Promise<boolean>(resolve => {
             rl.question('\nAdd another repository? (y/N): ', answer => {
               rl.close()
               resolve(answer.toLowerCase() === 'y')
@@ -517,7 +550,7 @@ class EdgeApp {
             return this.start()
           }
         } catch (error) {
-          console.error('\n❌ Repository setup failed:', error.message)
+          console.error('\n❌ Repository setup failed:', (error as Error).message)
           process.exit(1)
         }
       }
@@ -546,40 +579,29 @@ class EdgeApp {
   /**
    * Set up event handlers for EdgeWorker
    */
-  setupEventHandlers() {
-    // Issue processing events
-    this.edgeWorker.on('issue:processing', ({ issueId, repositoryId }) => {
-      console.log(`Processing issue ${issueId} for repository ${repositoryId}`)
-    })
-    
-    this.edgeWorker.on('issue:completed', ({ issueId, repositoryId }) => {
-      console.log(`✅ Issue ${issueId} completed for repository ${repositoryId}`)
-    })
-    
-    this.edgeWorker.on('issue:failed', ({ issueId, repositoryId, error }) => {
-      console.error(`❌ Issue ${issueId} failed for repository ${repositoryId}:`, error)
-    })
+  setupEventHandlers(): void {
+    if (!this.edgeWorker) return
     
     // Session events
-    this.edgeWorker.on('session:created', ({ sessionId, repositoryId, issueId }) => {
-      console.log(`Created session ${sessionId} for issue ${issueId} in repository ${repositoryId}`)
+    this.edgeWorker.on('session:started', (issueId: string, _issue: Issue, repositoryId: string) => {
+      console.log(`Started session for issue ${issueId} in repository ${repositoryId}`)
     })
     
-    this.edgeWorker.on('session:completed', ({ sessionId, exitCode }) => {
-      console.log(`Session ${sessionId} completed with exit code ${exitCode}`)
+    this.edgeWorker.on('session:ended', (issueId: string, exitCode: number | null, repositoryId: string) => {
+      console.log(`Session for issue ${issueId} ended with exit code ${exitCode} in repository ${repositoryId}`)
     })
     
     // Connection events
-    this.edgeWorker.on('connection:established', ({ repositoryId }) => {
-      console.log(`✅ Connection established for repository ${repositoryId}`)
+    this.edgeWorker.on('connected', (token: string) => {
+      console.log(`✅ Connection established with token: ${token.substring(0, 8)}...`)
     })
     
-    this.edgeWorker.on('connection:lost', ({ repositoryId, error }) => {
-      console.error(`❌ Connection lost for repository ${repositoryId}:`, error)
+    this.edgeWorker.on('disconnected', (token: string, reason?: string) => {
+      console.error(`❌ Connection lost for token ${token.substring(0, 8)}...${reason ? ': ' + reason : ''}`)
     })
     
     // Error events
-    this.edgeWorker.on('error', (error) => {
+    this.edgeWorker.on('error', (error: Error) => {
       console.error('EdgeWorker error:', error)
     })
   }
@@ -587,7 +609,7 @@ class EdgeApp {
   /**
    * Create a git worktree for an issue
    */
-  async createGitWorktree(issue, repository) {
+  async createGitWorktree(issue: Issue, repository: RepositoryConfig): Promise<Workspace> {
     const { execSync } = await import('child_process')
     const { existsSync } = await import('fs')
     const { join } = await import('path')
@@ -605,7 +627,7 @@ class EdgeApp {
       }
       
       // Sanitize branch name by removing backticks to prevent command injection
-      const sanitizeBranchName = (name) => name ? name.replace(/`/g, '') : name
+      const sanitizeBranchName = (name: string): string => name ? name.replace(/`/g, '') : name
       
       // Use Linear's preferred branch name, or generate one if not available
       const rawBranchName = issue.branchName || `${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
@@ -656,7 +678,7 @@ class EdgeApp {
           stdio: 'pipe'
         })
       } catch (e) {
-        console.warn('Warning: git fetch failed, proceeding with local branch:', e.message)
+        console.warn('Warning: git fetch failed, proceeding with local branch:', (e as Error).message)
       }
 
       // Create the worktree from remote branch
@@ -683,11 +705,11 @@ class EdgeApp {
               ...process.env,
               LINEAR_ISSUE_ID: issue.id,
               LINEAR_ISSUE_IDENTIFIER: issue.identifier,
-              LINEAR_ISSUE_TITLE: issue.title
+              LINEAR_ISSUE_TITLE: issue.title || ''
             }
           })
         } catch (error) {
-          console.warn('Warning: secretagentsetup.sh failed:', error.message)
+          console.warn('Warning: secretagentsetup.sh failed:', (error as Error).message)
           // Continue despite setup script failure
         }
       }
@@ -697,7 +719,7 @@ class EdgeApp {
         isGitWorktree: true
       }
     } catch (error) {
-      console.error('Failed to create git worktree:', error.message)
+      console.error('Failed to create git worktree:', (error as Error).message)
       // Fall back to regular directory if git worktree fails
       const fallbackPath = join(repository.workspaceBaseDir, issue.identifier)
       execSync(`mkdir -p "${fallbackPath}"`, { stdio: 'pipe' })
@@ -711,7 +733,7 @@ class EdgeApp {
   /**
    * Shut down the application
    */
-  async shutdown() {
+  async shutdown(): Promise<void> {
     if (this.isShuttingDown) return
     this.isShuttingDown = true
     

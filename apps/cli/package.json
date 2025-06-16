@@ -2,23 +2,24 @@
   "name": "cyrus-ai",
   "version": "0.1.8",
   "description": "AI-powered Linear issue automation using Claude",
-  "main": "app.mjs",
+  "main": "dist/app.js",
+  "types": "dist/app.d.ts",
   "bin": {
-    "cyrus": "./app.mjs"
+    "cyrus": "./dist/app.js"
   },
   "type": "module",
   "scripts": {
-    "start": "node app.mjs",
-    "dev": "nodemon app.mjs",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "tsc --watch",
     "test": "vitest run",
     "test:run": "vitest run --passWithNoTests",
     "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
     "prepublishOnly": "cd ../.. && pnpm build"
   },
   "files": [
-    "app.mjs",
-    "services/**/*.mjs",
-    "utils/**/*.mjs",
+    "dist",
     "README.md"
   ],
   "publishConfig": {
@@ -53,8 +54,10 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "@vitest/ui": "^3.1.4",
     "nodemon": "^2.0.22",
+    "typescript": "^5.3.3",
     "vitest": "^3.1.4"
   }
 }
