@@ -78,7 +78,13 @@ describe('EdgeWorker', () => {
       createComment: vi.fn().mockResolvedValue({
         success: true,
         comment: { id: 'comment-123' }
-      })
+      }),
+      viewer: {
+        id: 'cyrus-user-id',
+        name: 'cyrus',
+        displayName: 'Cyrus Agent',
+        email: 'cyrus@ceedar.ai'
+      }
     }
     vi.mocked(LinearClient).mockImplementation(() => mockLinearClient)
 
@@ -347,11 +353,12 @@ describe('EdgeWorker', () => {
         workspace: { path: '/tmp/test-workspaces/TEST-123' }
       })
 
-      const webhook = mockCommentWebhook()
+      // Include a mention of the agent so it triggers
+      const webhook = mockCommentWebhook({}, { body: '@cyrus please help with this' })
       await webhookHandler(webhook)
 
       // Should start new session with comment as prompt
-      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Test comment')
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('@cyrus please help with this')
     })
 
     it('should handle issue unassignment', async () => {
@@ -383,7 +390,8 @@ describe('EdgeWorker', () => {
     it('should ignore comments for non-existent sessions', async () => {
       mockSessionManager.getSession.mockReturnValue(null)
 
-      const webhook = mockCommentWebhook()
+      // Include a mention of the agent so it triggers
+      const webhook = mockCommentWebhook({}, { body: '@cyrus please help with this' })
       await webhookHandler(webhook)
 
       // When there's no existing session, it should restart from scratch (handleIssueAssigned)
@@ -566,6 +574,173 @@ describe('EdgeWorker', () => {
         expect.stringContaining('Failed to create comment on issue issue-123:'),
         expect.any(Error)
       )
+    })
+  })
+
+  describe('comment mention detection', () => {
+    let webhookHandler: Function
+
+    beforeEach(() => {
+      // Get the webhook handler function
+      webhookHandler = mockNdjsonClient.on.mock.calls.find(
+        (call: any) => call[0] === 'webhook'
+      )?.[1]
+
+      // Setup mock Linear client with viewer information for mention detection
+      mockLinearClient = {
+        createComment: vi.fn().mockResolvedValue({
+          success: true,
+          comment: { id: 'comment-123' }
+        }),
+        viewer: {
+          id: 'cyrus-user-id',
+          name: 'cyrus',
+          displayName: 'Cyrus Agent',
+          email: 'cyrus@ceedar.ai'
+        }
+      }
+      vi.mocked(LinearClient).mockImplementation(() => mockLinearClient)
+    })
+
+    it('should trigger when agent is mentioned by name', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      const webhook = mockCommentWebhook({}, { 
+        body: 'Hey @cyrus, can you help with this?' 
+      })
+      await webhookHandler(webhook)
+
+      // Should start Claude session since agent is mentioned
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @cyrus, can you help with this?')
+    })
+
+    it('should trigger when agent is mentioned by display name', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      const webhook = mockCommentWebhook({}, { 
+        body: 'Hey @"Cyrus Agent", can you help with this?' 
+      })
+      await webhookHandler(webhook)
+
+      // Should start Claude session since agent is mentioned
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @"Cyrus Agent", can you help with this?')
+    })
+
+    it('should trigger when agent is mentioned by user ID', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      const webhook = mockCommentWebhook({}, { 
+        body: 'Hey @cyrus-user-id, can you help with this?' 
+      })
+      await webhookHandler(webhook)
+
+      // Should start Claude session since agent is mentioned
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @cyrus-user-id, can you help with this?')
+    })
+
+    it('should NOT trigger when only other users are mentioned', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      const webhook = mockCommentWebhook({}, { 
+        body: 'Hey @john and @jane, can you help with this?' 
+      })
+      await webhookHandler(webhook)
+
+      // Should NOT start Claude session since agent is not mentioned
+      expect(mockClaudeRunner.start).not.toHaveBeenCalled()
+    })
+
+    it('should NOT trigger when no mentions are present', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      const webhook = mockCommentWebhook({}, { 
+        body: 'This is just a regular comment without mentions' 
+      })
+      await webhookHandler(webhook)
+
+      // Should NOT start Claude session since agent is not mentioned
+      expect(mockClaudeRunner.start).not.toHaveBeenCalled()
+    })
+
+    it('should trigger when agent is mentioned along with other users', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      const webhook = mockCommentWebhook({}, { 
+        body: 'Hey @john, @cyrus, and @jane, can you all help with this?' 
+      })
+      await webhookHandler(webhook)
+
+      // Should start Claude session since agent is mentioned (even with others)
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @john, @cyrus, and @jane, can you all help with this?')
+    })
+
+    it('should be case-insensitive when checking mentions by name', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      const webhook = mockCommentWebhook({}, { 
+        body: 'Hey @CYRUS, can you help with this?' 
+      })
+      await webhookHandler(webhook)
+
+      // Should start Claude session since agent is mentioned (case-insensitive)
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @CYRUS, can you help with this?')
+    })
+
+    it('should still work when viewer information is unavailable', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      // Mock Linear client to return null viewer
+      mockLinearClient.viewer = null
+      
+      const webhook = mockCommentWebhook({}, { 
+        body: 'Hey @cyrus, can you help with this?' 
+      })
+      await webhookHandler(webhook)
+
+      // Should err on the side of caution and trigger when viewer info is unavailable
+      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @cyrus, can you help with this?')
+    })
+
+    it('should NOT trigger when Linear client is unavailable', async () => {
+      // Setup existing session to avoid triggering full issue assignment
+      mockSessionManager.getSession.mockReturnValue({
+        workspace: { path: '/tmp/test-workspaces/TEST-123' }
+      })
+
+      // Remove the Linear client to simulate error condition
+      edgeWorker['linearClients'].clear()
+      
+      const webhook = mockCommentWebhook({}, { 
+        body: 'Hey @someone, can you help with this?' 
+      })
+      await webhookHandler(webhook)
+
+      // Should NOT trigger when client is unavailable since we can't verify mentions
+      expect(mockClaudeRunner.start).not.toHaveBeenCalled()
     })
   })
 
