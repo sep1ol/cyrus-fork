@@ -593,7 +593,7 @@ class EdgeApp {
     
     // Connection events
     this.edgeWorker.on('connected', (token: string) => {
-      console.log(`✅ Connection established with token: ${token.substring(0, 8)}...`)
+      // Connection already logged by EdgeWorker with more specific details
     })
     
     this.edgeWorker.on('disconnected', (token: string, reason?: string) => {
