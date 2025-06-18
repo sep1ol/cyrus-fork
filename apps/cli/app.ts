@@ -593,7 +593,7 @@ class EdgeApp {
     
     // Connection events
     this.edgeWorker.on('connected', (token: string) => {
-      console.log(`✅ Connection established with token: ${token.substring(0, 8)}...`)
+      console.log(`✅ Connected to proxy with token ending in ...${token.slice(-4)}`)
     })
     
     this.edgeWorker.on('disconnected', (token: string, reason?: string) => {
