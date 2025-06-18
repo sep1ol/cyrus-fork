@@ -134,7 +134,7 @@ export class EdgeWorker extends EventEmitter {
    */
   private handleConnect(token: string): void {
     this.emit('connected', token)
-    console.log(`✅ Connected to proxy with token ending in ...${token.slice(-4)}`)
+    // Connection logged by CLI app event handler
   }
 
   /**
