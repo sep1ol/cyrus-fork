@@ -12,7 +12,7 @@
 
 AI development agent for Linear powered by Claude Code. Cyrus monitors Linear issues assigned to it, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments, all from the safety and security of your own computer.
 
-**Please Note: Cyrus is built entirely on the premise that you bring your own Claude Code keys/billing. Your subscription to Cyrus pays for the convenience of a hosted bridge to integrate Claude Code to Linear in a way that's quick and easy to set up and use day-to-day, and funds our small team to ship new features**
+**Please Note: Cyrus is built entirely on the premise that you bring your own Claude Code keys/billing. Your subscription to Cyrus pays for the convenience of a hosted bridge to integrate Claude Code to Linear in a way that's quick and easy to set up and use day-to-day, and funds our small team to ship new features. You can also host the proxy yourself if you don't wish to pay for that convenience. Documentation coming soon.**
 
 ## Installation
 
