@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.24"
+    "@anthropic-ai/claude-code": "^1.0.29"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
