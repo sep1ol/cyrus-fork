@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### CLI
+- cyrus-ai@0.1.10
+
 ### Changed
 - Renamed repository setup script from `secretagentsetup.sh` to `cyrus-setup.sh` for better naming consistency
 - Updated all references in codebase to use the new script name
