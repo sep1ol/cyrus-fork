@@ -12,6 +12,21 @@ All notable changes to this project will be documented in this file.
 - Updated all references in codebase to use the new script name
 - Added comprehensive documentation for the setup script feature in README.md
 
+### Fixed
+- Improved disconnection message formatting to show token suffix consistently
+- Removed duplicate disconnection logging between EdgeWorker and CLI
+
+### Packages
+- cyrus-ndjson-client
+
+### Fixed
+- Fixed reconnection not being attempted when proxy stream ends normally (e.g., after timeout)
+
+- cyrus-claude-runner
+
+### Changed
+- Upgraded @anthropic-ai/claude-code dependency to version 1.0.31
+
 ## [0.0.3] - 2025-06-17
 
 ### Packages

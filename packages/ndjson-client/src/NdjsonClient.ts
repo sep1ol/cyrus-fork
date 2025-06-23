@@ -122,6 +122,11 @@ export class NdjsonClient extends EventEmitter {
       reader.releaseLock()
       this.connected = false
       this.emit('disconnect', 'Stream ended')
+      
+      // Attempt reconnection when stream ends
+      if (!this.abortController?.signal.aborted) {
+        await this.reconnect()
+      }
     }
   }
 

@@ -597,7 +597,7 @@ class EdgeApp {
     })
     
     this.edgeWorker.on('disconnected', (token: string, reason?: string) => {
-      console.error(`❌ Connection lost for token ${token.substring(0, 8)}...${reason ? ': ' + reason : ''}`)
+      console.error(`❌ Disconnected from proxy (token ...${token.slice(-4)}): ${reason || 'Unknown reason'}`)
     })
     
     // Error events
