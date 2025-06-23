@@ -22,6 +22,7 @@ export class NdjsonClient extends EventEmitter {
   private reconnectAttempts = 0
   private maxReconnectAttempts: number
   private reconnectBaseDelay: number
+  private reconnectOnStreamEnd: boolean
   private abortController: AbortController | null = null
   private reconnecting = false
 
@@ -31,6 +32,7 @@ export class NdjsonClient extends EventEmitter {
     this.token = config.token
     this.maxReconnectAttempts = config.maxReconnectAttempts ?? 10
     this.reconnectBaseDelay = config.reconnectBaseDelay ?? 1000
+    this.reconnectOnStreamEnd = config.reconnectOnStreamEnd ?? true
 
     // Forward config callbacks to events
     if (config.onEvent) this.on('event', config.onEvent)
@@ -120,8 +122,14 @@ export class NdjsonClient extends EventEmitter {
       }
     } finally {
       reader.releaseLock()
+      const wasConnected = this.connected
       this.connected = false
       this.emit('disconnect', 'Stream ended')
+      
+      // Attempt reconnection when stream ends (only if configured, we were connected and not manually aborted)
+      if (this.reconnectOnStreamEnd && wasConnected && !this.abortController?.signal.aborted && !this.reconnecting) {
+        await this.reconnect()
+      }
     }
   }
 

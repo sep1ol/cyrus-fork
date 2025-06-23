@@ -16,6 +16,8 @@ export interface Env {
   
   // Environment variables
   OAUTH_REDIRECT_URI: string
+  SIMULATE_DISCONNECT?: string
+  DISCONNECT_AFTER_MS?: string
 }
 
 export interface OAuthToken {

@@ -40,6 +40,10 @@ export class EventStreamDurableObject {
       this.workspaceIds = workspaceIdsParam.split(',')
     }
     
+    // Check for disconnect simulation from environment variables
+    const simulateDisconnect = this.env.SIMULATE_DISCONNECT === 'true'
+    const disconnectAfterMs = parseInt(this.env.DISCONNECT_AFTER_MS || '5000', 10)
+    
     // Extract Linear token from authorization header
     const authHeader = request.headers.get('authorization')
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -89,6 +93,23 @@ export class EventStreamDurableObject {
         this.heartbeatInterval = undefined
       }
     })
+    
+    // Set up disconnection simulation if requested
+    if (simulateDisconnect) {
+      setTimeout(() => {
+        console.log(`Simulating abrupt disconnection after ${disconnectAfterMs}ms for connection ${connectionId}`)
+        
+        // Abruptly close the connection without any warning
+        writer.close().catch(() => {})
+        this.connections.delete(connectionId)
+        
+        // Clear heartbeat if no more connections
+        if (this.connections.size === 0 && this.heartbeatInterval) {
+          clearInterval(this.heartbeatInterval)
+          this.heartbeatInterval = undefined
+        }
+      }, disconnectAfterMs)
+    }
     
     // Create and return response immediately
     return new Response(readable, {

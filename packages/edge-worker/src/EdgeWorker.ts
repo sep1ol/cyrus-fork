@@ -142,7 +142,6 @@ export class EdgeWorker extends EventEmitter {
    */
   private handleDisconnect(token: string, reason?: string): void {
     this.emit('disconnected', token, reason)
-    console.log(`❌ Disconnected from proxy (token ...${token.slice(-4)}): ${reason || 'Unknown reason'}`)
   }
 
   /**
