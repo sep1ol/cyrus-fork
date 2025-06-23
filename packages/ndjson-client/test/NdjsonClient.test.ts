@@ -46,7 +46,8 @@ describe('NdjsonClient', () => {
       proxyUrl: 'https://proxy.test',
       token: 'test-token-123',
       maxReconnectAttempts: 3,
-      reconnectBaseDelay: 100
+      reconnectBaseDelay: 100,
+      reconnectOnStreamEnd: false // Disable automatic reconnection for tests
     }
   })
 

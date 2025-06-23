@@ -55,6 +55,7 @@ export interface NdjsonClientConfig {
   token: string
   maxReconnectAttempts?: number
   reconnectBaseDelay?: number
+  reconnectOnStreamEnd?: boolean
   onEvent?: (event: EdgeEvent) => void
   onConnect?: () => void
   onDisconnect?: (reason?: string) => void

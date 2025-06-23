@@ -22,6 +22,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Fixed reconnection not being attempted when proxy stream ends normally (e.g., after timeout)
 
+### Added
+- Added `reconnectOnStreamEnd` configuration option (defaults to true) to control automatic reconnection behavior
+
 - cyrus-claude-runner
 
 ### Changed
