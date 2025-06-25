@@ -7,6 +7,12 @@ All notable changes to this project will be documented in this file.
 ### CLI
 - cyrus-ai@0.1.10
 
+### Added
+- Added `CYRUS_OAUTH_CALLBACK_BASE_URL` environment variable to configure OAuth callback URL (defaults to `http://localhost:3457`) ([#69](https://github.com/ceedaragents/cyrus/pull/69))
+- Added `CYRUS_OAUTH_CALLBACK_PORT` environment variable to configure OAuth callback port (defaults to `3457`)
+- OAuth callback URL is now fully configurable for different deployment environments (Docker, remote development, custom domains)
+- Supports `--env-file=path` option to load environment variables from custom file
+
 ### Changed
 - Renamed repository setup script from `secretagentsetup.sh` to `cyrus-setup.sh` for better naming consistency
 - Updated all references in codebase to use the new script name
