@@ -9,7 +9,6 @@
   </a>
 </div>
 
-
 AI development agent for Linear powered by Claude Code. Cyrus monitors Linear issues assigned to it, creates isolated Git worktrees for each issue, runs Claude Code sessions to process them, and posts responses back to Linear as comments, all from the safety and security of your own computer.
 
 **Please Note: Cyrus is built entirely on the premise that you bring your own Claude Code keys/billing. Your subscription to Cyrus pays for the convenience of a hosted bridge to integrate Claude Code to Linear in a way that's quick and easy to set up and use day-to-day, and funds our small team to ship new features. You can also host the proxy yourself if you don't wish to pay for that convenience. Documentation coming soon.**
@@ -28,18 +27,90 @@ npm install -g cyrus-ai
 
 (optional, if you want Cyrus to push PRs to Github): Have [`gh`](https://cli.github.com/) (Github) installed. `brew install gh` or find your platform instructions at [this link](https://cli.github.com/). Authenticate using `gh auth login` as the user you want PRs to be submitted via.
 
-####  Run the main program:
+#### Run the main program:
+
 ```bash
 cyrus
 ```
 
-####  Follow the prompts to:
- - Connect your Linear workspace via OAuth
- - Configure your repository settings
- - Set up allowed tools (security configuration), and optionally, mcp servers
+#### Follow the prompts to:
 
-####  Benefit
+- Connect your Linear workspace via OAuth
+- Configure your repository settings
+- Set up allowed tools (security configuration), and optionally, mcp servers
+
+#### Benefit
+
 Keep `cyrus` running, and the agent will start monitoring issues assigned to you in Linear and process them automatically, on your very own device.
+
+## Setup on Remote Host
+
+If you want to host Cyrus on a remote machine for 24/7 availability, follow these steps on a newly created virtual machine to get started.
+
+1. Install `gh`, `npm`, and `git`
+
+```bash
+apt install -y gh npm git
+```
+
+2. Install `claude` and `cyrus` via `npm`
+
+```bash
+npm install -g @anthropic-ai/claude-code cyrus-ai
+```
+
+3. Set up `git` CLI
+
+```bash
+ssh-keygen
+# Follow the prompts then paste the public key into GitHub
+
+git config --global user.name "John Doe"
+git config --global user.email "john.doe@example.com"
+```
+
+4. Login to `gh` and paste in an authentication token
+
+```bash
+gh auth login
+```
+
+5. Clone your repository via SSH into a folder of your choice
+
+```bash
+git clone git@github.com:your-org/your-repo.git
+```
+
+6. Authenticate `claude`
+
+```bash
+claude
+# Then follow the prompts
+
+
+# If you are on subscription based pricing, you can verify this is setup properly by running `/cost` in the claude console and seeing if it specifies your subscription plan.
+```
+
+7. Configure an environment variable file to specify your domain
+
+```bash
+CYRUS_OAUTH_CALLBACK_BASE_URL=<your domain here>
+# Include if not on default port
+CYRUS_OAUTH_CALLBACK_PORT=<port>
+```
+
+8. Start the cyrus server
+
+```bash
+cyrus --env-file=<path>
+
+# Optional
+# Start cyrus in a tmux session for
+tmux new -s cyrus-session # Can name whatever you'd like
+# Ctrl-B -> D to exit
+# To later 'attach' to it again
+tmux attach -t cyrus-session
+```
 
 ## Repository Setup Script
 
@@ -91,9 +162,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 Developed by [Ceedar](https://ceedar.ai/)
 
 This projects builds on the technologies built by the awesome teams at Linear, and Claude by Anthropic:
+
 - [Linear API](https://linear.app/developers)
 - [Anthropic Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
 
 ---
 
-*This README was last updated: June 11 2025*
+_This README was last updated: June 11 2025_
