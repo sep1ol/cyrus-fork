@@ -40,6 +40,35 @@ Linear → Proxy Worker → Direct HTTP Webhooks → Edge Workers
 - ✅ Built-in retry mechanisms
 - ✅ Stateless architecture
 - ✅ Better resource utilization
+- ✅ **Modular Design**: ndjson-client remains as a package with transport abstraction
+- ✅ **Backward Compatibility**: Same EventEmitter API for existing consumers
+
+## Modular Architecture Approach
+
+This proposal maintains the existing `ndjson-client` package while adding webhook transport capability. This approach provides several benefits:
+
+### Transport Abstraction
+- **Same API**: Consumers use the same EventEmitter interface regardless of transport
+- **Configuration-driven**: Switch between SSE and webhook modes via config
+- **Graceful Migration**: Can deploy webhook support without breaking existing SSE users
+
+### Package Structure
+```
+packages/ndjson-client/
+├── src/
+│   ├── NdjsonClient.ts       # Main client with transport abstraction
+│   ├── transports/
+│   │   ├── SSETransport.ts   # Existing SSE implementation
+│   │   └── WebhookTransport.ts # New webhook implementation
+│   ├── types.ts              # Existing types + transport config
+│   └── index.ts              # Export unified client
+```
+
+### Benefits of Modular Approach
+- **Reusability**: Other applications can use ndjson-client with webhook transport
+- **Testing**: Easier to unit test transport implementations separately
+- **Maintenance**: Clean separation of concerns between transports
+- **Future-proof**: Easy to add additional transports (WebSocket, gRPC, etc.)
 
 ## Detailed Design
 
@@ -81,21 +110,38 @@ class WebhookSender {
 }
 ```
 
-### 3. Edge Worker Webhook Receiver
+### 3. Enhanced NdjsonClient with Webhook Transport
 
-Replace `NdjsonClient` with HTTP webhook server:
+Extend `NdjsonClient` to support webhook transport while maintaining the same EventEmitter API:
 
 ```typescript
-class WebhookReceiver {
-  // Express/Fastify endpoint: POST /webhook
-  async handleLinearWebhook(request: WebhookRequest): Promise<void> {
-    const event = this.validateWebhookSignature(request);
-    await this.processEvent(event);
+// Extended configuration for webhook mode
+interface NdjsonClientConfig {
+  proxyUrl: string
+  token: string
+  transport: 'sse' | 'webhook'  // New: transport mode selection
+  webhookPort?: number          // New: for webhook mode
+  webhookPath?: string          // New: webhook endpoint path
+  // ... existing config options
+}
+
+// Enhanced NdjsonClient supports both transports
+class NdjsonClient extends EventEmitter {
+  private transport: 'sse' | 'webhook'
+  private webhookServer?: http.Server
+  
+  async connect(): Promise<void> {
+    if (this.transport === 'webhook') {
+      await this.startWebhookServer()
+    } else {
+      await this.connectSSE()  // existing SSE logic
+    }
   }
   
-  private validateWebhookSignature(request: WebhookRequest): EdgeEvent {
-    // Verify HMAC-SHA256 signature
-    // Parse and validate event structure
+  private async startWebhookServer(): Promise<void> {
+    // Create HTTP server for webhook reception
+    // Register webhook URL with proxy-worker
+    // Maintain same EventEmitter interface
   }
 }
 ```
@@ -109,18 +155,19 @@ class WebhookReceiver {
 - [ ] Implement HMAC-SHA256 signature system
 
 ### Phase 2: Edge Worker Updates (Week 2-3)  
-- [ ] Add HTTP server to Electron apps
-- [ ] Implement `WebhookReceiver` class
-- [ ] Replace `NdjsonClient` usage with webhook handling
-- [ ] Add webhook endpoint registration on startup
+- [ ] Extend `NdjsonClient` with webhook transport support
+- [ ] Add webhook server capability to ndjson-client package
+- [ ] Update Electron apps to use webhook transport mode
+- [ ] Add automatic webhook endpoint registration
 
-### Phase 3: Testing & Cleanup (Week 3-4)
+### Phase 3: Testing & Migration (Week 3-4)
 - [ ] Integration testing with webhook flow
 - [ ] Performance testing vs current SSE system
-- [ ] Remove SSE-related code:
+- [ ] Gradual migration from SSE to webhook transport
+- [ ] Remove SSE-related code after migration:
   - `EventStreamDurableObject`
-  - `NdjsonClient` 
-  - NDJSON streaming logic
+  - SSE transport logic in `NdjsonClient`
+  - NDJSON streaming infrastructure
   - Connection management code
 
 ## File Changes Required
@@ -132,12 +179,13 @@ class WebhookReceiver {
 - **Removed**: `src/services/EventStreamDurableObject.ts`
 
 ### Edge Worker (Electron)
-- **Modified**: `electron/main.ts` - Add HTTP server setup
-- **New**: `electron/webhook-receiver.ts` - Replace ndjson-client
-- **Removed**: `electron/ndjson-client.ts`
+- **Modified**: `electron/main.ts` - Configure ndjson-client for webhook transport
+- **Enhanced**: `electron/ndjson-client.ts` - Uses enhanced ndjson-client with webhook support
 
 ### Package Changes
-- **Removed**: `packages/ndjson-client/` - No longer needed
+- **Enhanced**: `packages/ndjson-client/` - Add webhook transport support while maintaining existing SSE capability
+- **Maintained**: Same EventEmitter API for backward compatibility
+- **Added**: Transport abstraction layer for SSE and webhook modes
 
 ## Security Considerations
 
