@@ -8,12 +8,12 @@ import type { NdjsonClientConfig, StatusUpdate, EdgeEvent } from '../types.js'
  */
 export class WebhookTransport extends BaseTransport {
   private server: ReturnType<typeof createServer> | null = null
-  private webhookSecret: string
+  private webhookSecret: string | null = null
   private webhookUrl: string
 
   constructor(config: NdjsonClientConfig) {
     super(config)
-    this.webhookSecret = config.token // Use token as webhook secret
+    // Webhook secret will be obtained from registration response
     
     // Build webhook URL using webhookBaseUrl if provided, otherwise construct from parts
     if (config.webhookBaseUrl) {
@@ -64,6 +64,7 @@ export class WebhookTransport extends BaseTransport {
 
   disconnect(): void {
     if (this.server) {
+      this.server.removeAllListeners()
       this.server.close()
       this.server = null
     }
@@ -100,12 +101,21 @@ export class WebhookTransport extends BaseTransport {
         },
         body: JSON.stringify({
           webhookUrl: this.webhookUrl,
-          secret: this.webhookSecret
+          linearToken: this.config.token,
+          name: this.config.name || 'Unknown Edge Worker',
+          capabilities: this.config.capabilities || ['linear-processing']
         })
       })
 
       if (!response.ok) {
         throw new Error(`Failed to register webhook: ${response.status} ${response.statusText}`)
+      }
+
+      const result = await response.json() as { webhookSecret: string }
+      this.webhookSecret = result.webhookSecret
+      
+      if (!this.webhookSecret) {
+        throw new Error('Registration did not return webhook secret')
       }
     } catch (error) {
       this.emit('error', error as Error)
@@ -163,7 +173,7 @@ export class WebhookTransport extends BaseTransport {
   }
 
   private verifySignature(body: string, signature: string): boolean {
-    if (!signature) return false
+    if (!signature || !this.webhookSecret) return false
     
     const expectedSignature = createHmac('sha256', this.webhookSecret)
       .update(body)

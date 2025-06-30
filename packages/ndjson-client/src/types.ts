@@ -58,6 +58,8 @@ export interface NdjsonClientConfig {
   webhookPath?: string
   webhookHost?: string
   webhookBaseUrl?: string
+  name?: string
+  capabilities?: string[]
   maxReconnectAttempts?: number
   reconnectBaseDelay?: number
   reconnectOnStreamEnd?: boolean

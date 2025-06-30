@@ -9,6 +9,8 @@ export class NdjsonClient extends BaseNdjsonClient {
       webhookPort: 3000 + Math.floor(Math.random() * 1000),
       webhookPath: '/webhook',
       webhookHost: 'localhost',
+      name: `Electron-${process.platform}-${Date.now()}`,
+      capabilities: ['linear-processing', 'claude-execution'],
       ...(webhookBaseUrl && { webhookBaseUrl })
     }
 
@@ -17,11 +19,11 @@ export class NdjsonClient extends BaseNdjsonClient {
 
   // Add methods for backward compatibility
   isConnected(): boolean {
-    return (this as any).transport?.connected || false
+    return super.isConnected()
   }
 
   async disconnect(): Promise<void> {
-    return (this as any).disconnect()
+    return super.disconnect()
   }
 
   // EventEmitter methods are inherited from BaseNdjsonClient
