@@ -3,6 +3,7 @@ import type { Env, LinearWebhook } from './types'
 import { OAuthService } from './services/OAuthService'
 import { WebhookReceiver } from './services/WebhookReceiver'
 import { WebhookSender } from './services/WebhookSender'
+import type { EdgeWorkerRegistration } from './services/EdgeWorkerRegistry'
 
 const router = Router()
 
@@ -107,7 +108,7 @@ router.post('/edge/register', async (request: Request, env: Env) => {
     const webhookSender = new WebhookSender(env)
     const registry = webhookSender.getRegistry()
     
-    const registration = await request.json() as import('./services/EdgeWorkerRegistry.js').EdgeWorkerRegistration
+    const registration = await request.json() as EdgeWorkerRegistration
     const result = await registry.registerEdgeWorker(registration)
     
     return new Response(JSON.stringify(result), {
