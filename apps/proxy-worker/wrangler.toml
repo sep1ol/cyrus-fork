@@ -29,6 +29,9 @@ preview_id = "workspace_metadata_preview"
 OAUTH_REDIRECT_URI = "https://cyrus-proxy.ceedar.workers.dev/oauth/callback"
 
 # Durable Objects removed - using webhook-only architecture
+[[migrations]]
+tag = "v2"
+deleted_classes = ["EventStreamDurableObject"]
 
 # Local development settings
 [miniflare]
