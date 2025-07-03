@@ -203,10 +203,10 @@ async function connectToProxy() {
                 mainWindow?.webContents.send('event-error', { event, error: error instanceof Error ? error.message : String(error) });
             }
         });
-        ndjsonClient.on('connected', () => {
+        ndjsonClient.on('connect', () => {
             mainWindow?.webContents.send('proxy-connected');
         });
-        ndjsonClient.on('disconnected', () => {
+        ndjsonClient.on('disconnect', () => {
             mainWindow?.webContents.send('proxy-disconnected');
         });
         await ndjsonClient.connect();

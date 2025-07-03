@@ -1,6 +1,7 @@
 name = "cyrus-proxy"
 main = "src/index.ts"
-compatibility_date = "2024-01-15"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
 
 # KV namespaces
 [[kv_namespaces]]
@@ -27,14 +28,7 @@ preview_id = "workspace_metadata_preview"
 [vars]
 OAUTH_REDIRECT_URI = "https://cyrus-proxy.ceedar.workers.dev/oauth/callback"
 
-# Durable Objects
-[[durable_objects.bindings]]
-name = "EVENT_STREAM"
-class_name = "EventStreamDurableObject"
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["EventStreamDurableObject"]
+# Durable Objects removed - using webhook-only architecture
 
 # Local development settings
 [miniflare]

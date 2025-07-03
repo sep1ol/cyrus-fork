@@ -12,28 +12,23 @@ All notable changes to this project will be documented in this file.
 - Added `CYRUS_OAUTH_CALLBACK_PORT` environment variable to configure OAuth callback port (defaults to `3457`)
 - OAuth callback URL is now fully configurable for different deployment environments (Docker, remote development, custom domains)
 - Supports `--env-file=path` option to load environment variables from custom file
+- Added `CYRUS_WEBHOOK_BASE_URL` environment variable to configure webhook base URL for edge workers ([#74](https://github.com/ceedaragents/cyrus/pull/74))
 
 ### Changed
-- Renamed repository setup script from `secretagentsetup.sh` to `cyrus-setup.sh` for better naming consistency
-- Updated all references in codebase to use the new script name
-- Added comprehensive documentation for the setup script feature in README.md
+- **BREAKING**: Migrated from Server-Sent Events (SSE) to webhook-only architecture ([#74](https://github.com/ceedaragents/cyrus/pull/74))
+  - **Action Required**: Edge workers now receive webhooks instead of SSE streams
+  - **Action Required**: Set `CYRUS_WEBHOOK_BASE_URL` environment variable if using custom deployment URLs
+  - **Action Required**: Ensure edge workers can receive inbound HTTP requests on webhook ports
+- Renamed repository setup script from `secretagentsetup.sh` to `cyrus-setup.sh`
 
 ### Fixed
-- Improved disconnection message formatting to show token suffix consistently
-- Removed duplicate disconnection logging between EdgeWorker and CLI
+- Resolved SSE connection reliability issues by migrating to webhook architecture
+- Improved disconnection message formatting
+- Removed duplicate disconnection logging
 
 ### Packages
-- cyrus-ndjson-client
 
-### Fixed
-- Fixed reconnection not being attempted when proxy stream ends normally (e.g., after timeout)
-
-### Added
-- Added `reconnectOnStreamEnd` configuration option (defaults to true) to control automatic reconnection behavior
-
-- cyrus-claude-runner
-
-### Changed
+#### cyrus-claude-runner
 - Upgraded @anthropic-ai/claude-code dependency to version 1.0.31
 
 ## [0.0.3] - 2025-06-17
