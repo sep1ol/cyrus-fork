@@ -141,7 +141,8 @@ export class WebhookTransport extends BaseTransport {
         try {
           // Verify webhook signature
           const signature = req.headers['x-webhook-signature'] as string
-          if (!this.verifySignature(body, signature)) {
+          const timestamp = req.headers['x-webhook-timestamp'] as string
+          if (!this.verifySignature(body, signature, timestamp)) {
             res.writeHead(401, { 'Content-Type': 'text/plain' })
             res.end('Unauthorized')
             return
@@ -172,11 +173,13 @@ export class WebhookTransport extends BaseTransport {
     }
   }
 
-  private verifySignature(body: string, signature: string): boolean {
+  private verifySignature(body: string, signature: string, timestamp?: string): boolean {
     if (!signature || !this.webhookSecret) return false
     
+    // Include timestamp in signature verification to match proxy format
+    const payload = timestamp ? `${timestamp}.${body}` : body
     const expectedSignature = createHmac('sha256', this.webhookSecret)
-      .update(body)
+      .update(payload)
       .digest('hex')
     
     return signature === `sha256=${expectedSignature}`
