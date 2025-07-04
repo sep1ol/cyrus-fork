@@ -91,12 +91,49 @@ claude
 # If you are on subscription based pricing, you can verify this is setup properly by running `/cost` in the claude console and seeing if it specifies your subscription plan.
 ```
 
-7. Configure an environment variable file to specify your domain
+7. Configure an environment variable file to specify your domain and webhook settings
 
 ```bash
 CYRUS_OAUTH_CALLBACK_BASE_URL=<your domain here>
 # Include if not on default port
 CYRUS_OAUTH_CALLBACK_PORT=<port>
+
+# Webhook configuration (required for Linear integration)
+CYRUS_WEBHOOK_BASE_URL=<your publicly accessible webhook URL>
+CYRUS_WEBHOOK_PORT=3456
+```
+
+### Webhook Configuration Options
+
+Cyrus needs to receive webhooks from Linear, so you need a publicly accessible URL. Choose one of these options:
+
+**Option 1: Using ngrok (for development/testing)**
+```bash
+# In a separate tmux session
+tmux new -s ngrok-session
+ngrok http 3456
+# Note the ngrok URL (e.g., https://abc123.ngrok-free.app)
+# Ctrl+B then D to detach
+
+# Set the environment variables
+export CYRUS_WEBHOOK_BASE_URL=https://abc123.ngrok-free.app
+export CYRUS_WEBHOOK_PORT=3456
+```
+
+**Option 2: Direct server with domain/IP**
+```bash
+# If your server has a public IP or domain
+export CYRUS_WEBHOOK_BASE_URL=https://your-domain.com
+# or
+export CYRUS_WEBHOOK_BASE_URL=http://your-server-ip
+export CYRUS_WEBHOOK_PORT=3456
+```
+
+**Option 3: Behind reverse proxy (nginx, caddy, etc.)**
+```bash
+# Configure your reverse proxy to forward /webhook to localhost:3456
+export CYRUS_WEBHOOK_BASE_URL=https://your-domain.com
+export CYRUS_WEBHOOK_PORT=3456
 ```
 
 8. Start the cyrus server
