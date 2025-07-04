@@ -4,10 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.1.18] - 2025-01-04
+## [0.1.19] - 2025-01-04
 
 ### CLI
-- cyrus-ai@0.1.18
+- cyrus-ai@0.1.19
 
 ### Added
 - Added `CYRUS_OAUTH_CALLBACK_BASE_URL` environment variable to configure OAuth callback URL (defaults to `http://localhost:3457`) ([#69](https://github.com/ceedaragents/cyrus/pull/69))
