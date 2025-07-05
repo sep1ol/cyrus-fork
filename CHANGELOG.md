@@ -4,28 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-- Implemented streaming input using `AsyncIterable<SDKUserMessage>` for Claude Code integration ([#77](https://github.com/ceedaragents/cyrus/pull/77))
-  - New comments on Linear issues now feed into existing Claude sessions instead of killing and restarting
-  - Added `StreamingPrompt` class that implements async iterable pattern for continuous message streaming
-  - Added new methods to `ClaudeRunner`: `startStreaming()`, `addStreamMessage()`, `completeStream()`, `isStreaming()`
-  - Smart fallback behavior: if streaming fails, automatically falls back to restart session
-  - Maintains full backward compatibility with existing `start()` method for string prompts
-
-### Changed
-- Enhanced `ClaudeRunner` to support both legacy string mode and new streaming mode
-- Updated `EdgeWorker` to use streaming sessions by default for all new issue assignments
-- Comment handling now attempts to add to existing stream before falling back to restart behavior
-
-### Packages
-
-#### cyrus-claude-runner
-- Added `StreamingPrompt` export for advanced streaming use cases
-- Enhanced `ClaudeRunner` with streaming capabilities while maintaining backward compatibility
-
-#### cyrus-edge-worker
-- Updated comment processing to leverage streaming input instead of session restarts
-- Improved session continuity for better user experience
+### Improved
+- New comments on Linear issues now feed into existing Claude sessions instead of killing and restarting the session ([#77](https://github.com/ceedaragents/cyrus/pull/77))
+  - Better conversation continuity when users add follow-up comments
+  - Faster response times since sessions don't need to restart
 
 ## [0.1.21] - 2025-07-05
 

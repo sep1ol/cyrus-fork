@@ -155,9 +155,11 @@ When working on this codebase, follow these practices:
 
 2. **Changelog Format**:
    - Follow [Keep a Changelog](https://keepachangelog.com/) format
-   - Be concise but descriptive
-   - Focus on what users/developers need to know
+   - **Focus only on end-user impact**: Write entries from the perspective of users running the `cyrus` CLI binary
+   - Avoid technical implementation details, package names, or internal architecture changes
+   - Be concise but descriptive about what users will experience differently
    - Group related changes together
+   - Example: "New comments now feed into existing sessions" NOT "Implemented AsyncIterable<SDKUserMessage> for ClaudeRunner"
 
 ## Key Code Paths
 
