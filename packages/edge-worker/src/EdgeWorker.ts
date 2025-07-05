@@ -364,14 +364,14 @@ export class EdgeWorker extends EventEmitter {
     this.emit('session:started', fullIssue.id, fullIssue, repository.id)
     this.config.handlers?.onSessionStart?.(fullIssue.id, fullIssue, repository.id)
 
-    // Build and start Claude with initial prompt using full issue
+    // Build and start Claude with initial prompt using full issue (streaming mode)
     console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
     try {
       const prompt = await this.buildInitialPrompt(fullIssue, repository, attachmentResult.manifest)
       console.log(`[EdgeWorker] Initial prompt built successfully, length: ${prompt.length} characters`)
-      console.log(`[EdgeWorker] Starting Claude session`)
-      const sessionInfo = await runner.start(prompt)
-      console.log(`[EdgeWorker] Claude session started: ${sessionInfo.sessionId}`)
+      console.log(`[EdgeWorker] Starting Claude streaming session`)
+      const sessionInfo = await runner.startStreaming(prompt)
+      console.log(`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`)
     } catch (error) {
       console.error(`[EdgeWorker] Error in prompt building/starting:`, error)
       throw error
@@ -483,14 +483,27 @@ export class EdgeWorker extends EventEmitter {
       this.sessionToRepo.set(issue.id, repository.id)
     }
 
-    // Kill existing Claude process if running
+    // Check if there's an existing runner and if it supports streaming
     const existingRunner = this.claudeRunners.get(issue.id)
+    if (existingRunner && existingRunner.isStreaming()) {
+      // Add comment to existing stream instead of restarting
+      console.log(`[EdgeWorker] Adding comment to existing stream for issue ${issue.identifier}`)
+      try {
+        existingRunner.addStreamMessage(comment.body || '')
+        return // Exit early - comment has been added to stream
+      } catch (error) {
+        console.error(`[EdgeWorker] Failed to add comment to stream, will restart: ${error}`)
+        // Fall through to restart logic below
+      }
+    }
+
+    // Stop existing runner if it's not streaming or stream addition failed
     if (existingRunner) {
       existingRunner.stop()
     }
 
     try {
-      // Create new runner with --continue flag
+      // Create new runner with streaming mode
       const runner = new ClaudeRunner({
         workingDirectory: session.workspace.path,
         allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
@@ -523,8 +536,9 @@ export class EdgeWorker extends EventEmitter {
       // Store new runner
       this.claudeRunners.set(issue.id, runner)
 
-      // Start continuation session with the comment as prompt
-      await runner.start(comment.body || '')
+      // Start streaming session with the comment as initial prompt
+      console.log(`[EdgeWorker] Starting new streaming session for issue ${issue.identifier}`)
+      await runner.startStreaming(comment.body || '')
     } catch (error) {
       console.error('Failed to continue conversation, starting fresh:', error)
       // Remove any partially created session
