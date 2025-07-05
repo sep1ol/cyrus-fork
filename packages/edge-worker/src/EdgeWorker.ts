@@ -2,6 +2,7 @@ import { EventEmitter } from 'events'
 import { LinearClient, Issue as LinearIssue, Comment } from '@linear/sdk'
 import { NdjsonClient } from 'cyrus-ndjson-client'
 import { ClaudeRunner, getSafeTools } from 'cyrus-claude-runner'
+import type { McpServerConfig } from 'cyrus-claude-runner'
 import { SessionManager, Session } from 'cyrus-core'
 import type { Issue as CoreIssue } from 'cyrus-core'
 import type {
@@ -353,13 +354,17 @@ export class EdgeWorker extends EventEmitter {
       allowedDirectories.push(attachmentResult.attachmentsDir)
     }
 
+    // Build allowed tools list with Linear MCP tools
+    const allowedTools = this.buildAllowedTools(repository)
+
     // Create Claude runner with attachment directory access
     const runner = new ClaudeRunner({
       workingDirectory: workspace.path,
-      allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
+      allowedTools,
       allowedDirectories,
       workspaceName: fullIssue.identifier,
       mcpConfigPath: repository.mcpConfigPath,
+      mcpConfig: this.buildMcpConfig(repository),
       onMessage: (message) => this.handleClaudeMessage(fullIssue.id, message, repository.id),
       onComplete: (messages) => this.handleClaudeComplete(fullIssue.id, messages, repository.id),
       onError: (error) => this.handleClaudeError(fullIssue.id, error, repository.id)
@@ -530,13 +535,17 @@ export class EdgeWorker extends EventEmitter {
     }
 
     try {
+      // Build allowed tools list with Linear MCP tools
+      const allowedTools = this.buildAllowedTools(repository)
+
       // Create new runner with streaming mode
       const runner = new ClaudeRunner({
         workingDirectory: session.workspace.path,
-        allowedTools: repository.allowedTools || this.config.defaultAllowedTools || getSafeTools(),
+        allowedTools,
         continueSession: true,
         workspaceName: issue.identifier,
         mcpConfigPath: repository.mcpConfigPath,
+        mcpConfig: this.buildMcpConfig(repository),
         onMessage: (message) => {
           // Check for continuation errors
           if (message.type === 'assistant' && 'message' in message && message.message?.content) {
@@ -1464,5 +1473,76 @@ Please analyze this issue and help implement a solution.`
       // If we can't determine, err on the side of caution and allow the trigger
       return true
     }
+  }
+
+  /**
+   * Build MCP configuration with automatic Linear server injection
+   */
+  private buildMcpConfig(repository: RepositoryConfig): Record<string, McpServerConfig> {
+    // Always inject the Linear MCP server with the repository's token
+    const mcpConfig: Record<string, McpServerConfig> = {
+      linear: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@tacticlaunch/mcp-linear'],
+        env: {
+          LINEAR_API_TOKEN: repository.linearToken
+        }
+      }
+    }
+
+    return mcpConfig
+  }
+
+  /**
+   * Build allowed tools list with Linear MCP tools automatically included
+   */
+  private buildAllowedTools(repository: RepositoryConfig): string[] {
+    // Start with configured tools or defaults
+    const baseTools = repository.allowedTools || this.config.defaultAllowedTools || getSafeTools()
+    
+    // Ensure baseTools is an array
+    const baseToolsArray = Array.isArray(baseTools) ? baseTools : []
+    
+    // Linear MCP tools that should always be available
+    const linearMcpTools = [
+      "mcp__linear__linear_getViewer",
+      "mcp__linear__linear_getOrganization",
+      "mcp__linear__linear_getUsers",
+      "mcp__linear__linear_getLabels",
+      "mcp__linear__linear_getTeams",
+      "mcp__linear__linear_getWorkflowStates",
+      "mcp__linear__linear_getProjects",
+      "mcp__linear__linear_createProject",
+      "mcp__linear__linear_updateProject",
+      "mcp__linear__linear_addIssueToProject",
+      "mcp__linear__linear_getProjectIssues",
+      "mcp__linear__linear_getCycles",
+      "mcp__linear__linear_getActiveCycle",
+      "mcp__linear__linear_addIssueToCycle",
+      "mcp__linear__linear_getIssues",
+      "mcp__linear__linear_getIssueById",
+      "mcp__linear__linear_searchIssues",
+      "mcp__linear__linear_createIssue",
+      "mcp__linear__linear_updateIssue",
+      "mcp__linear__linear_createComment",
+      "mcp__linear__linear_addIssueLabel",
+      "mcp__linear__linear_removeIssueLabel",
+      "mcp__linear__linear_assignIssue",
+      "mcp__linear__linear_subscribeToIssue",
+      "mcp__linear__linear_convertIssueToSubtask",
+      "mcp__linear__linear_createIssueRelation",
+      "mcp__linear__linear_archiveIssue",
+      "mcp__linear__linear_setIssuePriority",
+      "mcp__linear__linear_transferIssue",
+      "mcp__linear__linear_duplicateIssue",
+      "mcp__linear__linear_getIssueHistory",
+      "mcp__linear__linear_getComments"
+    ]
+    
+    // Combine and deduplicate
+    const allTools = [...new Set([...baseToolsArray, ...linearMcpTools])]
+    
+    return allTools
   }
 }

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Automatic Linear MCP (Model Context Protocol) server integration
+  - Claude can now use Linear API tools directly within sessions
+  - Automatically configures `@tacticlaunch/mcp-linear` server with repository's Linear token
+  - Adds 30+ Linear MCP tools for issue management, comments, projects, and more
+  - No additional configuration needed - works out of the box with existing Linear tokens
+
+### Changed
+- ClaudeRunner now supports array of MCP config paths for composable configurations
+- ClaudeRunner supports inline MCP server configurations alongside file-based configs
+- MCP configurations from files and inline sources are merged together
+
 ### Fixed
 - Fixed webhook signature verification failures after restarting cyrus by extending edge worker registration TTL from 1 hour to 90 days
   - Resolves "Webhook signature verification failed for all registered handlers" error that occurred when cyrus was stopped and restarted

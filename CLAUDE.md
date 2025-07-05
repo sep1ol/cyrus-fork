@@ -169,6 +169,42 @@ When working on this codebase, follow these practices:
 - **Edge Worker**: `packages/edge-worker/src/EdgeWorker.ts`
 - **OAuth Flow**: `apps/proxy/src/services/OAuthService.mjs`
 
+## Testing MCP Linear Integration
+
+To test the Linear MCP (Model Context Protocol) integration in the claude-runner package:
+
+1. **Setup Environment Variables**:
+   ```bash
+   cd packages/claude-runner
+   # Create .env file with your Linear API token
+   echo "LINEAR_API_TOKEN=your_linear_token_here" > .env
+   ```
+
+2. **Build the Package**:
+   ```bash
+   pnpm build
+   ```
+
+3. **Run the Test Script**:
+   ```bash
+   node test-scripts/simple-claude-runner-test.js
+   ```
+
+The test script demonstrates:
+- Loading Linear API token from environment variables
+- Configuring the `@tacticlaunch/mcp-linear` MCP server
+- Listing available MCP tools
+- Using Linear MCP tools to fetch user info and issues
+- Proper error handling and logging
+
+The script will show:
+- Whether the MCP server connects successfully
+- What Linear tools are available
+- Current user information
+- Issues in your Linear workspace
+
+This integration is automatically available in all Cyrus sessions - the EdgeWorker automatically configures the Linear MCP server for each repository using its Linear token.
+
 ## Publishing
 
 **Important: Always publish packages in the correct order to ensure proper dependency resolution.**

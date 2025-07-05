@@ -214,17 +214,32 @@ export class ClaudeRunner extends EventEmitter {
         processedAllowedTools = processedAllowedTools ? [...processedAllowedTools, ...directoryTools] : directoryTools
       }
 
-      // Parse MCP config if provided
+      // Parse MCP config - merge file(s) and inline configs
       let mcpServers = {}
+      
+      // First, load from file(s) if provided
       if (this.config.mcpConfigPath) {
-        try {
-          const mcpConfigContent = readFileSync(this.config.mcpConfigPath, 'utf8')
-          const mcpConfig = JSON.parse(mcpConfigContent)
-          mcpServers = mcpConfig.mcpServers || {}
-          console.log(`[ClaudeRunner] Loaded MCP servers: ${Object.keys(mcpServers).join(', ')}`)
-        } catch (error) {
-          console.error(`[ClaudeRunner] Failed to load MCP config from ${this.config.mcpConfigPath}:`, error)
+        const paths = Array.isArray(this.config.mcpConfigPath) 
+          ? this.config.mcpConfigPath 
+          : [this.config.mcpConfigPath]
+        
+        for (const path of paths) {
+          try {
+            const mcpConfigContent = readFileSync(path, 'utf8')
+            const mcpConfig = JSON.parse(mcpConfigContent)
+            const servers = mcpConfig.mcpServers || {}
+            mcpServers = { ...mcpServers, ...servers }
+            console.log(`[ClaudeRunner] Loaded MCP servers from ${path}: ${Object.keys(servers).join(', ')}`)
+          } catch (error) {
+            console.error(`[ClaudeRunner] Failed to load MCP config from ${path}:`, error)
+          }
         }
+      }
+      
+      // Then, merge inline config (overrides file config for same server names)
+      if (this.config.mcpConfig) {
+        mcpServers = { ...mcpServers, ...this.config.mcpConfig }
+        console.log(`[ClaudeRunner] Final MCP servers after merge: ${Object.keys(mcpServers).join(', ')}`)
       }
 
       const queryOptions: Parameters<typeof query>[0] = {
