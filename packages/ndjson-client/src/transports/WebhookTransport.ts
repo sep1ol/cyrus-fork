@@ -31,29 +31,40 @@ export class WebhookTransport extends BaseTransport {
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        // Create HTTP server to receive webhooks
-        this.server = createServer((req, res) => {
-          this.handleWebhookRequest(req, res)
-        })
-
-        const port = this.config.webhookPort || 3000
-        const host = this.config.webhookHost || 'localhost'
-        
-        this.server.listen(port, host, () => {
+        if (this.config.useExternalWebhookServer && this.config.externalWebhookServer) {
+          // Use external webhook server - register with proxy then with external server
           this.connected = true
           this.emit('connect')
           
-          // Register webhook with proxy
           this.registerWebhook()
+            .then(() => this.registerWithExternalServer())
             .then(() => resolve())
             .catch(reject)
-        })
+        } else {
+          // Create HTTP server to receive webhooks
+          this.server = createServer((req, res) => {
+            this.handleWebhookRequest(req, res)
+          })
 
-        this.server.on('error', (error) => {
-          this.connected = false
-          this.emit('error', error)
-          reject(error)
-        })
+          const port = this.config.webhookPort || 3000
+          const host = this.config.webhookHost || 'localhost'
+          
+          this.server.listen(port, host, () => {
+            this.connected = true
+            this.emit('connect')
+            
+            // Register webhook with proxy
+            this.registerWebhook()
+              .then(() => resolve())
+              .catch(reject)
+          })
+
+          this.server.on('error', (error) => {
+            this.connected = false
+            this.emit('error', error)
+            reject(error)
+          })
+        }
       } catch (error) {
         this.connected = false
         this.emit('error', error as Error)
@@ -183,5 +194,37 @@ export class WebhookTransport extends BaseTransport {
       .digest('hex')
     
     return signature === `sha256=${expectedSignature}`
+  }
+
+  /**
+   * Register with external webhook server for shared webhook handling
+   */
+  async registerWithExternalServer(): Promise<void> {
+    if (!this.config.externalWebhookServer || !this.webhookSecret) {
+      throw new Error('External webhook server or webhook secret not available')
+    }
+
+    // Register this transport instance with the external server
+    if (typeof this.config.externalWebhookServer.registerWebhookHandler === 'function') {
+      this.config.externalWebhookServer.registerWebhookHandler(
+        this.config.token,
+        this.webhookSecret,
+        (body: string, signature: string, timestamp?: string) => {
+          if (this.verifySignature(body, signature, timestamp)) {
+            const event = JSON.parse(body)
+            this.handleEvent(event)
+            return true // Signature verified and handled
+          }
+          return false // Signature not verified
+        }
+      )
+    }
+  }
+
+  /**
+   * Get webhook secret for external registration
+   */
+  getWebhookSecret(): string | null {
+    return this.webhookSecret
   }
 }

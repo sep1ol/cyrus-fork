@@ -6,11 +6,8 @@ import dotenv from 'dotenv'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { resolve, dirname, basename } from 'path'
 import { fileURLToPath } from 'url'
-import { createServer, type Server } from 'http'
-import { URL } from 'url'
 import open from 'open'
 import readline from 'readline'
-import type { IncomingMessage, ServerResponse } from 'http'
 
 // Parse command line arguments
 const args = process.argv.slice(2)
@@ -48,11 +45,6 @@ interface EdgeConfig {
   repositories: RepositoryConfig[]
 }
 
-interface OAuthCallback {
-  resolve: (credentials: LinearCredentials) => void
-  reject: (error: Error) => void
-  id: string
-}
 
 interface Workspace {
   path: string
@@ -66,9 +58,6 @@ interface Workspace {
 class EdgeApp {
   private edgeWorker: EdgeWorker | null = null
   private isShuttingDown = false
-  private oauthServer: Server | null = null
-  private oauthCallbacks: Map<string, OAuthCallback> = new Map()
-  private onOAuthComplete?: (credentials: LinearCredentials) => Promise<void>
 
   /**
    * Load edge configuration (credentials and repositories)
@@ -188,128 +177,33 @@ class EdgeApp {
     }
   }
   
-  /**
-   * Start OAuth server to handle callbacks
-   */
-  startOAuthServer(port: number): void {
-    if (this.oauthServer) return // Already running
-    
-    this.oauthCallbacks = new Map() // Store pending callbacks
-    
-    this.oauthServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-      const url = new URL(req.url!, `http://localhost:${port}`)
-      
-      if (url.pathname === '/callback') {
-        const token = url.searchParams.get('token')
-        const workspaceId = url.searchParams.get('workspaceId')
-        const workspaceName = url.searchParams.get('workspaceName')
-        
-        if (token && workspaceId && workspaceName) {
-          // Success! Return the Linear credentials (don't save yet)
-          const linearCredentials: LinearCredentials = { 
-            linearToken: token,
-            linearWorkspaceId: workspaceId,
-            linearWorkspaceName: workspaceName
-          }
-          
-          // Send success response
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-          res.end(`
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <meta charset="UTF-8">
-                <title>Authorization Successful</title>
-              </head>
-              <body style="font-family: system-ui; max-width: 600px; margin: 50px auto; padding: 20px;">
-                <h1>✅ Authorization Successful!</h1>
-                <p>You can close this window and return to the terminal.</p>
-                <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
-                <p style="margin-top: 30px;">
-                  <a href="${process.env.PROXY_URL}/oauth/authorize?callback=${process.env.CYRUS_OAUTH_CALLBACK_BASE_URL || `http://localhost:${port}`}/callback" 
-                     style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
-                    Connect Another Workspace
-                  </a>
-                </p>
-                <script>setTimeout(() => window.close(), 10000)</script>
-              </body>
-            </html>
-          `)
-          
-          // Emit event for any waiting promise
-          if (this.oauthCallbacks.size > 0) {
-            const callback = this.oauthCallbacks.values().next().value
-            if (callback) {
-              callback.resolve(linearCredentials)
-              this.oauthCallbacks.delete(callback.id)
-            }
-          }
-          
-          // Also emit event for edge app to handle
-          if (this.onOAuthComplete) {
-            this.onOAuthComplete(linearCredentials)
-          }
-        } else {
-          res.writeHead(400, { 'Content-Type': 'text/html' })
-          res.end('<h1>Error: No token received</h1>')
-          
-          // Reject any waiting promises
-          for (const [id, callback] of this.oauthCallbacks) {
-            callback.reject(new Error('No token received'))
-            this.oauthCallbacks.delete(id)
-          }
-        }
-      } else {
-        res.writeHead(404)
-        res.end('Not found')
-      }
-    })
-    
-    this.oauthServer.listen(port, () => {
-      console.log(`OAuth callback server listening on port ${port}`)
-    })
-  }
   
   /**
-   * Start OAuth flow to get Linear token
+   * Start OAuth flow to get Linear token using EdgeWorker's shared server
    */
   async startOAuthFlow(proxyUrl: string): Promise<LinearCredentials> {
-    const port = parseInt(process.env.CYRUS_OAUTH_CALLBACK_PORT || '3457', 10) // Different from proxy port
-    
-    // Ensure OAuth server is running
-    if (!this.oauthServer) {
-      this.startOAuthServer(port)
+    if (!this.edgeWorker) {
+      throw new Error('EdgeWorker not initialized')
     }
     
-    return new Promise<LinearCredentials>((resolve, reject) => {
-      // Generate unique ID for this flow
-      const flowId = Date.now().toString()
-      
-      // Store callback for this flow
-      this.oauthCallbacks.set(flowId, { resolve, reject, id: flowId })
-      
-      // Construct OAuth URL with callback
-      const callbackBaseUrl = process.env.CYRUS_OAUTH_CALLBACK_BASE_URL || `http://localhost:${port}`
-      const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`
-      
-      console.log(`\n👉 Opening your browser to authorize with Linear...`)
-      console.log(`If the browser doesn't open, visit: ${authUrl}`)
-      
-      open(authUrl).catch(() => {
-        console.log(`\n⚠️  Could not open browser automatically`)
-        console.log(`Please visit: ${authUrl}`)
-      })
-      
-      console.log(`\n⏳ Waiting for authorization...`)
-      
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        if (this.oauthCallbacks.has(flowId)) {
-          this.oauthCallbacks.delete(flowId)
-          reject(new Error('OAuth timeout'))
-        }
-      }, 5 * 60 * 1000)
+    const port = this.edgeWorker.getServerPort()
+    
+    // Construct OAuth URL with callback
+    const callbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${port}`
+    const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`
+    
+    console.log(`\n👉 Opening your browser to authorize with Linear...`)
+    console.log(`If the browser doesn't open, visit: ${authUrl}`)
+    
+    open(authUrl).catch(() => {
+      console.log(`\n⚠️  Could not open browser automatically`)
+      console.log(`Please visit: ${authUrl}`)
     })
+    
+    console.log(`\n⏳ Waiting for authorization...`)
+    
+    // Use EdgeWorker's OAuth flow
+    return this.edgeWorker.startOAuthFlow(proxyUrl)
   }
   
   /**
@@ -321,59 +215,27 @@ class EdgeApp {
       proxyUrl,
       repositories,
       defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
-      webhookBaseUrl: process.env.CYRUS_WEBHOOK_BASE_URL,
+      webhookBaseUrl: process.env.CYRUS_BASE_URL,
+      webhookPort: process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : undefined,
+      serverPort: process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) : 
+                  process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : 3456,
       features: {
         enableContinuation: true
       },
       handlers: {
         createWorkspace: async (issue: Issue, repository: RepositoryConfig): Promise<Workspace> => {
           return this.createGitWorktree(issue, repository)
-        }
-      }
-    }
-    
-    // Create and start EdgeWorker
-    this.edgeWorker = new EdgeWorker(config)
-    
-    // Set up event handlers
-    this.setupEventHandlers()
-    
-    // Start the worker
-    await this.edgeWorker.start()
-    
-    console.log('\n✅ Edge worker started successfully')
-    console.log(`Connected to proxy: ${config.proxyUrl}`)
-    console.log(`Managing ${repositories.length} repositories:`)
-    repositories.forEach(repo => {
-      console.log(`  - ${repo.name} (${repo.repositoryPath})`)
-    })
-  }
-
-  /**
-   * Start the edge application
-   */
-  async start(): Promise<void> {
-    try {
-      // Set proxy URL with default
-      const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
-      
-      // No need to validate Claude CLI - using Claude TypeScript SDK now
-      
-      // Start OAuth server immediately for easy access
-      const oauthPort = parseInt(process.env.CYRUS_OAUTH_CALLBACK_PORT || '3457', 10)
-      const oauthCallbackBaseUrl = process.env.CYRUS_OAUTH_CALLBACK_BASE_URL || `http://localhost:${oauthPort}`
-      if (!this.oauthServer) {
-        this.startOAuthServer(oauthPort)
-        console.log(`\n🔐 OAuth server running on port ${oauthPort}`)
-        console.log(`👉 To authorize Linear (new workspace or re-auth):`)
-        console.log(`   ${proxyUrl}/oauth/authorize?callback=${oauthCallbackBaseUrl}/callback`)
-        console.log('─'.repeat(70))
-        
-        // Set up handler for OAuth completions to automatically trigger repository setup
-        this.onOAuthComplete = async (linearCredentials: LinearCredentials): Promise<void> => {
+        },
+        onOAuthCallback: async (token: string, workspaceId: string, workspaceName: string): Promise<void> => {
+          const linearCredentials: LinearCredentials = {
+            linearToken: token,
+            linearWorkspaceId: workspaceId,
+            linearWorkspaceName: workspaceName
+          }
+          
+          // Handle OAuth completion for repository setup
           if (this.edgeWorker) {
-            // If edge worker is already running, just set up a new repository
-            console.log('\n📋 Setting up new repository for workspace:', linearCredentials.linearWorkspaceName)
+            console.log('\n📋 Setting up new repository for workspace:', workspaceName)
             console.log('─'.repeat(50))
             
             try {
@@ -401,7 +263,6 @@ class EdgeApp {
               const updatedConfig = this.loadEdgeConfig()
               console.log(`\n🔄 Reloading with ${updatedConfig.repositories?.length || 0} repositories from config file`)
               
-              const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
               return this.startEdgeWorker({ 
                 proxyUrl, 
                 repositories: updatedConfig.repositories || [] 
@@ -413,6 +274,35 @@ class EdgeApp {
           }
         }
       }
+    }
+    
+    // Create and start EdgeWorker
+    this.edgeWorker = new EdgeWorker(config)
+    
+    // Set up event handlers
+    this.setupEventHandlers()
+    
+    // Start the worker
+    await this.edgeWorker.start()
+    
+    console.log('\n✅ Edge worker started successfully')
+    console.log(`Configured proxy URL: ${config.proxyUrl}`)
+    console.log(`Managing ${repositories.length} repositories:`)
+    repositories.forEach(repo => {
+      console.log(`  - ${repo.name} (${repo.repositoryPath})`)
+    })
+  }
+
+  /**
+   * Start the edge application
+   */
+  async start(): Promise<void> {
+    try {
+      // Set proxy URL with default
+      const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
+      
+      // No need to validate Claude CLI - using Claude TypeScript SDK now
+      
       
       // Load edge configuration
       let edgeConfig = this.loadEdgeConfig()
@@ -495,7 +385,7 @@ class EdgeApp {
           }
           
           if (linearCredentials) {
-            console.log('(Use the authorization link above to connect a different workspace)')
+            console.log('(OAuth server will start with EdgeWorker to connect additional workspaces)')
           }
         } else {
           // Get new Linear credentials
@@ -567,6 +457,14 @@ class EdgeApp {
       
       // Start the edge worker
       await this.startEdgeWorker({ proxyUrl, repositories })
+      
+      // Display OAuth information after EdgeWorker is started
+      const serverPort = this.edgeWorker?.getServerPort() || 3456
+      const oauthCallbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${serverPort}`
+      console.log(`\n🔐 OAuth server running on port ${serverPort}`)
+      console.log(`👉 To authorize Linear (new workspace or re-auth):`)
+      console.log(`   ${proxyUrl}/oauth/authorize?callback=${oauthCallbackBaseUrl}/callback`)
+      console.log('─'.repeat(70))
       
       // Handle graceful shutdown
       process.on('SIGINT', () => this.shutdown())
@@ -742,12 +640,7 @@ class EdgeApp {
     
     console.log('\nShutting down edge worker...')
     
-    // Close OAuth server if running
-    if (this.oauthServer) {
-      this.oauthServer.close()
-    }
-    
-    // Stop edge worker
+    // Stop edge worker (includes stopping shared application server)
     if (this.edgeWorker) {
       await this.edgeWorker.stop()
     }

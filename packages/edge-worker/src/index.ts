@@ -1,9 +1,11 @@
 export { EdgeWorker } from './EdgeWorker.js'
+export { SharedApplicationServer } from './SharedApplicationServer.js'
 export type {
   EdgeWorkerConfig,
   EdgeWorkerEvents,
   RepositoryConfig
 } from './types.js'
+export type { OAuthCallbackHandler } from './SharedApplicationServer.js'
 
 // Re-export useful types from dependencies
 export type { SDKMessage } from 'cyrus-claude-runner'

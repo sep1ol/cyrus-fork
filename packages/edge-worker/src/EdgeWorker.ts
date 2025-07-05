@@ -13,6 +13,7 @@ import type {
   LinearWebhookIssue,
   LinearWebhookComment
 } from 'cyrus-core'
+import { SharedApplicationServer } from './SharedApplicationServer.js'
 import {
   isIssueAssignedWebhook,
   isIssueCommentMentionWebhook,
@@ -46,11 +47,21 @@ export class EdgeWorker extends EventEmitter {
   private sessionToRepo: Map<string, string> = new Map() // Maps session ID to repository ID
   private issueToCommentId: Map<string, string> = new Map() // Maps issue ID to initial comment ID
   private issueToReplyContext: Map<string, { commentId: string; parentId?: string }> = new Map() // Maps issue ID to reply context
+  private sharedApplicationServer: SharedApplicationServer
 
   constructor(config: EdgeWorkerConfig) {
     super()
     this.config = config
     this.sessionManager = new SessionManager()
+
+    // Initialize shared application server
+    const serverPort = config.serverPort || config.webhookPort || 3456
+    this.sharedApplicationServer = new SharedApplicationServer(serverPort)
+    
+    // Register OAuth callback handler if provided
+    if (config.handlers?.onOAuthCallback) {
+      this.sharedApplicationServer.registerOAuthCallbackHandler(config.handlers.onOAuthCallback)
+    }
 
     // Initialize repositories
     for (const repo of config.repositories) {
@@ -72,16 +83,21 @@ export class EdgeWorker extends EventEmitter {
       tokenToRepos.set(repo.linearToken, repos)
     }
 
-    // Create one NDJSON client per unique token
+    // Create one NDJSON client per unique token using shared application server
     for (const [token, repos] of tokenToRepos) {
       const ndjsonClient = new NdjsonClient({
         proxyUrl: config.proxyUrl,
         token: token,
         transport: 'webhook',
-        webhookPort: 3000 + Math.floor(Math.random() * 1000),
+        // Use shared application server instead of individual servers
+        useExternalWebhookServer: true,
+        externalWebhookServer: this.sharedApplicationServer,
+        webhookPort: serverPort, // All clients use same port
         webhookPath: '/webhook',
         webhookHost: 'localhost',
-        ...(config.webhookBaseUrl && { webhookBaseUrl: config.webhookBaseUrl }),
+        ...(config.baseUrl && { webhookBaseUrl: config.baseUrl }),
+        // Legacy fallback support
+        ...(!config.baseUrl && config.webhookBaseUrl && { webhookBaseUrl: config.webhookBaseUrl }),
         onConnect: () => this.handleConnect(token),
         onDisconnect: (reason) => this.handleDisconnect(token, reason),
         onError: (error) => this.handleError(error)
@@ -105,6 +121,9 @@ export class EdgeWorker extends EventEmitter {
    * Start the edge worker
    */
   async start(): Promise<void> {
+    // Start shared application server first
+    await this.sharedApplicationServer.start()
+    
     // Connect all NDJSON clients
     const connections = Array.from(this.ndjsonClients.values()).map(client => 
       client.connect()
@@ -132,6 +151,9 @@ export class EdgeWorker extends EventEmitter {
     for (const client of this.ndjsonClients.values()) {
       client.disconnect()
     }
+    
+    // Stop shared application server
+    await this.sharedApplicationServer.stop()
   }
 
   /**
@@ -903,6 +925,28 @@ Please analyze this issue and help implement a solution.`
    */
   getActiveSessions(): string[] {
     return Array.from(this.sessionManager.getAllSessions().keys())
+  }
+
+  /**
+   * Start OAuth flow using the shared application server
+   */
+  async startOAuthFlow(proxyUrl?: string): Promise<{ linearToken: string; linearWorkspaceId: string; linearWorkspaceName: string }> {
+    const oauthProxyUrl = proxyUrl || this.config.proxyUrl
+    return this.sharedApplicationServer.startOAuthFlow(oauthProxyUrl)
+  }
+
+  /**
+   * Get the server port
+   */
+  getServerPort(): number {
+    return this.config.serverPort || this.config.webhookPort || 3456
+  }
+
+  /**
+   * Get the OAuth callback URL
+   */
+  getOAuthCallbackUrl(): string {
+    return this.sharedApplicationServer.getOAuthCallbackUrl()
   }
 
   /**
