@@ -219,6 +219,7 @@ class EdgeApp {
       webhookPort: process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : undefined,
       serverPort: process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) : 
                   process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : 3456,
+      serverHost: process.env.CYRUS_HOST_EXTERNAL === 'true' ? '0.0.0.0' : 'localhost',
       features: {
         enableContinuation: true
       },
