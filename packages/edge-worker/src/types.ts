@@ -37,7 +37,8 @@ export interface RepositoryConfig {
 export interface EdgeWorkerConfig {
   // Proxy connection config
   proxyUrl: string
-  webhookBaseUrl?: string
+  baseUrl?: string
+  webhookBaseUrl?: string  // Legacy support - use baseUrl instead
   webhookPort?: number  // Legacy support - now uses serverPort
   serverPort?: number   // Unified server port for both webhooks and OAuth callbacks (default: 3456)
   

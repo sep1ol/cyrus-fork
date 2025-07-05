@@ -97,10 +97,11 @@ claude
 # Server configuration (handles both webhooks and OAuth callbacks)
 CYRUS_SERVER_PORT=3456
 
-# Webhook configuration (required for Linear integration)
-CYRUS_WEBHOOK_BASE_URL=<your publicly accessible webhook URL>
+# Base URL configuration (required for Linear integration - handles both webhooks and OAuth)
+CYRUS_BASE_URL=<your publicly accessible URL>
 
 # Legacy environment variables (still supported for backward compatibility)
+# CYRUS_WEBHOOK_BASE_URL=<url>  # Use CYRUS_BASE_URL instead
 # CYRUS_WEBHOOK_PORT=3456  # Use CYRUS_SERVER_PORT instead
 ```
 
@@ -117,23 +118,23 @@ ngrok http 3456
 # Ctrl+B then D to detach
 
 # Set the environment variables
-export CYRUS_WEBHOOK_BASE_URL=https://abc123.ngrok-free.app
+export CYRUS_BASE_URL=https://abc123.ngrok-free.app
 export CYRUS_SERVER_PORT=3456
 ```
 
 **Option 2: Direct server with domain/IP**
 ```bash
 # If your server has a public IP or domain
-export CYRUS_WEBHOOK_BASE_URL=https://your-domain.com
+export CYRUS_BASE_URL=https://your-domain.com
 # or
-export CYRUS_WEBHOOK_BASE_URL=http://your-server-ip
+export CYRUS_BASE_URL=http://your-server-ip
 export CYRUS_SERVER_PORT=3456
 ```
 
 **Option 3: Behind reverse proxy (nginx, caddy, etc.)**
 ```bash
 # Configure your reverse proxy to forward /webhook and /callback to localhost:3456
-export CYRUS_WEBHOOK_BASE_URL=https://your-domain.com
+export CYRUS_BASE_URL=https://your-domain.com
 export CYRUS_SERVER_PORT=3456
 ```
 

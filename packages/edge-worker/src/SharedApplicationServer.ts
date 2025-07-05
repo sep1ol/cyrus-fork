@@ -117,7 +117,7 @@ export class SharedApplicationServer {
       this.oauthCallbacks.set(flowId, { resolve, reject, id: flowId })
       
       // Construct OAuth URL with callback
-      const callbackBaseUrl = process.env.CYRUS_WEBHOOK_BASE_URL || `http://localhost:${this.port}`
+      const callbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${this.port}`
       const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`
       
       console.log(`\n👉 Opening your browser to authorize with Linear...`)
@@ -266,7 +266,7 @@ export class SharedApplicationServer {
               <p>You can close this window and return to the terminal.</p>
               <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
               <p style="margin-top: 30px;">
-                <a href="${process.env.PROXY_URL}/oauth/authorize?callback=${process.env.CYRUS_WEBHOOK_BASE_URL || `http://localhost:${this.port}`}/callback" 
+                <a href="${process.env.PROXY_URL}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://localhost:${this.port}`}/callback" 
                    style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                   Connect Another Workspace
                 </a>

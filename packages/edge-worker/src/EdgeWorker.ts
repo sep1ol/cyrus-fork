@@ -95,7 +95,9 @@ export class EdgeWorker extends EventEmitter {
         webhookPort: serverPort, // All clients use same port
         webhookPath: '/webhook',
         webhookHost: 'localhost',
-        ...(config.webhookBaseUrl && { webhookBaseUrl: config.webhookBaseUrl }),
+        ...(config.baseUrl && { webhookBaseUrl: config.baseUrl }),
+        // Legacy fallback support
+        ...(!config.baseUrl && config.webhookBaseUrl && { webhookBaseUrl: config.webhookBaseUrl }),
         onConnect: () => this.handleConnect(token),
         onDisconnect: (reason) => this.handleDisconnect(token, reason),
         onError: (error) => this.handleError(error)

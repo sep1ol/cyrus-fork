@@ -253,7 +253,7 @@ class NdjsonClient extends EventEmitter {
 - **Complete SSE removal**: All flaky SSE transport code eliminated
 - **Webhook architecture**: Fully functional with HMAC-SHA256 security
 - **Transport abstraction**: `BaseTransport` and `WebhookTransport` classes implemented
-- **webhookBaseUrl support**: Added via `CYRUS_WEBHOOK_BASE_URL` environment variable
+- **baseUrl support**: Added via `CYRUS_BASE_URL` environment variable
 - **All tests passing**: 109 tests across all packages (15 new webhook tests)
 - **Build success**: All TypeScript compilation successful
 

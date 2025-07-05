@@ -189,7 +189,7 @@ class EdgeApp {
     const port = this.edgeWorker.getServerPort()
     
     // Construct OAuth URL with callback
-    const callbackBaseUrl = process.env.CYRUS_WEBHOOK_BASE_URL || `http://localhost:${port}`
+    const callbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${port}`
     const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`
     
     console.log(`\n👉 Opening your browser to authorize with Linear...`)
@@ -215,7 +215,7 @@ class EdgeApp {
       proxyUrl,
       repositories,
       defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
-      webhookBaseUrl: process.env.CYRUS_WEBHOOK_BASE_URL,
+      webhookBaseUrl: process.env.CYRUS_BASE_URL,
       webhookPort: process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : undefined,
       serverPort: process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) : 
                   process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : 3456,
@@ -460,7 +460,7 @@ class EdgeApp {
       
       // Display OAuth information after EdgeWorker is started
       const serverPort = this.edgeWorker?.getServerPort() || 3456
-      const oauthCallbackBaseUrl = process.env.CYRUS_WEBHOOK_BASE_URL || `http://localhost:${serverPort}`
+      const oauthCallbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${serverPort}`
       console.log(`\n🔐 OAuth server running on port ${serverPort}`)
       console.log(`👉 To authorize Linear (new workspace or re-auth):`)
       console.log(`   ${proxyUrl}/oauth/authorize?callback=${oauthCallbackBaseUrl}/callback`)
