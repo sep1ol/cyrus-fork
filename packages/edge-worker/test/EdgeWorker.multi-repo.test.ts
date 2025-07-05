@@ -39,8 +39,16 @@ class MockClaudeRunner {
     startedAt: new Date(), 
     isRunning: false 
   })
+  startStreaming = vi.fn().mockResolvedValue({ 
+    sessionId: 'test-session', 
+    startedAt: new Date(), 
+    isRunning: false 
+  })
   stop = vi.fn()
   isRunning = vi.fn().mockReturnValue(false)
+  isStreaming = vi.fn().mockReturnValue(false)
+  addStreamMessage = vi.fn()
+  completeStream = vi.fn()
   getSessionInfo = vi.fn().mockReturnValue(null)
   getMessages = vi.fn().mockReturnValue([])
 }

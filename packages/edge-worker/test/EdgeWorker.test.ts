@@ -108,8 +108,16 @@ describe('EdgeWorker', () => {
         startedAt: new Date(),
         isRunning: false
       }),
+      startStreaming: vi.fn().mockResolvedValue({
+        sessionId: 'test-session-123',
+        startedAt: new Date(),
+        isRunning: false
+      }),
       stop: vi.fn(),
       isRunning: vi.fn().mockReturnValue(false),
+      isStreaming: vi.fn().mockReturnValue(false),
+      addStreamMessage: vi.fn(),
+      completeStream: vi.fn(),
       getSessionInfo: vi.fn().mockReturnValue(null),
       getMessages: vi.fn().mockReturnValue([])
     }
@@ -306,8 +314,8 @@ describe('EdgeWorker', () => {
         expect.objectContaining({ id: 'test-repo' })
       )
 
-      // Should start Claude session
-      expect(mockClaudeRunner.start).toHaveBeenCalled()
+      // Should start Claude streaming session
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalled()
 
       // Should create session
       expect(mockSessionManager.addSession).toHaveBeenCalledWith(
@@ -383,8 +391,8 @@ describe('EdgeWorker', () => {
       const webhook = mockCommentWebhook({}, { body: '@cyrus please help with this' })
       await webhookHandler(webhook)
 
-      // Should start new session with comment as prompt
-      expect(mockClaudeRunner.start).toHaveBeenCalledWith('@cyrus please help with this')
+      // Should start new streaming session with comment as prompt (since no existing runner)
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('@cyrus please help with this')
     })
 
     it('should handle issue unassignment', async () => {
@@ -421,8 +429,8 @@ describe('EdgeWorker', () => {
       await webhookHandler(webhook)
 
       // When there's no existing session, it should restart from scratch (handleIssueAssigned)
-      // So start will be called with the full issue prompt, not just the comment
-      expect(mockClaudeRunner.start).toHaveBeenCalled()
+      // So startStreaming will be called with the full issue prompt, not just the comment
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalled()
     })
 
     it('should report failures on error', async () => {
@@ -540,7 +548,7 @@ describe('EdgeWorker', () => {
       })
 
       // Should restart session
-      expect(mockClaudeRunner.start).toHaveBeenCalledTimes(2)
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledTimes(2)
     })
 
     it('should handle Claude session completion', async () => {
@@ -639,8 +647,8 @@ describe('EdgeWorker', () => {
       })
       await webhookHandler(webhook)
 
-      // Should start Claude session since agent is mentioned
-      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @cyrus, can you help with this?')
+      // Should start Claude streaming session since agent is mentioned
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('Hey @cyrus, can you help with this?')
     })
 
     it('should trigger when agent is mentioned by display name', async () => {
@@ -654,8 +662,8 @@ describe('EdgeWorker', () => {
       })
       await webhookHandler(webhook)
 
-      // Should start Claude session since agent is mentioned
-      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @"Cyrus Agent", can you help with this?')
+      // Should start Claude streaming session since agent is mentioned
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('Hey @"Cyrus Agent", can you help with this?')
     })
 
     it('should trigger when agent is mentioned by user ID', async () => {
@@ -669,8 +677,8 @@ describe('EdgeWorker', () => {
       })
       await webhookHandler(webhook)
 
-      // Should start Claude session since agent is mentioned
-      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @cyrus-user-id, can you help with this?')
+      // Should start Claude streaming session since agent is mentioned
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('Hey @cyrus-user-id, can you help with this?')
     })
 
     it('should NOT trigger when only other users are mentioned', async () => {
@@ -714,8 +722,8 @@ describe('EdgeWorker', () => {
       })
       await webhookHandler(webhook)
 
-      // Should start Claude session since agent is mentioned (even with others)
-      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @john, @cyrus, and @jane, can you all help with this?')
+      // Should start Claude streaming session since agent is mentioned (even with others)
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('Hey @john, @cyrus, and @jane, can you all help with this?')
     })
 
     it('should be case-insensitive when checking mentions by name', async () => {
@@ -729,8 +737,8 @@ describe('EdgeWorker', () => {
       })
       await webhookHandler(webhook)
 
-      // Should start Claude session since agent is mentioned (case-insensitive)
-      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @CYRUS, can you help with this?')
+      // Should start Claude streaming session since agent is mentioned (case-insensitive)
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('Hey @CYRUS, can you help with this?')
     })
 
     it('should still work when viewer information is unavailable', async () => {
@@ -748,7 +756,7 @@ describe('EdgeWorker', () => {
       await webhookHandler(webhook)
 
       // Should err on the side of caution and trigger when viewer info is unavailable
-      expect(mockClaudeRunner.start).toHaveBeenCalledWith('Hey @cyrus, can you help with this?')
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('Hey @cyrus, can you help with this?')
     })
 
     it('should NOT trigger when Linear client is unavailable', async () => {

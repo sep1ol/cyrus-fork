@@ -2,8 +2,93 @@ import { EventEmitter } from 'events'
 import { mkdirSync, createWriteStream, type WriteStream, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { query, type SDKMessage, AbortError } from '@anthropic-ai/claude-code'
+import { query, type SDKMessage, type SDKUserMessage, AbortError } from '@anthropic-ai/claude-code'
 import type { ClaudeRunnerConfig, ClaudeRunnerEvents, ClaudeSessionInfo } from './types.js'
+
+/**
+ * Streaming prompt controller that implements AsyncIterable<SDKUserMessage>
+ */
+export class StreamingPrompt {
+  private messageQueue: SDKUserMessage[] = []
+  private resolvers: Array<(value: IteratorResult<SDKUserMessage>) => void> = []
+  private isComplete = false
+  private sessionId: string
+
+  constructor(sessionId: string, initialPrompt?: string) {
+    this.sessionId = sessionId
+    
+    // Add initial prompt if provided
+    if (initialPrompt) {
+      this.addMessage(initialPrompt)
+    }
+  }
+
+  /**
+   * Add a new message to the stream
+   */
+  addMessage(content: string): void {
+    if (this.isComplete) {
+      throw new Error('Cannot add message to completed stream')
+    }
+
+    const message: SDKUserMessage = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: content
+      },
+      parent_tool_use_id: null,
+      session_id: this.sessionId
+    }
+
+    this.messageQueue.push(message)
+    this.processQueue()
+  }
+
+  /**
+   * Mark the stream as complete (no more messages will be added)
+   */
+  complete(): void {
+    this.isComplete = true
+    this.processQueue()
+  }
+
+  /**
+   * Process pending resolvers with queued messages
+   */
+  private processQueue(): void {
+    while (this.resolvers.length > 0 && (this.messageQueue.length > 0 || this.isComplete)) {
+      const resolver = this.resolvers.shift()!
+      
+      if (this.messageQueue.length > 0) {
+        const message = this.messageQueue.shift()!
+        resolver({ value: message, done: false })
+      } else if (this.isComplete) {
+        resolver({ value: undefined, done: true })
+      }
+    }
+  }
+
+  /**
+   * AsyncIterable implementation
+   */
+  [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+    return {
+      next: (): Promise<IteratorResult<SDKUserMessage>> => {
+        return new Promise((resolve) => {
+          if (this.messageQueue.length > 0) {
+            const message = this.messageQueue.shift()!
+            resolve({ value: message, done: false })
+          } else if (this.isComplete) {
+            resolve({ value: undefined, done: true })
+          } else {
+            this.resolvers.push(resolve)
+          }
+        })
+      }
+    }
+  }
+}
 
 export declare interface ClaudeRunner {
   on<K extends keyof ClaudeRunnerEvents>(event: K, listener: ClaudeRunnerEvents[K]): this
@@ -19,6 +104,7 @@ export class ClaudeRunner extends EventEmitter {
   private sessionInfo: ClaudeSessionInfo | null = null
   private logStream: WriteStream | null = null
   private messages: SDKMessage[] = []
+  private streamingPrompt: StreamingPrompt | null = null
 
   constructor(config: ClaudeRunnerConfig) {
     super()
@@ -31,9 +117,42 @@ export class ClaudeRunner extends EventEmitter {
   }
 
   /**
-   * Start a new Claude session
+   * Start a new Claude session with string prompt (legacy mode)
    */
   async start(prompt: string): Promise<ClaudeSessionInfo> {
+    return this.startWithPrompt(prompt)
+  }
+
+  /**
+   * Start a new Claude session with streaming input
+   */
+  async startStreaming(initialPrompt?: string): Promise<ClaudeSessionInfo> {
+    return this.startWithPrompt(null, initialPrompt)
+  }
+
+  /**
+   * Add a message to the streaming prompt (only works when in streaming mode)
+   */
+  addStreamMessage(content: string): void {
+    if (!this.streamingPrompt) {
+      throw new Error('Cannot add stream message when not in streaming mode')
+    }
+    this.streamingPrompt.addMessage(content)
+  }
+
+  /**
+   * Complete the streaming prompt (no more messages will be added)
+   */
+  completeStream(): void {
+    if (this.streamingPrompt) {
+      this.streamingPrompt.complete()
+    }
+  }
+
+  /**
+   * Internal method to start a Claude session with either string or streaming prompt
+   */
+  private async startWithPrompt(stringPrompt?: string | null, streamingInitialPrompt?: string): Promise<ClaudeSessionInfo> {
     if (this.isRunning()) {
       throw new Error('Claude session already running')
     }
@@ -69,8 +188,19 @@ export class ClaudeRunner extends EventEmitter {
     this.messages = []
 
     try {
-      // Start the query
-      console.log(`[ClaudeRunner] Starting query with prompt length: ${prompt.length} characters`)
+      // Determine prompt mode and setup
+      let promptForQuery: string | AsyncIterable<SDKUserMessage>
+      
+      if (stringPrompt !== null && stringPrompt !== undefined) {
+        // String mode
+        console.log(`[ClaudeRunner] Starting query with string prompt length: ${stringPrompt.length} characters`)
+        promptForQuery = stringPrompt
+      } else {
+        // Streaming mode
+        console.log(`[ClaudeRunner] Starting query with streaming prompt`)
+        this.streamingPrompt = new StreamingPrompt(sessionId, streamingInitialPrompt)
+        promptForQuery = this.streamingPrompt
+      }
       
       // Process allowed directories by adding Read patterns to allowedTools
       let processedAllowedTools = this.config.allowedTools ? [...this.config.allowedTools] : undefined
@@ -98,7 +228,7 @@ export class ClaudeRunner extends EventEmitter {
       }
 
       const queryOptions: Parameters<typeof query>[0] = {
-        prompt,
+        prompt: promptForQuery,
         abortController: this.abortController,
         options: {
           ...(this.config.workingDirectory && { cwd: this.config.workingDirectory }),
@@ -179,6 +309,12 @@ export class ClaudeRunner extends EventEmitter {
       this.abortController = null
     }
     
+    // Complete streaming prompt if in streaming mode
+    if (this.streamingPrompt) {
+      this.streamingPrompt.complete()
+      this.streamingPrompt = null
+    }
+    
     if (this.sessionInfo) {
       this.sessionInfo.isRunning = false
     }
@@ -189,6 +325,13 @@ export class ClaudeRunner extends EventEmitter {
    */
   isRunning(): boolean {
     return this.sessionInfo?.isRunning ?? false
+  }
+
+  /**
+   * Check if session is in streaming mode
+   */
+  isStreaming(): boolean {
+    return this.streamingPrompt !== null
   }
 
   /**
