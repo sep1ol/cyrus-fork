@@ -505,7 +505,7 @@ export class EdgeWorker extends EventEmitter {
         existingRunner.addStreamMessage(comment.body || '')
         return // Exit early - comment has been added to stream
       } catch (error) {
-        console.error(`[EdgeWorker] Failed to add comment to stream, will restart: ${error}`)
+        console.error(`[EdgeWorker] Failed to add comment to stream, will stop the existing session and start a new one: ${error}`)
         // Fall through to restart logic below
       }
     }
