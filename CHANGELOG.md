@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING**: Consolidated `CYRUS_OAUTH_CALLBACK_BASE_URL` and `CYRUS_WEBHOOK_BASE_URL` into single `CYRUS_WEBHOOK_BASE_URL` environment variable
+  - **Action Required**: Remove `CYRUS_OAUTH_CALLBACK_BASE_URL` from environment configuration
+  - **Action Required**: Use `CYRUS_WEBHOOK_BASE_URL` for both webhook and OAuth callback URLs since they run on the same server
+  - OAuth callbacks now use the same base URL as webhooks (both run on shared application server)
+
 ## [0.1.19] - 2025-01-04
 
 ### CLI

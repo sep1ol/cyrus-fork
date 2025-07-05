@@ -94,7 +94,6 @@ claude
 7. Configure an environment variable file to specify your domain and webhook settings
 
 ```bash
-CYRUS_OAUTH_CALLBACK_BASE_URL=<your domain here>
 # Server configuration (handles both webhooks and OAuth callbacks)
 CYRUS_SERVER_PORT=3456
 
@@ -103,7 +102,6 @@ CYRUS_WEBHOOK_BASE_URL=<your publicly accessible webhook URL>
 
 # Legacy environment variables (still supported for backward compatibility)
 # CYRUS_WEBHOOK_PORT=3456  # Use CYRUS_SERVER_PORT instead
-# CYRUS_OAUTH_CALLBACK_PORT=3457  # No longer used - OAuth runs on same port as webhooks
 ```
 
 ### Webhook Configuration Options
