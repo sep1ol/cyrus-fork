@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.21] - 2025-07-05
+
+### CLI
+- cyrus-ai@0.1.21
+
 ### Added
 - Added `CYRUS_HOST_EXTERNAL` environment variable to enable external server access ([#78](https://github.com/ceedaragents/cyrus/pull/78))
   - Set to `true` to listen on `0.0.0.0` (all interfaces) instead of `localhost`
@@ -15,6 +20,11 @@ All notable changes to this project will be documented in this file.
   - **Action Required**: Update environment configuration to use `CYRUS_BASE_URL` instead of `CYRUS_WEBHOOK_BASE_URL`
   - **Legacy Support**: `CYRUS_WEBHOOK_BASE_URL` is still supported for backward compatibility but deprecated
   - The variable serves both webhook and OAuth callback purposes since they run on the same server
+
+### Packages
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.9
 
 ## [0.1.19] - 2025-01-04
 
