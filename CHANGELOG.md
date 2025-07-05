@@ -5,9 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Improved
-- New comments on Linear issues now feed into existing Claude sessions instead of killing and restarting the session ([#77](https://github.com/ceedaragents/cyrus/pull/77))
-  - Better conversation continuity when users add follow-up comments
-  - Faster response times since sessions don't need to restart
+- New comments on Linear issues queue up when Cyrus is already busy working, so that you can send multiple in a row ([#77](https://github.com/ceedaragents/cyrus/pull/77)) (now feed into existing Claude sessions instead of killing and restarting the session
 
 ## [0.1.21] - 2025-07-05
 
