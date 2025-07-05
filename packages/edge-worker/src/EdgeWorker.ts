@@ -1501,6 +1501,9 @@ Please analyze this issue and help implement a solution.`
     // Start with configured tools or defaults
     const baseTools = repository.allowedTools || this.config.defaultAllowedTools || getSafeTools()
     
+    // Ensure baseTools is an array
+    const baseToolsArray = Array.isArray(baseTools) ? baseTools : []
+    
     // Linear MCP tools that should always be available
     const linearMcpTools = [
       "mcp__linear__linear_getViewer",
@@ -1538,7 +1541,7 @@ Please analyze this issue and help implement a solution.`
     ]
     
     // Combine and deduplicate
-    const allTools = [...new Set([...baseTools, ...linearMcpTools])]
+    const allTools = [...new Set([...baseToolsArray, ...linearMcpTools])]
     
     return allTools
   }
