@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.22] - 2025-01-06
+
+### CLI
+- cyrus-ai@0.1.22
+
 ### Added
 - Automatic Linear MCP (Model Context Protocol) server integration
   - Claude can now use Linear API tools directly within sessions
@@ -24,7 +29,15 @@ All notable changes to this project will be documented in this file.
 ### Improved
 - New comments on Linear issues queue up when Cyrus is already busy working, so that you can send multiple in a row ([#77](https://github.com/ceedaragents/cyrus/pull/77)) (now feed into existing Claude sessions instead of killing and restarting the session
 
-## [0.1.21] - 2025-07-05
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.8
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.10
+
+## [0.1.21] - 2025-01-05
 
 ### CLI
 - cyrus-ai@0.1.21

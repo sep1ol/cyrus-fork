@@ -209,19 +209,44 @@ This integration is automatically available in all Cyrus sessions - the EdgeWork
 
 **Important: Always publish packages in the correct order to ensure proper dependency resolution.**
 
-### Publishing Workflow
+### Pre-Publishing Checklist
 
-1. **Publish underlying packages first** (if they've changed):
+1. **Update CHANGELOG.md**: 
+   - Move items from `## [Unreleased]` to a new versioned section
+   - Use the CLI version number (e.g., `## [0.1.22] - 2025-01-06`)
+   - Focus on end-user impact from the perspective of the `cyrus` CLI
+
+2. **Commit all changes**:
    ```bash
-   cd packages/core && pnpm publish --access public
-   cd ../claude-runner && pnpm publish --access public  
-   cd ../edge-worker && pnpm publish --access public
-   cd ../ndjson-client && pnpm publish --access public
+   git add -A
+   git commit -m "Prepare release v0.1.XX"
+   git push
    ```
 
-2. **Then publish the CLI** to pick up latest package versions:
+### Publishing Workflow
+
+1. **Install dependencies from root**:
    ```bash
-   cd apps/cli && pnpm publish --access public
+   pnpm install  # Ensures all workspace dependencies are up to date
+   ```
+
+2. **Build and publish underlying packages first** (if they've changed):
+   ```bash
+   cd packages/core && pnpm install && pnpm build && pnpm publish --access public
+   cd ../claude-runner && pnpm install && pnpm build && pnpm publish --access public  
+   cd ../edge-worker && pnpm install && pnpm build && pnpm publish --access public
+   cd ../ndjson-client && pnpm install && pnpm build && pnpm publish --access public
+   ```
+
+3. **Install again from root to update lockfile**:
+   ```bash
+   cd ../.. # Back to root
+   pnpm install  # Updates lockfile with published package versions
+   ```
+
+4. **Finally publish the CLI**:
+   ```bash
+   cd apps/cli && pnpm install && pnpm build && pnpm publish --access public
    ```
 
 This ensures that when pnpm resolves `workspace:*` references during CLI publishing, it uses the latest published package versions rather than outdated ones.
