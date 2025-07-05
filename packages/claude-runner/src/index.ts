@@ -12,5 +12,6 @@ export type {
   ClaudeRunnerConfig,
   ClaudeSessionInfo,
   ClaudeRunnerEvents,
-  SDKMessage
+  SDKMessage,
+  McpServerConfig
 } from './types.js'

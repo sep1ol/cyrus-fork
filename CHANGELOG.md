@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Automatic Linear MCP (Model Context Protocol) server integration
+  - Claude can now use Linear API tools directly within sessions
+  - Automatically configures `@tacticlaunch/mcp-linear` server with repository's Linear token
+  - Adds 30+ Linear MCP tools for issue management, comments, projects, and more
+  - No additional configuration needed - works out of the box with existing Linear tokens
+
+### Changed
+- ClaudeRunner now supports array of MCP config paths for composable configurations
+- ClaudeRunner supports inline MCP server configurations alongside file-based configs
+- MCP configurations from files and inline sources are merged together
+
 ### Improved
 - New comments on Linear issues queue up when Cyrus is already busy working, so that you can send multiple in a row ([#77](https://github.com/ceedaragents/cyrus/pull/77)) (now feed into existing Claude sessions instead of killing and restarting the session
 

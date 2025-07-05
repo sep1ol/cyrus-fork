@@ -225,6 +225,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.17.58
+      dotenv:
+        specifier: ^16.5.0
+        version: 16.5.0
       typescript:
         specifier: ^5.3.3
         version: 5.8.3
