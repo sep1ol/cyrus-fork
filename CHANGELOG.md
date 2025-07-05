@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed webhook signature verification failures after restarting cyrus by extending edge worker registration TTL from 1 hour to 90 days
+  - Resolves "Webhook signature verification failed for all registered handlers" error that occurred when cyrus was stopped and restarted
+  - Edge worker registrations in the proxy now persist for 90 days instead of expiring after 1 hour
+
 ### Improved
 - New comments on Linear issues queue up when Cyrus is already busy working, so that you can send multiple in a row ([#77](https://github.com/ceedaragents/cyrus/pull/77)) (now feed into existing Claude sessions instead of killing and restarting the session
 
