@@ -247,7 +247,6 @@ export class ClaudeRunner extends EventEmitter {
         }
 
         this.messages.push(message)
-        console.log(`[ClaudeRunner] Received message: ${message.type}`)
         
         // Log the message
         if (this.logStream) {
