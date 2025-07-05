@@ -30,10 +30,12 @@ export class SharedApplicationServer {
   private oauthCallbacks = new Map<string, OAuthCallback>()
   private oauthCallbackHandler: OAuthCallbackHandler | null = null
   private port: number
+  private host: string
   private isListening = false
 
-  constructor(port: number = 3456) {
+  constructor(port: number = 3456, host: string = 'localhost') {
     this.port = port
+    this.host = host
   }
 
   /**
@@ -49,9 +51,9 @@ export class SharedApplicationServer {
         this.handleRequest(req, res)
       })
 
-      this.server.listen(this.port, 'localhost', () => {
+      this.server.listen(this.port, this.host, () => {
         this.isListening = true
-        console.log(`🔗 Shared application server listening on http://localhost:${this.port}`)
+        console.log(`🔗 Shared application server listening on http://${this.host}:${this.port}`)
         resolve()
       })
 
@@ -137,14 +139,14 @@ export class SharedApplicationServer {
    * Get the webhook URL for registration with proxy
    */
   getWebhookUrl(): string {
-    return `http://localhost:${this.port}/webhook`
+    return `http://${this.host}:${this.port}/webhook`
   }
 
   /**
    * Get the OAuth callback URL for registration with proxy
    */
   getOAuthCallbackUrl(): string {
-    return `http://localhost:${this.port}/callback`
+    return `http://${this.host}:${this.port}/callback`
   }
 
   /**
@@ -152,7 +154,7 @@ export class SharedApplicationServer {
    */
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
-      const url = new URL(req.url!, `http://localhost:${this.port}`)
+      const url = new URL(req.url!, `http://${this.host}:${this.port}`)
       
       if (url.pathname === '/webhook') {
         await this.handleWebhookRequest(req, res)
@@ -266,7 +268,7 @@ export class SharedApplicationServer {
               <p>You can close this window and return to the terminal.</p>
               <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
               <p style="margin-top: 30px;">
-                <a href="${process.env.PROXY_URL}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://localhost:${this.port}`}/callback" 
+                <a href="${process.env.PROXY_URL}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback" 
                    style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                   Connect Another Workspace
                 </a>

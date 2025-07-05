@@ -56,7 +56,8 @@ export class EdgeWorker extends EventEmitter {
 
     // Initialize shared application server
     const serverPort = config.serverPort || config.webhookPort || 3456
-    this.sharedApplicationServer = new SharedApplicationServer(serverPort)
+    const serverHost = config.serverHost || 'localhost'
+    this.sharedApplicationServer = new SharedApplicationServer(serverPort, serverHost)
     
     // Register OAuth callback handler if provided
     if (config.handlers?.onOAuthCallback) {
@@ -94,7 +95,7 @@ export class EdgeWorker extends EventEmitter {
         externalWebhookServer: this.sharedApplicationServer,
         webhookPort: serverPort, // All clients use same port
         webhookPath: '/webhook',
-        webhookHost: 'localhost',
+        webhookHost: serverHost,
         ...(config.baseUrl && { webhookBaseUrl: config.baseUrl }),
         // Legacy fallback support
         ...(!config.baseUrl && config.webhookBaseUrl && { webhookBaseUrl: config.webhookBaseUrl }),

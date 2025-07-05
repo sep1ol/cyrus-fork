@@ -11,10 +11,12 @@ export class SharedWebhookServer {
     handler: (body: string, signature: string, timestamp?: string) => boolean
   }>()
   private port: number
+  private host: string
   private isListening = false
 
-  constructor(port: number = 3456) {
+  constructor(port: number = 3456, host: string = 'localhost') {
     this.port = port
+    this.host = host
   }
 
   /**
@@ -30,9 +32,9 @@ export class SharedWebhookServer {
         this.handleWebhookRequest(req, res)
       })
 
-      this.server.listen(this.port, 'localhost', () => {
+      this.server.listen(this.port, this.host, () => {
         this.isListening = true
-        console.log(`🔗 Shared webhook server listening on http://localhost:${this.port}`)
+        console.log(`🔗 Shared webhook server listening on http://${this.host}:${this.port}`)
         resolve()
       })
 
@@ -82,7 +84,7 @@ export class SharedWebhookServer {
    * Get the webhook URL for registration with proxy
    */
   getWebhookUrl(): string {
-    return `http://localhost:${this.port}/webhook`
+    return `http://${this.host}:${this.port}/webhook`
   }
 
   /**
