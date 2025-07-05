@@ -492,7 +492,7 @@ export class EdgeWorker extends EventEmitter {
     const existingRunner = this.claudeRunners.get(issue.id)
     if (existingRunner && existingRunner.isStreaming()) {
       // Post immediate reply for streaming case
-      const immediateReply = await this.postComment(
+      await this.postComment(
         issue.id,
         "I've queued up your message to address it right after I resolve my current focus.",
         repository.id,
