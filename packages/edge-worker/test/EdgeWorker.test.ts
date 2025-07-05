@@ -4,6 +4,7 @@ import { LinearClient } from '@linear/sdk'
 import { NdjsonClient } from 'cyrus-ndjson-client'
 import { ClaudeRunner } from 'cyrus-claude-runner'
 import { SessionManager, Session } from 'cyrus-core'
+import { SharedApplicationServer } from '../src/SharedApplicationServer'
 import type { EdgeWorkerConfig } from '../src/types'
 import { 
   mockIssueAssignedWebhook, 
@@ -18,6 +19,7 @@ import {
 vi.mock('@linear/sdk')
 vi.mock('cyrus-ndjson-client')
 vi.mock('cyrus-claude-runner')
+vi.mock('../src/SharedApplicationServer')
 vi.mock('cyrus-core', async (importOriginal) => {
   const actual = await importOriginal()
   return {
@@ -40,6 +42,7 @@ describe('EdgeWorker', () => {
   let mockNdjsonClient: any
   let mockClaudeRunner: any
   let mockSessionManager: any
+  let mockSharedApplicationServer: any
 
   beforeEach(() => {
     // Clear DEBUG_EDGE to ensure predictable behavior
@@ -129,6 +132,21 @@ describe('EdgeWorker', () => {
     }
     vi.mocked(SessionManager).mockImplementation(() => mockSessionManager)
 
+    // Setup mock shared application server
+    mockSharedApplicationServer = {
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
+      registerWebhookHandler: vi.fn(),
+      unregisterWebhookHandler: vi.fn(),
+      registerOAuthCallbackHandler: vi.fn(),
+      startOAuthFlow: vi.fn(),
+      getWebhookUrl: vi.fn().mockReturnValue('http://localhost:3456/webhook'),
+      getOAuthCallbackUrl: vi.fn().mockReturnValue('http://localhost:3456/callback'),
+      isListening: false,
+      port: 3456
+    }
+    vi.mocked(SharedApplicationServer).mockImplementation(() => mockSharedApplicationServer)
+
     // Create EdgeWorker instance
     edgeWorker = new EdgeWorker(mockConfig)
 
@@ -159,6 +177,8 @@ describe('EdgeWorker', () => {
         proxyUrl: mockConfig.proxyUrl,
         token: 'test-linear-oauth-token',
         transport: 'webhook',
+        useExternalWebhookServer: true,
+        externalWebhookServer: expect.any(Object),
         webhookPort: expect.any(Number),
         webhookPath: '/webhook',
         webhookHost: 'localhost',
@@ -203,8 +223,9 @@ describe('EdgeWorker', () => {
   })
 
   describe('start/stop', () => {
-    it('should connect to NDJSON client on start', async () => {
+    it('should start shared application server and connect to NDJSON client on start', async () => {
       await edgeWorker.start()
+      expect(mockSharedApplicationServer.start).toHaveBeenCalled()
       expect(mockNdjsonClient.connect).toHaveBeenCalled()
     })
 
@@ -252,7 +273,7 @@ describe('EdgeWorker', () => {
       expect(edgeWorker['claudeRunners'].size).toBe(0)
     })
 
-    it('should clear sessions and disconnect on stop', async () => {
+    it('should clear sessions, disconnect clients and stop shared application server', async () => {
       mockSessionManager.getAllSessions.mockReturnValue(new Map([
         ['issue-1', {}],
         ['issue-2', {}]
@@ -263,6 +284,7 @@ describe('EdgeWorker', () => {
       expect(mockSessionManager.removeSession).toHaveBeenCalledWith('issue-1')
       expect(mockSessionManager.removeSession).toHaveBeenCalledWith('issue-2')
       expect(mockNdjsonClient.disconnect).toHaveBeenCalled()
+      expect(mockSharedApplicationServer.stop).toHaveBeenCalled()
     })
   })
 
