@@ -450,24 +450,6 @@ export class EdgeWorker extends EventEmitter {
     })
     console.log(`Stored reply context for issue ${issue.id}: commentId=${comment.id}, replyParentId=${replyParentId}`)
     
-    // Post immediate reply that will be updated with TODOs
-    try {
-      const immediateReply = await this.postComment(
-        issue.id,
-        "I'm getting started on that right away. I'll update this comment with my plan as I work through it.",
-        repository.id,
-        replyParentId
-      )
-      
-      if (immediateReply?.id) {
-        // Store this as the comment to update with TODOs
-        this.issueToCommentId.set(issue.id, immediateReply.id)
-        console.log(`Posted immediate reply with ID: ${immediateReply.id}`)
-      }
-    } catch (error) {
-      console.error('Failed to post immediate reply:', error)
-    }
-
     let session = this.sessionManager.getSession(issue.id)
     
     // If no session exists, we need to create one
@@ -509,6 +491,14 @@ export class EdgeWorker extends EventEmitter {
     // Check if there's an existing runner and if it supports streaming
     const existingRunner = this.claudeRunners.get(issue.id)
     if (existingRunner && existingRunner.isStreaming()) {
+      // Post immediate reply for streaming case
+      const immediateReply = await this.postComment(
+        issue.id,
+        "I've queued up your message to address it right after I complete my current task.",
+        repository.id,
+        replyParentId
+      )
+      
       // Add comment to existing stream instead of restarting
       console.log(`[EdgeWorker] Adding comment to existing stream for issue ${issue.identifier}`)
       try {
@@ -518,6 +508,20 @@ export class EdgeWorker extends EventEmitter {
         console.error(`[EdgeWorker] Failed to add comment to stream, will restart: ${error}`)
         // Fall through to restart logic below
       }
+    }
+
+    // Post immediate reply for new session case
+    const immediateReply = await this.postComment(
+      issue.id,
+      "I'm getting started on that right away. I'll update this comment with my plan as I work through it.",
+      repository.id,
+      replyParentId
+    )
+    
+    if (immediateReply?.id) {
+      // Store this as the comment to update with TODOs
+      this.issueToCommentId.set(issue.id, immediateReply.id)
+      console.log(`Posted immediate reply with ID: ${immediateReply.id}`)
     }
 
     // Stop existing runner if it's not streaming or stream addition failed
