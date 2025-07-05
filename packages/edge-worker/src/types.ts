@@ -1,6 +1,7 @@
 import type { Workspace } from 'cyrus-core'
 import type { Issue as LinearIssue } from '@linear/sdk'
 import type { SDKMessage } from 'cyrus-claude-runner'
+import type { OAuthCallbackHandler } from './SharedApplicationServer.js'
 
 
 /**
@@ -37,6 +38,8 @@ export interface EdgeWorkerConfig {
   // Proxy connection config
   proxyUrl: string
   webhookBaseUrl?: string
+  webhookPort?: number  // Legacy support - now uses serverPort
+  serverPort?: number   // Unified server port for both webhooks and OAuth callbacks (default: 3456)
   
   // Claude config (shared across all repos)
   defaultAllowedTools?: string[]
@@ -61,6 +64,9 @@ export interface EdgeWorkerConfig {
     
     // Called on errors
     onError?: (error: Error, context?: any) => void
+    
+    // Called when OAuth callback is received
+    onOAuthCallback?: OAuthCallbackHandler
   }
   
   // Optional features (can be overridden per repository)

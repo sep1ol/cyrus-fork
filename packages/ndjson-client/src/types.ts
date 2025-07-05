@@ -63,6 +63,9 @@ export interface NdjsonClientConfig {
   maxReconnectAttempts?: number
   reconnectBaseDelay?: number
   reconnectOnStreamEnd?: boolean
+  // External webhook server support
+  externalWebhookServer?: any  // External server instance (like Express app or HTTP server)
+  useExternalWebhookServer?: boolean  // Whether to use external server instead of creating own
   onEvent?: (event: EdgeEvent) => void
   onConnect?: () => void
   onDisconnect?: (reason?: string) => void
