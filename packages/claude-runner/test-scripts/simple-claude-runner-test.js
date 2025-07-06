@@ -48,6 +48,7 @@ async function main() {
       "Batch",
       "Bash",
       // MCP tools from @tacticlaunch/mcp-linear server
+      // See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
       "mcp__linear"
       
       // Old tools from the official Linear MCP server (SSE based)

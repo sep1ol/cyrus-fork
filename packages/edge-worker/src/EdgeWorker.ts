@@ -1576,6 +1576,7 @@ Please analyze this issue and help implement a solution.`
     const baseToolsArray = Array.isArray(baseTools) ? baseTools : []
     
     // Linear MCP tools that should always be available
+    // See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
     const linearMcpTools = [
       "mcp__linear"
     ]
