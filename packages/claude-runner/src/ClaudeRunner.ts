@@ -348,10 +348,10 @@ export class ClaudeRunner extends EventEmitter {
   }
 
   /**
-   * Check if session is in streaming mode
+   * Check if session is in streaming mode and still running
    */
   isStreaming(): boolean {
-    return this.streamingPrompt !== null
+    return this.streamingPrompt !== null && this.isRunning()
   }
 
   /**

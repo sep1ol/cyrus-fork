@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.25] - 2025-01-06
+
+### CLI
+- cyrus-ai@0.1.25
+
+### Fixed
+- Fixed streaming session detection to prevent "I've queued up your message..." when sessions have completed
+- Improved isStreaming() method to check both streaming state and session running status
+
 ## [0.1.24] - 2025-01-06
 
 ### CLI
