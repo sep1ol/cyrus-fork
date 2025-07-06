@@ -18,7 +18,7 @@ const envFileArg = args.find(arg => arg.startsWith('--env-file='))
 
 // Handle --version argument
 if (args.includes('--version')) {
-  console.log('0.1.26')
+  console.log('0.1.27')
   process.exit(0)
 }
 

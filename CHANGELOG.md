@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.27] - 2025-01-06
+
+### CLI
+- cyrus-ai@0.1.27
+
+### Changed
+- Updated to use edge-worker 0.0.12 with fixed claude-runner dependency
+
 ## [0.1.26] - 2025-01-06
 
 ### CLI
