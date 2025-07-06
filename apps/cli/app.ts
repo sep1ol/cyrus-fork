@@ -15,8 +15,7 @@ import { homedir } from 'os'
 const args = process.argv.slice(2)
 const envFileArg = args.find(arg => arg.startsWith('--env-file='))
 
-// Get __dirname for ES modules
-const __dirname = dirname(fileURLToPath(import.meta.url))
+// Note: __dirname removed since version is now hardcoded
 
 // Handle --version argument
 if (args.includes('--version')) {
