@@ -4,10 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.23] - 2025-01-06
+
+### CLI
+- cyrus-ai@0.1.23
+
 ### Fixed
 - Fixed streaming input sessions not properly cleaning up after completion
   - Resolves issue where "I've queued up your message..." appeared even after sessions had resolved
   - Properly closes input streams when Claude sessions complete naturally
+
+### Added
+- Added `cyrus check-tokens` command to validate all Linear OAuth tokens across repositories
+- Added `cyrus refresh-token` command with OAuth flow integration to renew expired tokens
+- Improved error handling for expired Linear tokens with graceful degradation
+  - Shows clear error messages with suggested resolution steps
+  - Continues running with valid repositories when some tokens are expired
 
 ### Changed
 - Configuration file location moved from `.edge-config.json` in current directory to `~/.cyrus/config.json`
