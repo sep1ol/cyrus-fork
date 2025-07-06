@@ -176,6 +176,7 @@ describe('EdgeWorker', () => {
       expect(vi.mocked(NdjsonClient)).toHaveBeenCalledWith({
         proxyUrl: mockConfig.proxyUrl,
         token: 'test-linear-oauth-token',
+        name: 'Test Repository',
         transport: 'webhook',
         useExternalWebhookServer: true,
         externalWebhookServer: expect.any(Object),
@@ -796,7 +797,7 @@ describe('EdgeWorker', () => {
     it('should return connection status', () => {
       const statusBefore = edgeWorker.getConnectionStatus()
       expect(statusBefore.size).toBe(1)
-      expect(statusBefore.get('test-linear-oauth-token')).toBe(true) // Mock returns true by default
+      expect(statusBefore.get('test-repo')).toBe(true) // Mock returns true by default
 
       // Test that we can check connection status
       const onConnect = vi.mocked(NdjsonClient).mock.calls[0][0].onConnect
@@ -804,7 +805,7 @@ describe('EdgeWorker', () => {
 
       const statusAfter = edgeWorker.getConnectionStatus()
       expect(statusAfter.size).toBe(1)
-      expect(statusAfter.get('test-linear-oauth-token')).toBe(true)
+      expect(statusAfter.get('test-repo')).toBe(true)
     })
 
     it('should return active sessions', () => {

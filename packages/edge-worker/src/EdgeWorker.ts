@@ -995,12 +995,12 @@ Please analyze this issue and help implement a solution.`
   }
 
   /**
-   * Get connection status
+   * Get connection status by repository ID
    */
   getConnectionStatus(): Map<string, boolean> {
     const status = new Map<string, boolean>()
-    for (const [token, client] of this.ndjsonClients) {
-      status.set(token, client.isConnected())
+    for (const [repoId, client] of this.ndjsonClients) {
+      status.set(repoId, client.isConnected())
     }
     return status
   }
@@ -1010,6 +1010,20 @@ Please analyze this issue and help implement a solution.`
    */
   getActiveSessions(): string[] {
     return Array.from(this.sessionManager.getAllSessions().keys())
+  }
+
+  /**
+   * Get NDJSON client by token (for testing purposes)
+   * @internal
+   */
+  _getClientByToken(token: string): any {
+    for (const [repoId, client] of this.ndjsonClients) {
+      const repo = this.repositories.get(repoId)
+      if (repo?.linearToken === token) {
+        return client
+      }
+    }
+    return undefined
   }
 
   /**
