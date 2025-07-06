@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.28] - 2025-01-06
+
+### CLI
+- cyrus-ai@0.1.28
+
+### Fixed
+- Fixed critical streaming hang where sessions would never complete
+  - Auto-completes streaming prompt when Claude sends result message
+  - Prevents infinite wait in for-await loop
+
 ## [0.1.27] - 2025-01-06
 
 ### CLI

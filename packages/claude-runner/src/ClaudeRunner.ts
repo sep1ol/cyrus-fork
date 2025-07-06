@@ -277,6 +277,12 @@ export class ClaudeRunner extends EventEmitter {
         // Emit appropriate events based on message type
         this.emit('message', message)
         this.processMessage(message)
+        
+        // If we get a result message while streaming, complete the stream
+        if (message.type === 'result' && this.streamingPrompt) {
+          console.log('[ClaudeRunner] Got result message, completing streaming prompt')
+          this.streamingPrompt.complete()
+        }
       }
 
       // Session completed successfully
