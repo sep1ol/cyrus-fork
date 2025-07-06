@@ -45,8 +45,8 @@ pnpm build
 # Run tests across all packages
 pnpm test
 
-# Run tests only in packages directory
-pnpm test:packages
+# Run tests only in packages directory (recommended)
+pnpm test:packages:run
 
 # Run TypeScript type checking
 pnpm typecheck
