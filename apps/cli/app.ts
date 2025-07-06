@@ -20,12 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 // Handle --version argument
 if (args.includes('--version')) {
-  try {
-    const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
-    console.log(pkg.version)
-  } catch {
-    console.log('0.1.8') // fallback version
-  }
+  console.log('0.1.24')
   process.exit(0)
 }
 

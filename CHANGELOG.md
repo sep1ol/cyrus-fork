@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.24] - 2025-01-06
+
+### CLI
+- cyrus-ai@0.1.24
+
+### Fixed
+- Fixed version command showing incorrect version number
+
 ## [0.1.23] - 2025-01-06
 
 ### CLI
