@@ -4,7 +4,7 @@ import { EdgeWorker, type EdgeWorkerConfig, type RepositoryConfig } from 'cyrus-
 import type { Issue } from '@linear/sdk'
 import dotenv from 'dotenv'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'fs'
-import { resolve, basename } from 'path'
+import { resolve, dirname, basename } from 'path'
 import open from 'open'
 import readline from 'readline'
 import http from 'http'
