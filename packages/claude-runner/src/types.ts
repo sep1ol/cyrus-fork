@@ -7,6 +7,7 @@ export interface ClaudeRunnerConfig {
   continueSession?: boolean
   workspaceName?: string
   systemPrompt?: string
+  appendSystemPrompt?: string  // Additional prompt to append to the default system prompt
   mcpConfigPath?: string | string[]  // Single path or array of paths to compose
   mcpConfig?: Record<string, McpServerConfig>  // Additional/override MCP servers
   onMessage?: (message: SDKMessage) => void

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.26] - 2025-01-06
+
+### CLI
+- cyrus-ai@0.1.26
+
+### Fixed
+- Fixed critical streaming hang issue where Claude Code would block waiting for messages
+  - Corrected `abortController` placement in query options (was at wrong nesting level)
+  - Fixed system prompt parameter name (now uses `customSystemPrompt` as expected by Claude Code)
+
+### Added
+- Added `appendSystemPrompt` option to ClaudeRunner config for extending default system prompt
+
 ## [0.1.25] - 2025-01-06
 
 ### CLI

@@ -244,10 +244,11 @@ export class ClaudeRunner extends EventEmitter {
 
       const queryOptions: Parameters<typeof query>[0] = {
         prompt: promptForQuery,
-        abortController: this.abortController,
         options: {
+          abortController: this.abortController,
           ...(this.config.workingDirectory && { cwd: this.config.workingDirectory }),
-          ...(this.config.systemPrompt && { systemPrompt: this.config.systemPrompt }),
+          ...(this.config.systemPrompt && { customSystemPrompt: this.config.systemPrompt }),
+          ...(this.config.appendSystemPrompt && { appendSystemPrompt: this.config.appendSystemPrompt }),
           ...(processedAllowedTools && { allowedTools: processedAllowedTools }),
           ...(this.config.continueSession && { continue: this.config.continueSession }),
           ...(Object.keys(mcpServers).length > 0 && { mcpServers })
