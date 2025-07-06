@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Configuration file location moved from `.edge-config.json` in current directory to `~/.cyrus/config.json`
+  - Automatically migrates existing `.edge-config.json` files to the new location
+  - Uses standard user configuration directory for better cross-platform compatibility
+  - Reports migration status when detected
+- Default workspace directory changed from `{repository}/workspaces` to `~/.cyrus/workspaces/{repo-name}`
+  - Centralizes all cyrus-related files in the user's home directory
+  - Uses sanitized repository names as namespace folders
+  - Existing configurations remain unchanged
+
 ## [0.1.22] - 2025-01-06
 
 ### CLI
