@@ -554,6 +554,34 @@ class EdgeApp {
       process.on('SIGINT', () => this.shutdown())
       process.on('SIGTERM', () => this.shutdown())
       
+      // Handle uncaught exceptions and unhandled promise rejections
+      process.on('uncaughtException', (error) => {
+        console.error('🚨 Uncaught Exception:', error.message)
+        console.error('Error type:', error.constructor.name)
+        console.error('Stack:', error.stack)
+        console.error('This error was caught by the global handler, preventing application crash')
+        
+        // Attempt graceful shutdown but don't wait indefinitely
+        this.shutdown().finally(() => {
+          console.error('Process exiting due to uncaught exception')
+          process.exit(1)
+        })
+      })
+      
+      process.on('unhandledRejection', (reason, promise) => {
+        console.error('🚨 Unhandled Promise Rejection at:', promise)
+        console.error('Reason:', reason)
+        console.error('This rejection was caught by the global handler, continuing operation')
+        
+        // Log stack trace if reason is an Error
+        if (reason instanceof Error && reason.stack) {
+          console.error('Stack:', reason.stack)
+        }
+        
+        // Log the error but don't exit the process for promise rejections
+        // as they might be recoverable
+      })
+      
     } catch (error: any) {
       console.error('\n❌ Failed to start edge application:', error.message)
       

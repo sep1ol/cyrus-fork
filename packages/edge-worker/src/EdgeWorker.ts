@@ -190,9 +190,15 @@ export class EdgeWorker extends EventEmitter {
    * Stop the edge worker
    */
   async stop(): Promise<void> {
-    // Kill all Claude processes
+    // Kill all Claude processes with null checking
     for (const [, runner] of this.claudeRunners) {
-      runner.stop()
+      if (runner && typeof runner.stop === 'function') {
+        try {
+          runner.stop()
+        } catch (error) {
+          console.error('Error stopping Claude runner:', error)
+        }
+      }
     }
     this.claudeRunners.clear()
     
@@ -286,7 +292,8 @@ export class EdgeWorker extends EventEmitter {
       
     } catch (error) {
       console.error(`[EdgeWorker] Failed to process webhook: ${(webhook as any).action}`, error)
-      throw error
+      // Don't re-throw webhook processing errors to prevent application crashes
+      // The error has been logged and individual webhook failures shouldn't crash the entire system
     }
   }
 
@@ -615,7 +622,15 @@ export class EdgeWorker extends EventEmitter {
                 // Remove from map
                 this.claudeRunners.delete(issue.id)
                 // Start fresh
-                this.handleIssueAssigned(issue, repository).catch(console.error)
+                this.handleIssueAssigned(issue, repository).catch(error => {
+                  console.error(`[EdgeWorker] Failed to restart fresh session for issue ${issue.identifier}:`, error)
+                  // Clean up any partial state
+                  this.claudeRunners.delete(issue.id)
+                  this.sessionToRepo.delete(issue.id)
+                  // Emit error event to notify handlers
+                  this.emit('session:ended', issue.id, 1, repository.id)
+                  this.config.handlers?.onSessionEnd?.(issue.id, 1, repository.id)
+                })
                 return
               }
             }
@@ -773,11 +788,21 @@ export class EdgeWorker extends EventEmitter {
    * Handle Claude session error
    */
   private handleClaudeError(issueId: string, error: Error, repositoryId: string): void {
-    console.error(`[EdgeWorker] Claude session error for issue ${issueId}:`, error)
+    console.error(`[EdgeWorker] Claude session error for issue ${issueId}:`, error.message)
+    console.error(`[EdgeWorker] Error type: ${error.constructor.name}`)
+    if (error.stack) {
+      console.error(`[EdgeWorker] Stack trace:`, error.stack)
+    }
+    
+    // Clean up resources
     this.claudeRunners.delete(issueId)
     this.sessionToRepo.delete(issueId)
+    
+    // Emit events for external handlers
     this.emit('session:ended', issueId, 1, repositoryId)  // 1 indicates error
     this.config.handlers?.onSessionEnd?.(issueId, 1, repositoryId)
+    
+    console.log(`[EdgeWorker] Cleaned up resources for failed session ${issueId}`)
   }
 
 
