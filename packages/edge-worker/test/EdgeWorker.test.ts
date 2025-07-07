@@ -434,11 +434,22 @@ describe('EdgeWorker', () => {
       expect(mockClaudeRunner.startStreaming).toHaveBeenCalled()
     })
 
-    it('should report failures on error', async () => {
+    it('should handle failures gracefully without crashing', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       mockConfig.handlers.createWorkspace!.mockRejectedValue(new Error('Workspace error'))
 
       const webhook = mockIssueAssignedWebhook()
-      await expect(webhookHandler(webhook)).rejects.toThrow('Workspace error')
+      
+      // Should not throw/reject - errors should be caught and logged
+      await expect(webhookHandler(webhook)).resolves.toBeUndefined()
+      
+      // Should log the error
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[EdgeWorker] Failed to process webhook:'),
+        expect.any(Error)
+      )
+      
+      consoleSpy.mockRestore()
     })
 
   })
