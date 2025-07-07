@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed critical crash issue where subprocess failures would bring down the entire application
+  - Added global error handlers to prevent uncaught exceptions from terminating the process
+  - Improved error isolation for individual Claude sessions - failures no longer affect other running sessions
+  - Enhanced error logging with detailed stack traces for better debugging
+
 ## [0.1.28] - 2025-01-06
 
 ### CLI
