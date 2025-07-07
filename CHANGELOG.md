@@ -18,7 +18,7 @@ All notable changes to this project will be documented in this file.
 ### Packages
 
 #### cyrus-edge-worker
-- cyrus-edge-worker@0.0.14
+- cyrus-edge-worker@0.0.15
 
 ## [0.1.28] - 2025-01-06
 
