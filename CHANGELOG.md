@@ -4,10 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.1.29] - 2025-01-07
+## [0.1.30] - 2025-01-07
 
 ### CLI
-- cyrus-ai@0.1.29
+- cyrus-ai@0.1.30
 
 ### Fixed
 - Fixed critical crash issue where subprocess failures would bring down the entire application
