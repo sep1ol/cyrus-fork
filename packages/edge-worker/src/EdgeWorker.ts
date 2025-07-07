@@ -1576,39 +1576,9 @@ Please analyze this issue and help implement a solution.`
     const baseToolsArray = Array.isArray(baseTools) ? baseTools : []
     
     // Linear MCP tools that should always be available
+    // See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
     const linearMcpTools = [
-      "mcp__linear__linear_getViewer",
-      "mcp__linear__linear_getOrganization",
-      "mcp__linear__linear_getUsers",
-      "mcp__linear__linear_getLabels",
-      "mcp__linear__linear_getTeams",
-      "mcp__linear__linear_getWorkflowStates",
-      "mcp__linear__linear_getProjects",
-      "mcp__linear__linear_createProject",
-      "mcp__linear__linear_updateProject",
-      "mcp__linear__linear_addIssueToProject",
-      "mcp__linear__linear_getProjectIssues",
-      "mcp__linear__linear_getCycles",
-      "mcp__linear__linear_getActiveCycle",
-      "mcp__linear__linear_addIssueToCycle",
-      "mcp__linear__linear_getIssues",
-      "mcp__linear__linear_getIssueById",
-      "mcp__linear__linear_searchIssues",
-      "mcp__linear__linear_createIssue",
-      "mcp__linear__linear_updateIssue",
-      "mcp__linear__linear_createComment",
-      "mcp__linear__linear_addIssueLabel",
-      "mcp__linear__linear_removeIssueLabel",
-      "mcp__linear__linear_assignIssue",
-      "mcp__linear__linear_subscribeToIssue",
-      "mcp__linear__linear_convertIssueToSubtask",
-      "mcp__linear__linear_createIssueRelation",
-      "mcp__linear__linear_archiveIssue",
-      "mcp__linear__linear_setIssuePriority",
-      "mcp__linear__linear_transferIssue",
-      "mcp__linear__linear_duplicateIssue",
-      "mcp__linear__linear_getIssueHistory",
-      "mcp__linear__linear_getComments"
+      "mcp__linear"
     ]
     
     // Combine and deduplicate

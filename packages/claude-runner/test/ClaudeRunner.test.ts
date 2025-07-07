@@ -122,8 +122,8 @@ describe('ClaudeRunner', () => {
       expect(sessionInfo.startedAt).toBeInstanceOf(Date)
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: 'Hello Claude',
-        abortController: expect.any(AbortController),
         options: {
+          abortController: expect.any(AbortController),
           cwd: '/tmp/test'
         }
       })
@@ -148,8 +148,8 @@ describe('ClaudeRunner', () => {
       
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: 'test',
-        abortController: expect.any(AbortController),
         options: {
+          abortController: expect.any(AbortController),
           cwd: '/tmp/test'
         }
       })
@@ -174,10 +174,10 @@ describe('ClaudeRunner', () => {
       
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: 'test',
-        abortController: expect.any(AbortController),
         options: {
+          abortController: expect.any(AbortController),
           cwd: '/tmp/test',
-          systemPrompt: 'You are a helpful assistant'
+          customSystemPrompt: 'You are a helpful assistant'
         }
       })
     })
@@ -260,12 +260,12 @@ describe('ClaudeRunner', () => {
     it('should stop running session', async () => {
       let abortController: AbortController | null = null
       
-      mockQuery.mockImplementation(async function* ({ abortController: ac }) {
-        abortController = ac
+      mockQuery.mockImplementation(async function* ({ options }) {
+        abortController = options.abortController
         // Simulate a long-running query
         try {
           await new Promise((resolve, reject) => {
-            ac.signal.addEventListener('abort', () => reject(new AbortError('Aborted')))
+            options.abortController.signal.addEventListener('abort', () => reject(new AbortError('Aborted')))
           })
         } catch (error) {
           if (error instanceof AbortError) {
