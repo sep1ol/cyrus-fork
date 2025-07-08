@@ -16,7 +16,7 @@ export interface ClaudeRunnerConfig {
 }
 
 export interface ClaudeSessionInfo {
-  sessionId: string
+  sessionId: string | null  // Initially null until first message received
   startedAt: Date
   isRunning: boolean
 }
