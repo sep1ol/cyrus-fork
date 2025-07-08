@@ -4,7 +4,7 @@ export interface ClaudeRunnerConfig {
   workingDirectory?: string
   allowedTools?: string[]
   allowedDirectories?: string[]
-  continueSession?: boolean
+  resumeSessionId?: string  // Session ID to resume from previous Claude session
   workspaceName?: string
   systemPrompt?: string
   appendSystemPrompt?: string  // Additional prompt to append to the default system prompt

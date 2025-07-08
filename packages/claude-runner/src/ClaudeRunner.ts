@@ -256,7 +256,7 @@ export class ClaudeRunner extends EventEmitter {
           ...(this.config.systemPrompt && { customSystemPrompt: this.config.systemPrompt }),
           ...(this.config.appendSystemPrompt && { appendSystemPrompt: this.config.appendSystemPrompt }),
           ...(processedAllowedTools && { allowedTools: processedAllowedTools }),
-          ...(this.config.continueSession && { continue: this.config.continueSession }),
+          ...(this.config.resumeSessionId && { resume: this.config.resumeSessionId }),
           ...(Object.keys(mcpServers).length > 0 && { mcpServers })
         }
       }

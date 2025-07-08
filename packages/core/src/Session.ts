@@ -30,6 +30,7 @@ export interface SessionOptions {
   streamingCommentId?: string | null
   streamingSynthesis?: string | null
   streamingNarrative?: NarrativeItem[]
+  claudeSessionId?: string | null  // Claude Code session ID for resume functionality
 }
 
 export interface NarrativeItem {
@@ -40,7 +41,7 @@ export interface NarrativeItem {
 }
 
 /**
- * Represents a Claude session for an issue
+ * Represents a Claude session for a comment thread
  */
 export class Session {
   issue: Issue
@@ -58,6 +59,7 @@ export class Session {
   streamingCommentId: string | null
   streamingSynthesis: string | null
   streamingNarrative: NarrativeItem[]
+  claudeSessionId: string | null  // Claude Code session ID for resume functionality
 
   constructor({
     issue,
@@ -75,6 +77,7 @@ export class Session {
     streamingCommentId = null,
     streamingSynthesis = null,
     streamingNarrative = [],
+    claudeSessionId = null,
   }: SessionOptions) {
     this.issue = issue
     this.workspace = workspace
@@ -91,6 +94,7 @@ export class Session {
     this.streamingCommentId = streamingCommentId
     this.streamingSynthesis = streamingSynthesis
     this.streamingNarrative = streamingNarrative
+    this.claudeSessionId = claudeSessionId
   }
 
   /**
