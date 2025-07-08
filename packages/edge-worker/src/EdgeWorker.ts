@@ -47,7 +47,8 @@ export class EdgeWorker extends EventEmitter {
   private claudeRunners: Map<string, ClaudeRunner> = new Map() // Maps comment ID to ClaudeRunner
   private commentToRepo: Map<string, string> = new Map() // Maps comment ID to repository ID
   private commentToIssue: Map<string, string> = new Map() // Maps comment ID to issue ID
-  private issueToInitialComment: Map<string, string> = new Map() // Maps issue ID to initial assignment comment ID
+  private commentToLatestAgentReply: Map<string, string> = new Map() // Maps thread root comment ID to latest agent comment
+  private issueToCommentThreads: Map<string, Set<string>> = new Map() // Maps issue ID to all comment thread IDs
   private tokenToClientId: Map<string, string> = new Map() // Maps token to NDJSON client ID
   private issueToReplyContext: Map<string, { commentId: string; parentId?: string }> = new Map() // Maps issue ID to reply context
   private sharedApplicationServer: SharedApplicationServer
@@ -209,7 +210,8 @@ export class EdgeWorker extends EventEmitter {
     }
     this.commentToRepo.clear()
     this.commentToIssue.clear()
-    this.issueToInitialComment.clear()
+    this.commentToLatestAgentReply.clear()
+    this.issueToCommentThreads.clear()
     
     // Disconnect all NDJSON clients
     for (const client of this.ndjsonClients.values()) {
@@ -406,8 +408,6 @@ export class EdgeWorker extends EventEmitter {
       throw new Error(`Failed to create initial comment for issue ${fullIssue.identifier}`)
     }
     
-    // Store the initial comment mapping
-    this.issueToInitialComment.set(fullIssue.id, initialComment.id)
     
     // Create workspace using full issue data
     const workspace = this.config.handlers?.createWorkspace
@@ -459,6 +459,11 @@ export class EdgeWorker extends EventEmitter {
     
     // Store session by comment ID
     this.sessionManager.addSession(initialComment.id, session)
+    
+    // Track this thread for the issue
+    const threads = this.issueToCommentThreads.get(fullIssue.id) || new Set()
+    threads.add(initialComment.id)
+    this.issueToCommentThreads.set(fullIssue.id, threads)
 
     // Emit events using full Linear issue
     this.emit('session:started', fullIssue.id, fullIssue, repository.id)
@@ -481,24 +486,6 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Find the root comment of a comment thread by traversing parent relationships
    */
-  private async findRootComment(commentId: string, linearClient: LinearClient): Promise<string> {
-    try {
-      const comment = await linearClient.comment({ id: commentId })
-      if (comment.parent) {
-        const parent = await comment.parent
-        if (parent?.id) {
-          // Recursively find the root
-          return this.findRootComment(parent.id, linearClient)
-        }
-      }
-      // This comment has no parent, so it's the root
-      return commentId
-    } catch (error) {
-      console.error(`Failed to find root comment for ${commentId}:`, error)
-      // Return the current comment ID as fallback
-      return commentId
-    }
-  }
 
   /**
    * Handle new root comment on issue (placeholder for future implementation)
@@ -550,8 +537,8 @@ export class EdgeWorker extends EventEmitter {
           const parent = await fullComment.parent
           if (parent?.id) {
             parentCommentId = parent.id
-            // Find the root comment of this thread
-            rootCommentId = await this.findRootComment(parent.id, linearClient)
+            // In Linear's 2-level structure, the parent IS the root
+            rootCommentId = parent.id
           }
         }
       }
@@ -610,6 +597,11 @@ export class EdgeWorker extends EventEmitter {
       this.sessionManager.addSession(threadRootCommentId, session)
       this.commentToRepo.set(threadRootCommentId, repository.id)
       this.commentToIssue.set(threadRootCommentId, issue.id)
+      
+      // Track this thread for the issue
+      const threads = this.issueToCommentThreads.get(issue.id) || new Set()
+      threads.add(threadRootCommentId)
+      this.issueToCommentThreads.set(issue.id, threads)
     }
 
     // Check if there's an existing runner for this comment thread
@@ -731,60 +723,50 @@ export class EdgeWorker extends EventEmitter {
    * @param repository Repository configuration
    */
   private async handleIssueUnassigned(issue: LinearWebhookIssue, repository: RepositoryConfig): Promise<void> {
-    // Get all active sessions for this issue
-    const sessions = this.sessionManager.getSessionsForIssue(issue.id)
+    // Get all comment threads for this issue
+    const threadRootCommentIds = this.issueToCommentThreads.get(issue.id) || new Set()
     
-    // Post farewell comment if there are active sessions
-    if (sessions.length > 0) {
-      // Use the same threading logic as regular replies
-      const replyContext = this.issueToReplyContext.get(issue.id)
-      if (replyContext) {
-        // Reply using the same context as regular comments (handles threading correctly)
-        await this.postComment(
-          issue.id,
-          "I've been unassigned and am stopping work now.",
-          repository.id,
-          replyContext.parentId
-        )
-        // Clear the reply context after using it
-        this.issueToReplyContext.delete(issue.id)
-      } else {
-        // Fall back to replying to initial comment (for direct assignments)
-        const initialCommentId = this.issueToInitialComment.get(issue.id)
-        await this.postComment(
-          issue.id,
-          "I've been unassigned and am stopping work now.",
-          repository.id,
-          initialCommentId
-        )
+    // Stop all Claude runners for this issue
+    let activeThreadCount = 0
+    for (const threadRootCommentId of threadRootCommentIds) {
+      const runner = this.claudeRunners.get(threadRootCommentId)
+      if (runner) {
+        console.log(`[EdgeWorker] Stopping Claude runner for thread ${threadRootCommentId}`)
+        await runner.stop()
+        activeThreadCount++
       }
     }
     
-    // Kill all Claude processes for this issue
-    for (const session of sessions) {
-      const commentId = session.agentRootCommentId
-      if (commentId) {
-        const runner = this.claudeRunners.get(commentId)
-        if (runner) {
-          runner.stop()
-          this.claudeRunners.delete(commentId)
-        }
-        
-        // Clean up mappings
-        this.commentToRepo.delete(commentId)
-        this.commentToIssue.delete(commentId)
-      }
+    // Post ONE farewell comment on the issue (not in any thread) if there were active sessions
+    if (activeThreadCount > 0) {
+      await this.postComment(
+        issue.id,
+        "I've been unassigned and am stopping work now.",
+        repository.id
+        // No parentId - post as a new comment on the issue
+      )
     }
-
-    // Remove all sessions for this issue
-    const removedCount = this.sessionManager.removeSessionsForIssue(issue.id)
+    
+    // Clean up thread mappings for each stopped thread
+    for (const threadRootCommentId of threadRootCommentIds) {
+      // Remove from runners map
+      this.claudeRunners.delete(threadRootCommentId)
+      
+      // Clean up comment mappings
+      this.commentToRepo.delete(threadRootCommentId)
+      this.commentToIssue.delete(threadRootCommentId)
+      this.commentToLatestAgentReply.delete(threadRootCommentId)
+      
+      // Remove session
+      this.sessionManager.removeSession(threadRootCommentId)
+    }
     
     // Clean up issue-level mappings
-    this.issueToInitialComment.delete(issue.id)
+    this.issueToCommentThreads.delete(issue.id)
     this.issueToReplyContext.delete(issue.id)
 
     // Emit events
-    console.log(`[EdgeWorker] Stopped ${removedCount} sessions for unassigned issue ${issue.identifier}`)
+    console.log(`[EdgeWorker] Stopped ${activeThreadCount} sessions for unassigned issue ${issue.identifier}`)
     this.emit('session:ended', issue.id, null, repository.id)
     this.config.handlers?.onSessionEnd?.(issue.id, null, repository.id)
   }
@@ -822,7 +804,7 @@ export class EdgeWorker extends EventEmitter {
             // Handle TodoWrite tool specifically
             if ('name' in item && item.name === 'TodoWrite' && 'input' in item && item.input?.todos) {
               console.log(`[EdgeWorker] Detected TodoWrite tool use with ${item.input.todos.length} todos`)
-              await this.updateCommentWithTodos(issueId, item.input.todos, repositoryId)
+              await this.updateCommentWithTodos(item.input.todos, repositoryId, commentId)
             }
           }
         }
@@ -1285,6 +1267,12 @@ Please analyze this issue and help implement a solution.`
         const comment = await response.comment
         if (comment?.id) {
           console.log(`Comment ID: ${comment.id}`)
+          
+          // Track this as the latest agent reply for the thread
+          // If parentId exists, that's the thread root; otherwise this comment IS the root
+          const threadRootCommentId = parentId || comment.id
+          this.commentToLatestAgentReply.set(threadRootCommentId, comment.id)
+          
           return comment
         }
         return null
@@ -1302,11 +1290,12 @@ Please analyze this issue and help implement a solution.`
   /**
    * Update initial comment with TODO checklist
    */
-  private async updateCommentWithTodos(issueId: string, todos: Array<{id: string, content: string, status: string, priority: string}>, repositoryId: string): Promise<void> {
+  private async updateCommentWithTodos(todos: Array<{id: string, content: string, status: string, priority: string}>, repositoryId: string, threadRootCommentId: string): Promise<void> {
     try {
-      const commentId = this.issueToInitialComment.get(issueId)
+      // Get the latest agent comment in this thread
+      const commentId = this.commentToLatestAgentReply.get(threadRootCommentId) || threadRootCommentId
       if (!commentId) {
-        console.log('No initial comment ID found for issue, cannot update with todos')
+        console.log('No comment ID found for thread, cannot update with todos')
         return
       }
 
