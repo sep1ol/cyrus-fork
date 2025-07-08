@@ -318,9 +318,9 @@ describe('EdgeWorker', () => {
       // Should start Claude streaming session
       expect(mockClaudeRunner.startStreaming).toHaveBeenCalled()
 
-      // Should create session
+      // Should create session with comment ID as key
       expect(mockSessionManager.addSession).toHaveBeenCalledWith(
-        'issue-123',
+        'comment-123',
         expect.any(Session)
       )
 
@@ -397,19 +397,19 @@ describe('EdgeWorker', () => {
     })
 
     it('should handle issue unassignment', async () => {
-      mockSessionManager.getSession.mockReturnValue({
-        workspace: { path: '/tmp/test-workspaces/TEST-123' }
-      })
-
-      // Set up a mock Claude runner in the internal map
+      // Set up a comment thread for this issue
+      const threadCommentId = 'comment-123'
+      edgeWorker['issueToCommentThreads'].set('issue-123', new Set([threadCommentId]))
+      
+      // Set up a mock Claude runner for the thread
       const mockRunner = { stop: vi.fn() }
-      edgeWorker['claudeRunners'].set('issue-123', mockRunner as any)
+      edgeWorker['claudeRunners'].set(threadCommentId, mockRunner as any)
 
       const webhook = mockUnassignedWebhook()
       await webhookHandler(webhook)
 
       expect(mockRunner.stop).toHaveBeenCalled()
-      expect(mockSessionManager.removeSession).toHaveBeenCalledWith('issue-123')
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith(threadCommentId)
     })
 
     it('should ignore comments when continuation is disabled', async () => {
@@ -553,13 +553,14 @@ describe('EdgeWorker', () => {
       const message = mockClaudeResultMessage('error_max_turns')
       await claudeMessageHandler!(message)
 
-      // Should post warning
+      // Should post warning as a reply to the comment thread
       expect(mockLinearClient.createComment).toHaveBeenCalledWith({
         issueId: 'issue-123',
-        body: '[System] Token limit reached. Starting fresh session with issue context.'
+        body: '[System] Token limit reached. Starting fresh session with issue context.',
+        parentId: 'comment-123'
       })
 
-      // Should restart session
+      // Should restart session (initial + restart = 2 times total)
       expect(mockClaudeRunner.startStreaming).toHaveBeenCalledTimes(2)
     })
 
