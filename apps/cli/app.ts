@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { EdgeWorker, type EdgeWorkerConfig, type RepositoryConfig } from 'cyrus-edge-worker'
+import { EdgeWorker, type EdgeWorkerConfig, type RepositoryConfig, SharedApplicationServer } from 'cyrus-edge-worker'
 import type { Issue } from '@linear/sdk'
 import dotenv from 'dotenv'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'fs'
@@ -265,28 +265,61 @@ class EdgeApp {
    * Start OAuth flow to get Linear token using EdgeWorker's shared server
    */
   async startOAuthFlow(proxyUrl: string): Promise<LinearCredentials> {
-    if (!this.edgeWorker) {
-      throw new Error('EdgeWorker not initialized')
+    if (this.edgeWorker) {
+      // Use existing EdgeWorker's OAuth flow
+      const port = this.edgeWorker.getServerPort()
+      
+      // Construct OAuth URL with callback
+      const callbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${port}`
+      const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`
+      
+      console.log(`\n👉 Opening your browser to authorize with Linear...`)
+      console.log(`If the browser doesn't open, visit: ${authUrl}`)
+      
+      open(authUrl).catch(() => {
+        console.log(`\n⚠️  Could not open browser automatically`)
+        console.log(`Please visit: ${authUrl}`)
+      })
+      
+      console.log(`\n⏳ Waiting for authorization...`)
+      
+      return this.edgeWorker.startOAuthFlow(proxyUrl)
+    } else {
+      // Create temporary SharedApplicationServer for OAuth flow during initial setup
+      const tempServer = new SharedApplicationServer()
+      
+      try {
+        // Start the server
+        await tempServer.start()
+        const port = tempServer.getPort()
+        
+        // Construct OAuth URL with callback
+        const callbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${port}`
+        const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`
+        
+        console.log(`\n👉 Opening your browser to authorize with Linear...`)
+        console.log(`If the browser doesn't open, visit: ${authUrl}`)
+        
+        open(authUrl).catch(() => {
+          console.log(`\n⚠️  Could not open browser automatically`)
+          console.log(`Please visit: ${authUrl}`)
+        })
+        
+        console.log(`\n⏳ Waiting for authorization...`)
+        
+        // Use temporary server's OAuth flow
+        const result = await tempServer.startOAuthFlow(proxyUrl)
+        
+        return {
+          linearToken: result.linearToken,
+          linearWorkspaceId: result.linearWorkspaceId,
+          linearWorkspaceName: result.linearWorkspaceName
+        }
+      } finally {
+        // Clean up temporary server
+        await tempServer.stop()
+      }
     }
-    
-    const port = this.edgeWorker.getServerPort()
-    
-    // Construct OAuth URL with callback
-    const callbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${port}`
-    const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`
-    
-    console.log(`\n👉 Opening your browser to authorize with Linear...`)
-    console.log(`If the browser doesn't open, visit: ${authUrl}`)
-    
-    open(authUrl).catch(() => {
-      console.log(`\n⚠️  Could not open browser automatically`)
-      console.log(`Please visit: ${authUrl}`)
-    })
-    
-    console.log(`\n⏳ Waiting for authorization...`)
-    
-    // Use EdgeWorker's OAuth flow
-    return this.edgeWorker.startOAuthFlow(proxyUrl)
   }
   
   /**

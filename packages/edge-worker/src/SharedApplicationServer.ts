@@ -80,6 +80,13 @@ export class SharedApplicationServer {
   }
 
   /**
+   * Get the port number the server is listening on
+   */
+  getPort(): number {
+    return this.port
+  }
+
+  /**
    * Register a webhook handler for a specific token
    */
   registerWebhookHandler(
