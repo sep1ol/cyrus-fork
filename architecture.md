@@ -27,10 +27,11 @@ Linear Cloud                              Repository (Git)
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │                    EdgeWorker                          │  │
 │  │  • Registers webhook endpoint with proxy               │  │
-│  │  • Receives Linear webhook events                      │  │
+│  │  • Receives Linear webhook events (via proxy)          │  │
 │  │  • Creates git worktrees per issue                    │  │
 │  │  • Launches Claude sessions                           │  │
 │  │  • Manages session-to-comment-thread mapping          │  │
+│  │  • Optional: ngrok tunnel for edge reachability¹       │  │
 │  │                                                        │  │
 │  │  Maps (Comment Thread Architecture):                   │  │
 │  │  ────────────────────────────────────────             │  │
@@ -138,3 +139,7 @@ The system uses a comment-thread-based architecture where:
 - Session IDs are extracted from Claude Code's first message rather than generated locally
 - The `--resume` flag is used to continue existing Claude sessions with their extracted session IDs
 - **Linear has exactly ONE level of comment nesting**: Comments can have replies, but replies cannot have further replies. This eliminates any need for recursive comment traversal.
+
+## Notes
+
+¹ **Edge Reachability**: The edge worker (CLI) can automatically set up an ngrok tunnel to make itself reachable by the proxy server. This is optional - you can alternatively configure your own networking by setting `CYRUS_HOST_EXTERNAL=true` and `CYRUS_BASE_URL` environment variables.
