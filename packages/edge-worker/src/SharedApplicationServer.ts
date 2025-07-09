@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { URL } from 'url'
+import { forward } from '@ngrok/ngrok'
 
 /**
  * OAuth callback handler interface
@@ -32,10 +33,14 @@ export class SharedApplicationServer {
   private port: number
   private host: string
   private isListening = false
+  private ngrokListener: any = null
+  private ngrokAuthToken: string | null = null
+  private ngrokUrl: string | null = null
 
-  constructor(port: number = 3456, host: string = 'localhost') {
+  constructor(port: number = 3456, host: string = 'localhost', ngrokAuthToken?: string) {
     this.port = port
     this.host = host
+    this.ngrokAuthToken = ngrokAuthToken || null
   }
 
   /**
@@ -51,9 +56,20 @@ export class SharedApplicationServer {
         this.handleRequest(req, res)
       })
 
-      this.server.listen(this.port, this.host, () => {
+      this.server.listen(this.port, this.host, async () => {
         this.isListening = true
         console.log(`🔗 Shared application server listening on http://${this.host}:${this.port}`)
+        
+        // Start ngrok tunnel if auth token is provided and not external host
+        if (this.ngrokAuthToken && process.env.CYRUS_HOST_EXTERNAL !== 'true') {
+          try {
+            await this.startNgrokTunnel()
+          } catch (error) {
+            console.error('🔴 Failed to start ngrok tunnel:', error)
+            // Don't reject here - server can still work without ngrok
+          }
+        }
+        
         resolve()
       })
 
@@ -68,6 +84,18 @@ export class SharedApplicationServer {
    * Stop the shared application server
    */
   async stop(): Promise<void> {
+    // Stop ngrok tunnel first
+    if (this.ngrokListener) {
+      try {
+        await this.ngrokListener.close()
+        this.ngrokListener = null
+        this.ngrokUrl = null
+        console.log('🔗 Ngrok tunnel stopped')
+      } catch (error) {
+        console.error('🔴 Failed to stop ngrok tunnel:', error)
+      }
+    }
+
     if (this.server && this.isListening) {
       return new Promise((resolve) => {
         this.server!.close(() => {
@@ -84,6 +112,42 @@ export class SharedApplicationServer {
    */
   getPort(): number {
     return this.port
+  }
+
+  /**
+   * Get the base URL for the server (ngrok URL if available, otherwise local URL)
+   */
+  getBaseUrl(): string {
+    if (this.ngrokUrl) {
+      return this.ngrokUrl
+    }
+    return process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`
+  }
+
+  /**
+   * Start ngrok tunnel for the server
+   */
+  private async startNgrokTunnel(): Promise<void> {
+    if (!this.ngrokAuthToken) {
+      return
+    }
+
+    try {
+      console.log('🔗 Starting ngrok tunnel...')
+      this.ngrokListener = await forward({
+        addr: this.port,
+        authtoken: this.ngrokAuthToken
+      })
+
+      this.ngrokUrl = this.ngrokListener.url()
+      console.log(`🌐 Ngrok tunnel active: ${this.ngrokUrl}`)
+      
+      // Override CYRUS_BASE_URL with ngrok URL
+      process.env.CYRUS_BASE_URL = this.ngrokUrl || undefined
+    } catch (error) {
+      console.error('🔴 Failed to start ngrok tunnel:', error)
+      throw error
+    }
   }
 
   /**
@@ -126,7 +190,7 @@ export class SharedApplicationServer {
       this.oauthCallbacks.set(flowId, { resolve, reject, id: flowId })
       
       // Construct OAuth URL with callback
-      const callbackBaseUrl = process.env.CYRUS_BASE_URL || `http://localhost:${this.port}`
+      const callbackBaseUrl = this.getBaseUrl()
       const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`
       
       console.log(`\n👉 Opening your browser to authorize with Linear...`)

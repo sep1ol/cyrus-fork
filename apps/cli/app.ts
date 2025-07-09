@@ -53,6 +53,7 @@ if (envFileArg) {
   if (envFile) {
     dotenv.config({ path: envFile })
   }
+
 }
 
 interface LinearCredentials {
@@ -63,6 +64,7 @@ interface LinearCredentials {
 
 interface EdgeConfig {
   repositories: RepositoryConfig[]
+  ngrokAuthToken?: string
 }
 
 
@@ -86,12 +88,14 @@ class EdgeApp {
     return resolve(homedir(), '.cyrus', 'config.json')
   }
 
+
   /**
    * Get the legacy edge configuration file path (for migration)
    */
   getLegacyEdgeConfigPath(): string {
     return resolve(process.cwd(), '.edge-config.json')
   }
+
 
   /**
    * Migrate configuration from legacy location if needed
@@ -128,6 +132,7 @@ class EdgeApp {
     }
   }
 
+
   /**
    * Load edge configuration (credentials and repositories)
    * Note: Strips promptTemplatePath from all repositories to ensure built-in template is used
@@ -160,6 +165,7 @@ class EdgeApp {
     
     return config
   }
+
   
   /**
    * Save edge configuration
@@ -175,6 +181,7 @@ class EdgeApp {
     
     writeFileSync(edgeConfigPath, JSON.stringify(config, null, 2))
   }
+
   
   /**
    * Interactive setup wizard for repository configuration
@@ -259,6 +266,7 @@ class EdgeApp {
       throw error
     }
   }
+
   
   
   /**
@@ -321,21 +329,84 @@ class EdgeApp {
       }
     }
   }
+
+
+  /**
+   * Get ngrok auth token from config or prompt user
+   */
+  async getNgrokAuthToken(config: EdgeConfig): Promise<string | undefined> {
+    // Return existing token if available
+    if (config.ngrokAuthToken) {
+      return config.ngrokAuthToken
+    }
+
+    // Prompt user for ngrok auth token
+    console.log(`\n🔗 Ngrok Setup Required`)
+    console.log(`─`.repeat(50))
+    console.log(`Linear payloads need to reach your computer, so we use the secure technology ngrok for that.`)
+    console.log(`This requires a free ngrok account and auth token.`)
+    console.log(``)
+    console.log(`To get your ngrok auth token:`)
+    console.log(`1. Sign up at https://ngrok.com/ (free)`)
+    console.log(`2. Go to https://dashboard.ngrok.com/get-started/your-authtoken`)
+    console.log(`3. Copy your auth token`)
+    console.log(``)
+    console.log(`Alternatively, you can set CYRUS_HOST_EXTERNAL=true and CYRUS_BASE_URL`)
+    console.log(`to handle port forwarding or reverse proxy yourself.`)
+    console.log(``)
+
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    })
+
+    return new Promise((resolve) => {
+      rl.question(`Enter your ngrok auth token (or press Enter to skip): `, async (token) => {
+        rl.close()
+        
+        if (!token.trim()) {
+          console.log(`\n⚠️  Skipping ngrok setup. You can set CYRUS_HOST_EXTERNAL=true and CYRUS_BASE_URL manually.`)
+          resolve(undefined)
+          return
+        }
+
+        // Save token to config
+        config.ngrokAuthToken = token.trim()
+        try {
+          await this.saveEdgeConfig(config)
+          console.log(`✅ Ngrok auth token saved to config`)
+          resolve(token.trim())
+        } catch (error) {
+          console.error(`❌ Failed to save ngrok auth token:`, error)
+          resolve(token.trim()) // Still use the token for this session
+        }
+      })
+    })
+  }
+
   
   /**
    * Start the EdgeWorker with given configuration
    */
   async startEdgeWorker({ proxyUrl, repositories }: { proxyUrl: string; repositories: RepositoryConfig[] }): Promise<void> {
+    // Get ngrok auth token (prompt if needed and not external host)
+    let ngrokAuthToken: string | undefined
+    if (process.env.CYRUS_HOST_EXTERNAL !== "true") {
+      const config = await this.loadEdgeConfig()
+      ngrokAuthToken = await this.getNgrokAuthToken(config)
+    }
+
     // Create EdgeWorker configuration
     const config: EdgeWorkerConfig = {
       proxyUrl,
       repositories,
-      defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(',').map(t => t.trim()) || [],
+      defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(",").map(t => t.trim()) || [],
       webhookBaseUrl: process.env.CYRUS_BASE_URL,
       webhookPort: process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : undefined,
-      serverPort: process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) : 
+      serverPort: process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) :
                   process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : 3456,
-      serverHost: process.env.CYRUS_HOST_EXTERNAL === 'true' ? '0.0.0.0' : 'localhost',
+      serverHost: process.env.CYRUS_HOST_EXTERNAL === "true" ? "0.0.0.0" : "localhost",
+      ngrokAuthToken,
       features: {
         enableContinuation: true
       },
@@ -352,8 +423,8 @@ class EdgeApp {
           
           // Handle OAuth completion for repository setup
           if (this.edgeWorker) {
-            console.log('\n📋 Setting up new repository for workspace:', workspaceName)
-            console.log('─'.repeat(50))
+            console.log("\n📋 Setting up new repository for workspace:", workspaceName)
+            console.log("─".repeat(50))
             
             try {
               const newRepo = await this.setupRepositoryWizard(linearCredentials)
@@ -364,8 +435,7 @@ class EdgeApp {
               edgeConfig.repositories = [...(edgeConfig.repositories || []), newRepo]
               console.log(`📊 Adding repository "${newRepo.name}", new total: ${edgeConfig.repositories.length}`)
               this.saveEdgeConfig(edgeConfig)
-              
-              console.log('\n✅ Repository configured successfully!')
+                            console.log('\n✅ Repository configured successfully!')
               console.log('📝 .edge-config.json file has been updated with your new repository configuration.')
               console.log('💡 You can edit this file and restart Cyrus at any time to modify settings.')
               
@@ -409,6 +479,7 @@ class EdgeApp {
       console.log(`  - ${repo.name} (${repo.repositoryPath})`)
     })
   }
+
 
   /**
    * Start the edge application
@@ -631,6 +702,7 @@ class EdgeApp {
       process.exit(1)
     }
   }
+
   
   /**
    * Set up event handlers for EdgeWorker
@@ -661,6 +733,7 @@ class EdgeApp {
       console.error('EdgeWorker error:', error)
     })
   }
+
   
   /**
    * Create a git worktree for an issue
@@ -786,6 +859,7 @@ class EdgeApp {
     }
   }
 
+
   /**
    * Shut down the application
    */
@@ -803,6 +877,7 @@ class EdgeApp {
     console.log('Shutdown complete')
     process.exit(0)
   }
+
 }
 
 // Helper function to check Linear token status
@@ -827,8 +902,10 @@ async function checkLinearToken(token: string): Promise<{ valid: boolean; error?
     
     return { valid: true }
   } catch (error) {
+
     return { valid: false, error: (error as Error).message }
   }
+
 }
 
 // Command: check-tokens
@@ -840,6 +917,7 @@ async function checkTokensCommand() {
     console.error('No edge configuration found. Please run setup first.')
     process.exit(1)
   }
+
   
   const config = JSON.parse(readFileSync(configPath, 'utf-8')) as EdgeConfig
   
@@ -855,6 +933,7 @@ async function checkTokensCommand() {
       console.log(`❌ Invalid - ${result.error}`)
     }
   }
+
 }
 
 // Command: refresh-token
@@ -866,6 +945,7 @@ async function refreshTokenCommand() {
     console.error('No edge configuration found. Please run setup first.')
     process.exit(1)
   }
+
   
   const config = JSON.parse(readFileSync(configPath, 'utf-8')) as EdgeConfig
   
@@ -878,22 +958,26 @@ async function refreshTokenCommand() {
     tokenStatuses.push({ repo, valid: result.valid })
     console.log(`${tokenStatuses.length}. ${repo.name} (${repo.linearWorkspaceName}): ${result.valid ? '✅ Valid' : '❌ Invalid'}`)
   }
+
   
   // Ask which token to refresh
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
   })
+
   
   const answer = await new Promise<string>(resolve => {
     rl.question('\nWhich repository token would you like to refresh? (Enter number or "all"): ', resolve)
   })
+
   
   const indicesToRefresh: number[] = []
   
   if (answer.toLowerCase() === 'all') {
     indicesToRefresh.push(...Array.from({ length: tokenStatuses.length }, (_, i) => i))
   } else {
+
     const index = parseInt(answer) - 1
     if (isNaN(index) || index < 0 || index >= tokenStatuses.length) {
       console.error('Invalid selection')
@@ -902,6 +986,7 @@ async function refreshTokenCommand() {
     }
     indicesToRefresh.push(index)
   }
+
   
   // Refresh tokens
   for (const index of indicesToRefresh) {
@@ -993,6 +1078,7 @@ async function refreshTokenCommand() {
       console.log(`\n📝 Updated ${updatedCount} repositories that shared the same token`)
     }
   }
+
   
   // Save the updated config
   writeFileSync(configPath, JSON.stringify(config, null, 2))
