@@ -294,7 +294,8 @@ class EdgeApp {
       return this.edgeWorker.startOAuthFlow(proxyUrl)
     } else {
       // Create temporary SharedApplicationServer for OAuth flow during initial setup
-      const tempServer = new SharedApplicationServer()
+      const serverPort = process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) : 3456
+      const tempServer = new SharedApplicationServer(serverPort)
       
       try {
         // Start the server
@@ -402,9 +403,7 @@ class EdgeApp {
       repositories,
       defaultAllowedTools: process.env.ALLOWED_TOOLS?.split(",").map(t => t.trim()) || [],
       webhookBaseUrl: process.env.CYRUS_BASE_URL,
-      webhookPort: process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : undefined,
-      serverPort: process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) :
-                  process.env.CYRUS_WEBHOOK_PORT ? parseInt(process.env.CYRUS_WEBHOOK_PORT, 10) : 3456,
+      serverPort: process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) : 3456,
       serverHost: process.env.CYRUS_HOST_EXTERNAL === "true" ? "0.0.0.0" : "localhost",
       ngrokAuthToken,
       features: {
@@ -801,6 +800,7 @@ class EdgeApp {
       
       // Fetch latest changes from remote
       console.log('Fetching latest changes from remote...')
+      let hasRemote = true
       try {
         execSync('git fetch origin', {
           cwd: repository.repositoryPath,
@@ -808,14 +808,26 @@ class EdgeApp {
         })
       } catch (e) {
         console.warn('Warning: git fetch failed, proceeding with local branch:', (e as Error).message)
+        hasRemote = false
       }
 
-      // Create the worktree from remote branch
-      const remoteBranch = `origin/${repository.baseBranch}`
-      console.log(`Creating git worktree at ${workspacePath} from ${remoteBranch}`)
-      const worktreeCmd = createBranch 
-        ? `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`
-        : `git worktree add "${workspacePath}" "${branchName}"`
+      // Create the worktree - use remote branch if available, otherwise local
+      let worktreeCmd: string
+      if (createBranch) {
+        if (hasRemote) {
+          const remoteBranch = `origin/${repository.baseBranch}`
+          console.log(`Creating git worktree at ${workspacePath} from ${remoteBranch}`)
+          worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`
+        } else {
+          // No remote, use local base branch
+          console.log(`Creating git worktree at ${workspacePath} from local ${repository.baseBranch}`)
+          worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${repository.baseBranch}"`
+        }
+      } else {
+        // Branch already exists, just check it out
+        console.log(`Creating git worktree at ${workspacePath} with existing branch ${branchName}`)
+        worktreeCmd = `git worktree add "${workspacePath}" "${branchName}"`
+      }
       
       execSync(worktreeCmd, {
         cwd: repository.repositoryPath,
@@ -998,7 +1010,8 @@ async function refreshTokenCommand() {
     console.log('Opening Linear OAuth flow in your browser...')
     
     // Use the proxy's OAuth flow with a callback to localhost
-    const callbackUrl = `http://localhost:3456/callback`
+    const serverPort = process.env.CYRUS_SERVER_PORT ? parseInt(process.env.CYRUS_SERVER_PORT, 10) : 3456
+    const callbackUrl = `http://localhost:${serverPort}/callback`
     const oauthUrl = `https://cyrus-proxy.ceedar.workers.dev/oauth/authorize?callback=${encodeURIComponent(callbackUrl)}`
     
     console.log(`\nPlease complete the OAuth flow in your browser.`)
@@ -1010,7 +1023,7 @@ async function refreshTokenCommand() {
     const server = await new Promise<any>((resolve) => {
       const s = http.createServer((req: any, res: any) => {
         if (req.url?.startsWith('/callback')) {
-          const url = new URL(req.url, `http://localhost:3456`)
+          const url = new URL(req.url, `http://localhost:${serverPort}`)
           tokenReceived = url.searchParams.get('token')
           
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
@@ -1031,7 +1044,7 @@ async function refreshTokenCommand() {
           res.end('Not found')
         }
       })
-      s.listen(3456, () => {
+      s.listen(serverPort, () => {
         console.log('Waiting for OAuth callback...')
         resolve(s)
       })

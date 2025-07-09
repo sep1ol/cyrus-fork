@@ -12,9 +12,13 @@ All notable changes to this project will be documented in this file.
   - Free ngrok account required (sorry, we can't make the internet work by magic alone)
   - Skip ngrok setup if you prefer to handle networking yourself
 
+### Added
+- Webhook debugging via `CYRUS_WEBHOOK_DEBUG=true` environment variable - see exactly what Linear is (or isn't) sending you
+
 ### Fixed
 - Fresh startup no longer crashes with "EdgeWorker not initialized" error when trying to connect to Linear
 - OAuth flow now works properly on first run (turns out asking for credentials before having a way to receive them was... problematic)
+- Git worktrees now work with local-only repositories (no more "fatal: 'origin' does not appear to be a git repository" when you're just trying to test things locally)
 
 ## [0.1.30] - 2025-01-07
 

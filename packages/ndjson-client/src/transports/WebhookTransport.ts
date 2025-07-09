@@ -104,6 +104,16 @@ export class WebhookTransport extends BaseTransport {
 
   private async registerWebhook(): Promise<void> {
     try {
+      // Get webhook URL from external server if available, otherwise use configured URL
+      let webhookUrl = this.webhookUrl
+      if (this.config.useExternalWebhookServer && this.config.externalWebhookServer) {
+        // Check if external server has getWebhookUrl method
+        if (typeof this.config.externalWebhookServer.getWebhookUrl === 'function') {
+          webhookUrl = this.config.externalWebhookServer.getWebhookUrl()
+          console.log(`📡 Registering webhook URL: ${webhookUrl}`)
+        }
+      }
+      
       const response = await fetch(`${this.config.proxyUrl}/edge/register`, {
         method: 'POST',
         headers: {
@@ -111,7 +121,7 @@ export class WebhookTransport extends BaseTransport {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          webhookUrl: this.webhookUrl,
+          webhookUrl: webhookUrl,
           linearToken: this.config.token,
           name: this.config.name || 'Unknown Edge Worker',
           capabilities: this.config.capabilities || ['linear-processing']

@@ -274,12 +274,28 @@ export class EdgeWorker extends EventEmitter {
    * Handle webhook events from proxy - now accepts native webhook payloads
    */
   private async handleWebhook(webhook: LinearWebhook, repos: RepositoryConfig[]): Promise<void> {
+    console.log(`[EdgeWorker] Processing webhook: ${webhook.type}`)
+    
+    // Log verbose webhook info if enabled
+    if (process.env.CYRUS_WEBHOOK_DEBUG === 'true') {
+      console.log(`[EdgeWorker] Webhook payload:`, JSON.stringify(webhook, null, 2))
+    }
+    
     // Find the appropriate repository for this webhook
     const repository = this.findRepositoryForWebhook(webhook, repos)
     if (!repository) {
       console.log('No repository configured for webhook from workspace', webhook.organizationId)
+      if (process.env.CYRUS_WEBHOOK_DEBUG === 'true') {
+        console.log('Available repositories:', repos.map(r => ({ 
+          name: r.name, 
+          workspaceId: r.linearWorkspaceId,
+          teamKeys: r.teamKeys 
+        })))
+      }
       return
     }
+    
+    console.log(`[EdgeWorker] Webhook matched to repository: ${repository.name}`)
     
     try {
       // Handle specific webhook types with proper typing

@@ -92,13 +92,17 @@ export class SharedWebhookServer {
    */
   private async handleWebhookRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
+      console.log(`🔗 Incoming webhook request: ${req.method} ${req.url}`)
+      
       if (req.method !== 'POST') {
+        console.log(`🔗 Rejected non-POST request: ${req.method}`)
         res.writeHead(405, { 'Content-Type': 'text/plain' })
         res.end('Method Not Allowed')
         return
       }
 
       if (req.url !== '/webhook') {
+        console.log(`🔗 Rejected request to wrong URL: ${req.url}`)
         res.writeHead(404, { 'Content-Type': 'text/plain' })
         res.end('Not Found')
         return
@@ -115,20 +119,25 @@ export class SharedWebhookServer {
           const signature = req.headers['x-webhook-signature'] as string
           const timestamp = req.headers['x-webhook-timestamp'] as string
 
+          console.log(`🔗 Webhook received with ${body.length} bytes, ${this.webhookHandlers.size} registered handlers`)
+          
           if (!signature) {
+            console.log('🔗 Webhook rejected: Missing signature header')
             res.writeHead(400, { 'Content-Type': 'text/plain' })
             res.end('Missing signature')
             return
           }
 
           // Try each registered handler until one verifies the signature
+          let handlerAttempts = 0
           for (const [token, { handler }] of this.webhookHandlers) {
+            handlerAttempts++
             try {
               if (handler(body, signature, timestamp)) {
                 // Handler verified signature and processed webhook
                 res.writeHead(200, { 'Content-Type': 'text/plain' })
                 res.end('OK')
-                console.log(`🔗 Webhook delivered to token ending in ...${token.slice(-4)}`)
+                console.log(`🔗 Webhook delivered to token ending in ...${token.slice(-4)} (attempt ${handlerAttempts}/${this.webhookHandlers.size})`)
                 return
               }
             } catch (error) {
@@ -137,7 +146,7 @@ export class SharedWebhookServer {
           }
 
           // No handler could verify the signature
-          console.error('🔗 Webhook signature verification failed for all registered handlers')
+          console.error(`🔗 Webhook signature verification failed for all ${this.webhookHandlers.size} registered handlers`)
           res.writeHead(401, { 'Content-Type': 'text/plain' })
           res.end('Unauthorized')
         } catch (error) {
