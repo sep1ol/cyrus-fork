@@ -6,6 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Work on multiple tasks within a single Linear issue - each comment thread maintains its own Claude session, letting you tackle different parts of a problem in parallel without context mixing. New root comments start focused sessions that see the full conversation history in a threaded view (just like Linear's UI) while concentrating on your specific request
+- Automatic ngrok tunnel setup for external access
+  - No more manual port forwarding or reverse proxy setup required
+  - Cyrus will ask for your ngrok auth token on first run and handle the rest
+  - Free ngrok account required (sorry, we can't make the internet work by magic alone)
+  - Skip ngrok setup if you prefer to handle networking yourself
+
+### Fixed
+- Fresh startup no longer crashes with "EdgeWorker not initialized" error when trying to connect to Linear
+- OAuth flow now works properly on first run (turns out asking for credentials before having a way to receive them was... problematic)
 
 ## [0.1.30] - 2025-01-07
 

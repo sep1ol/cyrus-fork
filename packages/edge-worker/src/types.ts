@@ -43,6 +43,7 @@ export interface EdgeWorkerConfig {
   webhookPort?: number  // Legacy support - now uses serverPort
   serverPort?: number   // Unified server port for both webhooks and OAuth callbacks (default: 3456)
   serverHost?: string   // Server host address ('localhost' or '0.0.0.0', default: 'localhost')
+  ngrokAuthToken?: string  // Ngrok auth token for tunnel creation
   
   // Claude config (shared across all repos)
   defaultAllowedTools?: string[]
