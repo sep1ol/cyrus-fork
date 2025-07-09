@@ -396,7 +396,7 @@ describe('EdgeWorker', () => {
       expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('@cyrus please help with this')
     })
 
-    it('should handle issue unassignment', async () => {
+    it('should handle issue unassignment with single thread', async () => {
       // Set up a comment thread for this issue
       const threadCommentId = 'comment-123'
       edgeWorker['issueToCommentThreads'].set('issue-123', new Set([threadCommentId]))
@@ -410,6 +410,80 @@ describe('EdgeWorker', () => {
 
       expect(mockRunner.stop).toHaveBeenCalled()
       expect(mockSessionManager.removeSession).toHaveBeenCalledWith(threadCommentId)
+      expect(mockLinearClient.createComment).toHaveBeenCalledWith({
+        issueId: 'issue-123',
+        body: "I've been unassigned and am stopping work now."
+      })
+    })
+    
+    it('should handle issue unassignment with multiple active threads', async () => {
+      // Set up multiple comment threads for this issue
+      const thread1 = 'comment-thread-1'
+      const thread2 = 'comment-thread-2'
+      const thread3 = 'comment-thread-3'
+      edgeWorker['issueToCommentThreads'].set('issue-123', new Set([thread1, thread2, thread3]))
+      
+      // Set up mock Claude runners for each thread
+      const runner1 = { stop: vi.fn() }
+      const runner2 = { stop: vi.fn() }
+      const runner3 = { stop: vi.fn() }
+      
+      edgeWorker['claudeRunners'].set(thread1, runner1 as any)
+      edgeWorker['claudeRunners'].set(thread2, runner2 as any)
+      edgeWorker['claudeRunners'].set(thread3, runner3 as any)
+      
+      // Set up mappings that should be cleaned up
+      edgeWorker['commentToRepo'].set(thread1, 'test-repo')
+      edgeWorker['commentToRepo'].set(thread2, 'test-repo')
+      edgeWorker['commentToRepo'].set(thread3, 'test-repo')
+      
+      edgeWorker['commentToIssue'].set(thread1, 'issue-123')
+      edgeWorker['commentToIssue'].set(thread2, 'issue-123')
+      edgeWorker['commentToIssue'].set(thread3, 'issue-123')
+      
+      edgeWorker['commentToLatestAgentReply'].set(thread1, 'reply-1')
+      edgeWorker['commentToLatestAgentReply'].set(thread2, 'reply-2')
+      edgeWorker['commentToLatestAgentReply'].set(thread3, 'reply-3')
+      
+      const webhook = mockUnassignedWebhook()
+      await webhookHandler(webhook)
+      
+      // All runners should be stopped
+      expect(runner1.stop).toHaveBeenCalled()
+      expect(runner2.stop).toHaveBeenCalled()
+      expect(runner3.stop).toHaveBeenCalled()
+      
+      // All sessions should be removed
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith(thread1)
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith(thread2)
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith(thread3)
+      
+      // Only ONE farewell comment should be posted
+      expect(mockLinearClient.createComment).toHaveBeenCalledTimes(1)
+      expect(mockLinearClient.createComment).toHaveBeenCalledWith({
+        issueId: 'issue-123',
+        body: "I've been unassigned and am stopping work now."
+      })
+      
+      // All mappings should be cleaned up
+      expect(edgeWorker['claudeRunners'].has(thread1)).toBe(false)
+      expect(edgeWorker['claudeRunners'].has(thread2)).toBe(false)
+      expect(edgeWorker['claudeRunners'].has(thread3)).toBe(false)
+      
+      expect(edgeWorker['commentToRepo'].has(thread1)).toBe(false)
+      expect(edgeWorker['commentToRepo'].has(thread2)).toBe(false)
+      expect(edgeWorker['commentToRepo'].has(thread3)).toBe(false)
+      
+      expect(edgeWorker['commentToIssue'].has(thread1)).toBe(false)
+      expect(edgeWorker['commentToIssue'].has(thread2)).toBe(false)
+      expect(edgeWorker['commentToIssue'].has(thread3)).toBe(false)
+      
+      expect(edgeWorker['commentToLatestAgentReply'].has(thread1)).toBe(false)
+      expect(edgeWorker['commentToLatestAgentReply'].has(thread2)).toBe(false)
+      expect(edgeWorker['commentToLatestAgentReply'].has(thread3)).toBe(false)
+      
+      // Issue-level mappings should be cleaned
+      expect(edgeWorker['issueToCommentThreads'].has('issue-123')).toBe(false)
     })
 
     it('should ignore comments when continuation is disabled', async () => {
@@ -624,6 +698,133 @@ describe('EdgeWorker', () => {
     })
   })
 
+  describe('Comment to Latest Reply Mapping', () => {
+    let webhookHandler: Function
+    
+    beforeEach(() => {
+      webhookHandler = mockNdjsonClient.on.mock.calls.find(
+        (call: any) => call[0] === 'webhook'
+      )?.[1]
+    })
+    
+    it('should track latest agent reply when posting comments', async () => {
+      // Setup mock to capture Claude message handler
+      let claudeMessageHandler: Function
+      vi.mocked(ClaudeRunner).mockImplementation((config) => {
+        claudeMessageHandler = config.onMessage
+        return mockClaudeRunner
+      })
+      
+      // Setup initial issue assignment
+      const webhook = mockIssueAssignedWebhook()
+      await webhookHandler(webhook)
+      
+      // The initial comment should set the mapping to itself
+      expect(edgeWorker['commentToLatestAgentReply'].get('comment-123')).toBe('comment-123')
+      
+      // Setup mock Linear client with createComment
+      const linearClient = {
+        createComment: vi.fn().mockResolvedValue({
+          comment: { id: 'reply-comment-456' },
+          success: true
+        })
+      }
+      edgeWorker['linearClients'].set('test-repo', linearClient as any)
+      
+      // Simulate Claude posting a successful result
+      const message = mockClaudeResultMessage('success')
+      await claudeMessageHandler!(message)
+      
+      // Check that the mapping was updated
+      const mapping = edgeWorker['commentToLatestAgentReply']
+      expect(mapping.get('comment-123')).toBe('reply-comment-456')
+    })
+    
+    it('should update latest reply for subsequent messages in same thread', async () => {
+      // Setup mock to capture Claude message handler
+      let claudeMessageHandler: Function
+      vi.mocked(ClaudeRunner).mockImplementation((config) => {
+        claudeMessageHandler = config.onMessage
+        return mockClaudeRunner
+      })
+      
+      // Setup
+      const webhook = mockIssueAssignedWebhook()
+      await webhookHandler(webhook)
+      
+      // Set initial reply
+      edgeWorker['commentToLatestAgentReply'].set('comment-123', 'reply-1')
+      
+      // Setup mock Linear client
+      const linearClient = {
+        createComment: vi.fn().mockResolvedValue({
+          comment: { id: 'reply-2' },
+          success: true
+        })
+      }
+      edgeWorker['linearClients'].set('test-repo', linearClient as any)
+      
+      const message = mockClaudeResultMessage('success')
+      await claudeMessageHandler!(message)
+      
+      // Should update to latest reply
+      expect(edgeWorker['commentToLatestAgentReply'].get('comment-123')).toBe('reply-2')
+    })
+    
+    it('should handle root comments (no parent) correctly', async () => {
+      const webhook = mockIssueAssignedWebhook()
+      await webhookHandler(webhook)
+      
+      // The initial comment is the root, so it should map to itself after being posted
+      const mapping = edgeWorker['commentToLatestAgentReply']
+      expect(mapping.get('comment-123')).toBe('comment-123')
+    })
+    
+    it('should use latest reply for todo updates', async () => {
+      // Setup mock to capture Claude message handler
+      let claudeMessageHandler: Function
+      vi.mocked(ClaudeRunner).mockImplementation((config) => {
+        claudeMessageHandler = config.onMessage
+        return mockClaudeRunner
+      })
+      
+      const webhook = mockIssueAssignedWebhook()
+      await webhookHandler(webhook)
+      
+      // Set a latest reply
+      edgeWorker['commentToLatestAgentReply'].set('comment-123', 'latest-reply-789')
+      
+      // Setup mock Linear client with updateComment
+      const linearClient = {
+        updateComment: vi.fn().mockResolvedValue({ success: true })
+      }
+      edgeWorker['linearClients'].set('test-repo', linearClient as any)
+      
+      const todoMessage = {
+        type: 'assistant',
+        message: {
+          content: [{
+            type: 'tool_use',
+            name: 'TodoWrite',
+            input: {
+              todos: [
+                { id: '1', content: 'Test todo', status: 'pending', priority: 'high' }
+              ]
+            }
+          }]
+        }
+      }
+      
+      await claudeMessageHandler!(todoMessage)
+      
+      // Should update the latest reply, not the root
+      expect(linearClient.updateComment).toHaveBeenCalledWith(
+        'latest-reply-789',
+        expect.any(Object)
+      )
+    })
+  })
+
   describe('comment mention detection', () => {
     let webhookHandler: Function
 
@@ -829,6 +1030,228 @@ describe('EdgeWorker', () => {
 
       const sessions = edgeWorker.getActiveSessions()
       expect(sessions).toEqual(['issue-1', 'issue-2', 'issue-3'])
+    })
+  })
+
+  describe('Multiple Sessions Per Issue', () => {
+    let webhookHandler: Function
+    
+    beforeEach(() => {
+      webhookHandler = mockNdjsonClient.on.mock.calls.find(
+        (call: any) => call[0] === 'webhook'
+      )?.[1]
+    })
+    
+    it('should support multiple comment threads per issue', async () => {
+      // First, assign the issue to create initial thread
+      const assignmentWebhook = mockIssueAssignedWebhook()
+      await webhookHandler(assignmentWebhook)
+      
+      // Verify first thread was created
+      const initialThreads = edgeWorker['issueToCommentThreads'].get('issue-123')
+      expect(initialThreads?.size).toBe(1)
+      expect(initialThreads?.has('comment-123')).toBe(true)
+      
+      // Now add a second comment thread from a user with explicit mention webhook
+      const secondComment = {
+        type: 'AppUserNotification',
+        action: 'issueCommentMention',
+        createdAt: new Date().toISOString(),
+        organizationId: 'test-workspace',
+        oauthClientId: 'test-oauth-client',
+        appUserId: 'test-app-user',
+        notification: {
+          type: 'issueCommentMention',
+          id: 'notification-456',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          archivedAt: null,
+          actorId: 'actor-456',
+          externalUserActorId: null,
+          userId: 'user-456',
+          issueId: 'issue-123',
+          commentId: 'comment-thread-2',
+          issue: {
+            id: 'issue-123',
+            identifier: 'TEST-123',
+            title: 'Test Issue',
+            teamId: 'test-workspace',
+            team: { id: 'test-workspace', key: 'TEST', name: 'Test Team' }
+          },
+          comment: {
+            id: 'comment-thread-2',
+            body: '@cyrus help with feature B',
+            userId: 'user-456',
+            issueId: 'issue-123',
+            parent: null
+          }
+        },
+        webhookTimestamp: Date.now(),
+        webhookId: 'webhook-456'
+      }
+      
+      // Setup mock Linear client for the second comment
+      const linearClient = {
+        createComment: vi.fn().mockResolvedValue({
+          success: true,
+          comment: { id: 'reply-to-thread-2' }
+        }),
+        comment: vi.fn().mockResolvedValue({
+          id: 'comment-thread-2',
+          parent: null
+        }),
+        viewer: {
+          id: 'cyrus-user-id',
+          name: 'Cyrus Agent'
+        }
+      }
+      edgeWorker['linearClients'].set('test-repo', linearClient as any)
+      
+      // Clear previous session manager calls
+      mockSessionManager.addSession.mockClear()
+      
+      // Mock that we have existing logs so it doesn't trigger full issue assignment
+      vi.spyOn(edgeWorker as any, 'hasExistingLogs').mockResolvedValue(true)
+      
+      await webhookHandler(secondComment)
+      
+      // Should create second session with the comment thread root
+      expect(mockSessionManager.addSession).toHaveBeenCalledWith(
+        'comment-thread-2',
+        expect.any(Session)
+      )
+      
+      // Both threads should be tracked
+      const updatedThreads = edgeWorker['issueToCommentThreads'].get('issue-123')
+      expect(updatedThreads?.size).toBe(2)
+      expect(updatedThreads?.has('comment-123')).toBe(true) // Initial assignment comment
+      expect(updatedThreads?.has('comment-thread-2')).toBe(true) // New user comment
+      
+      // Should have two separate Claude runners
+      expect(edgeWorker['claudeRunners'].has('comment-123')).toBe(true)
+      expect(edgeWorker['claudeRunners'].has('comment-thread-2')).toBe(true)
+    })
+    
+    it('should isolate sessions between comment threads', async () => {
+      // Setup two threads
+      edgeWorker['issueToCommentThreads'].set('issue-123', new Set(['thread-1', 'thread-2']))
+      
+      // Create separate mocks for each runner
+      const runner1Mock = {
+        startStreaming: vi.fn(),
+        stop: vi.fn(),
+        isStreaming: vi.fn().mockReturnValue(true)
+      }
+      
+      const runner2Mock = {
+        startStreaming: vi.fn(),
+        stop: vi.fn(),
+        isStreaming: vi.fn().mockReturnValue(true)
+      }
+      
+      edgeWorker['claudeRunners'].set('thread-1', runner1Mock as any)
+      edgeWorker['claudeRunners'].set('thread-2', runner2Mock as any)
+      
+      // Stop one thread
+      await edgeWorker['claudeRunners'].get('thread-1')?.stop()
+      
+      // Only thread-1 should be stopped
+      expect(runner1Mock.stop).toHaveBeenCalled()
+      expect(runner2Mock.stop).not.toHaveBeenCalled()
+      expect(runner2Mock.isStreaming()).toBe(true)
+    })
+    
+    it('should handle replies to different comment threads independently', async () => {
+      // Setup issue with two comment threads
+      edgeWorker['issueToCommentThreads'].set('issue-123', new Set(['thread-1', 'thread-2']))
+      
+      // Setup sessions for both threads
+      const session1 = { workspace: { path: '/test/thread-1' } }
+      const session2 = { workspace: { path: '/test/thread-2' } }
+      
+      mockSessionManager.getSession
+        .mockReturnValueOnce(session1) // First call for thread-1
+        .mockReturnValueOnce(session2) // Second call for thread-2
+      
+      // Setup mock Linear client
+      const linearClient = {
+        comment: vi.fn(),
+        createComment: vi.fn().mockResolvedValue({
+          success: true,
+          comment: { id: 'new-reply' }
+        }),
+        viewer: {
+          id: 'cyrus-user-id',
+          name: 'Cyrus Agent'
+        }
+      }
+      edgeWorker['linearClients'].set('test-repo', linearClient as any)
+      
+      // Setup Claude runners for both threads
+      edgeWorker['claudeRunners'].set('thread-1', mockClaudeRunner as any)
+      edgeWorker['claudeRunners'].set('thread-2', { ...mockClaudeRunner, startStreaming: vi.fn() } as any)
+      
+      // Reply to first thread
+      const reply1 = {
+        ...mockCommentWebhook({}, {
+          id: 'reply-1-1',
+          body: '@cyrus more details for feature A',
+          parent: { id: 'thread-1' }
+        }),
+        action: 'issueCommentMention',
+        notification: {
+          ...mockCommentWebhook({}, {}).notification,
+          type: 'issueCommentMention',
+          comment: {
+            id: 'reply-1-1',
+            body: '@cyrus more details for feature A',
+            parent: { id: 'thread-1' }
+          }
+        }
+      }
+      
+      linearClient.comment.mockResolvedValueOnce({
+        id: 'reply-1-1',
+        parent: { id: 'thread-1' }
+      })
+      
+      await webhookHandler(reply1)
+      
+      // Should use thread-1 as root
+      expect(mockSessionManager.getSession).toHaveBeenCalledWith('thread-1')
+      expect(mockClaudeRunner.startStreaming).toHaveBeenCalledWith('@cyrus more details for feature A')
+      
+      // Clear calls for second test
+      mockSessionManager.getSession.mockClear()
+      
+      // Reply to second thread
+      const reply2 = {
+        ...mockCommentWebhook({}, {
+          id: 'reply-2-1',
+          body: '@cyrus more details for feature B',
+          parent: { id: 'thread-2' }
+        }),
+        action: 'issueCommentMention',
+        notification: {
+          ...mockCommentWebhook({}, {}).notification,
+          type: 'issueCommentMention',
+          comment: {
+            id: 'reply-2-1',
+            body: '@cyrus more details for feature B',
+            parent: { id: 'thread-2' }
+          }
+        }
+      }
+      
+      linearClient.comment.mockResolvedValueOnce({
+        id: 'reply-2-1',
+        parent: { id: 'thread-2' }
+      })
+      
+      await webhookHandler(reply2)
+      
+      // Should use thread-2 as root
+      expect(mockSessionManager.getSession).toHaveBeenCalledWith('thread-2')
     })
   })
 

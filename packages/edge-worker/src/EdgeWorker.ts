@@ -1228,6 +1228,12 @@ Please analyze this issue and help implement a solution.`
       if (response && response.comment) {
         const comment = await response.comment
         console.log(`✅ Posted initial comment on issue ${issueId} (ID: ${comment.id})`)
+        
+        // Track this as the latest agent reply for the thread (initial comment is its own root)
+        if (comment.id) {
+          this.commentToLatestAgentReply.set(comment.id, comment.id)
+        }
+        
         return comment
       } else {
         throw new Error('Initial comment creation failed')
