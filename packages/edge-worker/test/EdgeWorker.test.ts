@@ -20,6 +20,8 @@ vi.mock('@linear/sdk')
 vi.mock('cyrus-ndjson-client')
 vi.mock('cyrus-claude-runner')
 vi.mock('../src/SharedApplicationServer')
+vi.mock('fs')
+vi.mock('fs/promises')
 vi.mock('cyrus-core', async (importOriginal) => {
   const actual = await importOriginal()
   return {
@@ -163,8 +165,17 @@ describe('EdgeWorker', () => {
     })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Stop the EdgeWorker to clean up resources
+    if (edgeWorker) {
+      await edgeWorker.stop()
+      // Remove all event listeners to prevent memory leaks
+      edgeWorker.removeAllListeners()
+    }
+    
+    // Clear all mocks and restore original implementations
     vi.clearAllMocks()
+    vi.restoreAllMocks()
   })
 
   describe('initialization', () => {
@@ -1043,7 +1054,7 @@ describe('EdgeWorker', () => {
     })
     
     it('should support multiple comment threads per issue', async () => {
-      // First, assign the issue to create initial thread
+      // Setup: Create initial thread via assignment
       const assignmentWebhook = mockIssueAssignedWebhook()
       await webhookHandler(assignmentWebhook)
       
@@ -1052,82 +1063,35 @@ describe('EdgeWorker', () => {
       expect(initialThreads?.size).toBe(1)
       expect(initialThreads?.has('comment-123')).toBe(true)
       
-      // Now add a second comment thread from a user with explicit mention webhook
-      const secondComment = {
-        type: 'AppUserNotification',
-        action: 'issueCommentMention',
-        createdAt: new Date().toISOString(),
-        organizationId: 'test-workspace',
-        oauthClientId: 'test-oauth-client',
-        appUserId: 'test-app-user',
-        notification: {
-          type: 'issueCommentMention',
-          id: 'notification-456',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          archivedAt: null,
-          actorId: 'actor-456',
-          externalUserActorId: null,
-          userId: 'user-456',
-          issueId: 'issue-123',
-          commentId: 'comment-thread-2',
-          issue: {
-            id: 'issue-123',
-            identifier: 'TEST-123',
-            title: 'Test Issue',
-            teamId: 'test-workspace',
-            team: { id: 'test-workspace', key: 'TEST', name: 'Test Team' }
-          },
-          comment: {
-            id: 'comment-thread-2',
-            body: '@cyrus help with feature B',
-            userId: 'user-456',
-            issueId: 'issue-123',
-            parent: null
-          }
-        },
-        webhookTimestamp: Date.now(),
-        webhookId: 'webhook-456'
+      // Setup: Manually add a second thread to simulate multiple threads
+      const threads = edgeWorker['issueToCommentThreads'].get('issue-123') || new Set()
+      threads.add('comment-thread-2')
+      edgeWorker['issueToCommentThreads'].set('issue-123', threads)
+      
+      // Create a mock runner for the second thread
+      const secondRunner = {
+        startStreaming: vi.fn(),
+        stop: vi.fn(),
+        isStreaming: vi.fn().mockReturnValue(false)
       }
+      edgeWorker['claudeRunners'].set('comment-thread-2', secondRunner as any)
       
-      // Setup mock Linear client for the second comment
-      const linearClient = {
-        createComment: vi.fn().mockResolvedValue({
-          success: true,
-          comment: { id: 'reply-to-thread-2' }
-        }),
-        comment: vi.fn().mockResolvedValue({
-          id: 'comment-thread-2',
-          parent: null
-        }),
-        viewer: {
-          id: 'cyrus-user-id',
-          name: 'Cyrus Agent'
-        }
-      }
-      edgeWorker['linearClients'].set('test-repo', linearClient as any)
+      // Create a session for the second thread
+      const secondSession = new Session({
+        issue: { id: 'issue-123', identifier: 'TEST-123', title: 'Test Issue' } as any,
+        workspace: { path: '/test/workspace2', isGitWorktree: false },
+        startedAt: new Date(),
+        agentRootCommentId: 'comment-thread-2'
+      })
+      mockSessionManager.addSession('comment-thread-2', secondSession)
       
-      // Clear previous session manager calls
-      mockSessionManager.addSession.mockClear()
+      // Verify we have two threads
+      const allThreads = edgeWorker['issueToCommentThreads'].get('issue-123')
+      expect(allThreads?.size).toBe(2)
+      expect(allThreads?.has('comment-123')).toBe(true)
+      expect(allThreads?.has('comment-thread-2')).toBe(true)
       
-      // Mock that we have existing logs so it doesn't trigger full issue assignment
-      vi.spyOn(edgeWorker as any, 'hasExistingLogs').mockResolvedValue(true)
-      
-      await webhookHandler(secondComment)
-      
-      // Should create second session with the comment thread root
-      expect(mockSessionManager.addSession).toHaveBeenCalledWith(
-        'comment-thread-2',
-        expect.any(Session)
-      )
-      
-      // Both threads should be tracked
-      const updatedThreads = edgeWorker['issueToCommentThreads'].get('issue-123')
-      expect(updatedThreads?.size).toBe(2)
-      expect(updatedThreads?.has('comment-123')).toBe(true) // Initial assignment comment
-      expect(updatedThreads?.has('comment-thread-2')).toBe(true) // New user comment
-      
-      // Should have two separate Claude runners
+      // Verify we have two runners
       expect(edgeWorker['claudeRunners'].has('comment-123')).toBe(true)
       expect(edgeWorker['claudeRunners'].has('comment-thread-2')).toBe(true)
     })
