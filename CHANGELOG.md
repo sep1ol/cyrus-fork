@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.32] - 2025-01-09
+
+### CLI
+- cyrus-ai@0.1.32
+
+### Fixed
+- Missing prompt template file in published package (the one thing you need to actually run the thing)
+
+### Packages
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.17
+  - Fixed missing prompt-template-v2.md in package files
+
 ## [0.1.31] - 2025-01-09
 
 ### CLI
