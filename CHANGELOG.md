@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.31] - 2025-01-09
+
+### CLI
+- cyrus-ai@0.1.31
+
 ### Added
 - Work on multiple tasks within a single Linear issue - each comment thread maintains its own Claude session, letting you tackle different parts of a problem in parallel without context mixing. New root comments start focused sessions that see the full conversation history in a threaded view (just like Linear's UI) while concentrating on your specific request
 - Automatic ngrok tunnel setup for external access
@@ -11,14 +16,25 @@ All notable changes to this project will be documented in this file.
   - Cyrus will ask for your ngrok auth token on first run and handle the rest
   - Free ngrok account required (sorry, we can't make the internet work by magic alone)
   - Skip ngrok setup if you prefer to handle networking yourself
-
-### Added
 - Webhook debugging via `CYRUS_WEBHOOK_DEBUG=true` environment variable - see exactly what Linear is (or isn't) sending you
 
 ### Fixed
 - Fresh startup no longer crashes with "EdgeWorker not initialized" error when trying to connect to Linear
 - OAuth flow now works properly on first run (turns out asking for credentials before having a way to receive them was... problematic)
 - Git worktrees now work with local-only repositories (no more "fatal: 'origin' does not appear to be a git repository" when you're just trying to test things locally)
+- Webhooks now register with the correct URL (ngrok/public URL instead of localhost)
+
+### Packages
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.16
+- Added ngrok tunnel support for automatic public URL generation
+- Fixed webhook URL registration to use public URLs
+- Added getPublicUrl() method to SharedApplicationServer
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.12
+- Fixed webhook URL registration to use external server's public URL when available
 
 ## [0.1.30] - 2025-01-07
 
