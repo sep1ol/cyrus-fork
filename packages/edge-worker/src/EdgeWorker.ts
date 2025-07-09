@@ -59,7 +59,7 @@ export class EdgeWorker extends EventEmitter {
     // Initialize shared application server
     const serverPort = config.serverPort || config.webhookPort || 3456
     const serverHost = config.serverHost || 'localhost'
-    this.sharedApplicationServer = new SharedApplicationServer(serverPort, serverHost)
+    this.sharedApplicationServer = new SharedApplicationServer(serverPort, serverHost, config.ngrokAuthToken)
     
     // Register OAuth callback handler if provided
     if (config.handlers?.onOAuthCallback) {
