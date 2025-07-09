@@ -41,14 +41,18 @@ Linear Cloud                              Repository (Git)
 │  │  • issueToCommentThreads: issueId → Set<commentId>     │  │
 │  │  • issue.identifier → workspace path (git worktree)     │  │
 │  │                                                        │  │
-│  │  Linear Structure:                                     │  │
-│  │  ─────────────────                                     │  │
+│  │  Linear Structure (ONLY 1 level of nesting):          │  │
+│  │  ─────────────────────────────────────────            │  │
 │  │  Issue                                                 │  │
-│  │  ├── Comment (thread root) ← ClaudeRunner session 1    │  │
-│  │  │   ├── Reply                                         │  │
-│  │  │   └── Reply                                         │  │
-│  │  └── Comment (thread root) ← ClaudeRunner session 2    │  │
-│  │      └── Reply                                         │  │
+│  │  ├── Comment (root) ← ClaudeRunner session 1          │  │
+│  │  │   ├── Reply (no further nesting possible)          │  │
+│  │  │   └── Reply (no further nesting possible)          │  │
+│  │  └── Comment (root) ← ClaudeRunner session 2          │  │
+│  │      └── Reply (no further nesting possible)          │  │
+│  │                                                        │  │
+│  │  IMPORTANT: Linear supports exactly ONE level of      │  │
+│  │  comment nesting. Replies cannot have replies.        │  │
+│  │  No recursion is needed or possible.                  │  │
 │  │                                                        │  │
 │  │  Contains:                                             │  │
 │  │  • SessionManager (from packages/core)                 │  │
@@ -133,3 +137,4 @@ The system uses a comment-thread-based architecture where:
 - Multiple threads per issue are supported, allowing parallel Claude sessions
 - Session IDs are extracted from Claude Code's first message rather than generated locally
 - The `--resume` flag is used to continue existing Claude sessions with their extracted session IDs
+- **Linear has exactly ONE level of comment nesting**: Comments can have replies, but replies cannot have further replies. This eliminates any need for recursive comment traversal.

@@ -523,7 +523,12 @@ export class EdgeWorker extends EventEmitter {
       throw new Error(`Failed to fetch full issue details for ${issue.id}`)
     }
 
-    // Fetch full comment to determine parent relationship
+    // IMPORTANT: Linear has exactly ONE level of comment nesting:
+    // - Root comments (no parent)
+    // - Reply comments (have a parent, which must be a root comment)
+    // There is NO recursion - a reply cannot have replies
+    
+    // Fetch full comment to determine if this is a root or reply
     let parentCommentId: string | null = null
     let rootCommentId: string = comment.id // Default to this comment being the root
     
@@ -532,12 +537,13 @@ export class EdgeWorker extends EventEmitter {
       if (linearClient && comment.id) {
         const fullComment = await linearClient.comment({ id: comment.id })
         
-        // Check if comment has a parent (is a reply in a thread)
+        // Check if comment has a parent (making it a reply)
         if (fullComment.parent) {
           const parent = await fullComment.parent
           if (parent?.id) {
             parentCommentId = parent.id
-            // In Linear's 2-level structure, the parent IS the root
+            // In Linear's 2-level structure, the parent IS always the root
+            // No need for recursion - replies can't have replies
             rootCommentId = parent.id
           }
         }
@@ -546,13 +552,15 @@ export class EdgeWorker extends EventEmitter {
       console.error('Failed to fetch full comment data:', error)
     }
     
-    // Determine if this is a root comment or reply
+    // Determine comment type based on whether it has a parent
     const isRootComment = parentCommentId === null
     const threadRootCommentId = rootCommentId
     
     console.log(`[EdgeWorker] Comment ${comment.id} - isRoot: ${isRootComment}, threadRoot: ${threadRootCommentId}, parent: ${parentCommentId}`)
     
     // Store reply context for Linear commenting
+    // parentId will be: the parent comment ID (if this is a reply) OR this comment's ID (if root)
+    // This ensures our bot's replies appear at the correct nesting level
     this.issueToReplyContext.set(issue.id, {
       commentId: comment.id,
       parentId: parentCommentId || comment.id
@@ -608,11 +616,12 @@ export class EdgeWorker extends EventEmitter {
     const existingRunner = this.claudeRunners.get(threadRootCommentId)
     if (existingRunner && existingRunner.isStreaming()) {
       // Post immediate reply for streaming case
+      // parentId ensures correct nesting: replies to parent if this is a reply, or to comment itself if root
       await this.postComment(
         issue.id,
         "I've queued up your message to address it right after I resolve my current focus.",
         repository.id,
-        parentCommentId || comment.id
+        parentCommentId || comment.id  // Same nesting level as the triggering comment
       )
       
       // Add comment to existing stream instead of restarting
@@ -634,11 +643,12 @@ export class EdgeWorker extends EventEmitter {
     }
 
     // Post immediate reply for continuing existing thread
+    // parentId ensures correct nesting: replies to parent if this is a reply, or to comment itself if root
     await this.postComment(
       issue.id,
       "I'm getting started on that right away. I'll update this comment with my plan as I work through it.",
       repository.id,
-      parentCommentId || comment.id
+      parentCommentId || comment.id  // Same nesting level as the triggering comment
     )
 
     // Stop existing runner if it's not streaming or stream addition failed
