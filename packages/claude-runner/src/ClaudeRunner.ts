@@ -12,15 +12,22 @@ export class StreamingPrompt {
   private messageQueue: SDKUserMessage[] = []
   private resolvers: Array<(value: IteratorResult<SDKUserMessage>) => void> = []
   private isComplete = false
-  private sessionId: string
+  private sessionId: string | null
 
-  constructor(sessionId: string, initialPrompt?: string) {
+  constructor(sessionId: string | null, initialPrompt?: string) {
     this.sessionId = sessionId
     
     // Add initial prompt if provided
     if (initialPrompt) {
       this.addMessage(initialPrompt)
     }
+  }
+
+  /**
+   * Update the session ID (used when session ID is received from Claude)
+   */
+  updateSessionId(sessionId: string): void {
+    this.sessionId = sessionId
   }
 
   /**
@@ -38,7 +45,7 @@ export class StreamingPrompt {
         content: content
       },
       parent_tool_use_id: null,
-      session_id: this.sessionId
+      session_id: this.sessionId || 'pending'  // Use placeholder until assigned by Claude
     }
 
     this.messageQueue.push(message)
@@ -157,15 +164,14 @@ export class ClaudeRunner extends EventEmitter {
       throw new Error('Claude session already running')
     }
 
-    // Generate session ID and create session info
-    const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    // Initialize session info without session ID (will be set from first message)
     this.sessionInfo = {
-      sessionId,
+      sessionId: null,
       startedAt: new Date(),
       isRunning: true
     }
 
-    console.log(`[ClaudeRunner] Starting new session: ${sessionId}`)
+    console.log(`[ClaudeRunner] Starting new session (session ID will be assigned by Claude)`)
     console.log('[ClaudeRunner] Working directory:', this.config.workingDirectory)
 
     // Ensure working directory exists
@@ -178,7 +184,7 @@ export class ClaudeRunner extends EventEmitter {
       }
     }
 
-    // Set up logging
+    // Set up logging (initial setup without session ID)
     this.setupLogging()
 
     // Create abort controller for this session
@@ -198,7 +204,7 @@ export class ClaudeRunner extends EventEmitter {
       } else {
         // Streaming mode
         console.log(`[ClaudeRunner] Starting query with streaming prompt`)
-        this.streamingPrompt = new StreamingPrompt(sessionId, streamingInitialPrompt)
+        this.streamingPrompt = new StreamingPrompt(null, streamingInitialPrompt)
         promptForQuery = this.streamingPrompt
       }
       
@@ -250,7 +256,7 @@ export class ClaudeRunner extends EventEmitter {
           ...(this.config.systemPrompt && { customSystemPrompt: this.config.systemPrompt }),
           ...(this.config.appendSystemPrompt && { appendSystemPrompt: this.config.appendSystemPrompt }),
           ...(processedAllowedTools && { allowedTools: processedAllowedTools }),
-          ...(this.config.continueSession && { continue: this.config.continueSession }),
+          ...(this.config.resumeSessionId && { resume: this.config.resumeSessionId }),
           ...(Object.keys(mcpServers).length > 0 && { mcpServers })
         }
       }
@@ -260,6 +266,20 @@ export class ClaudeRunner extends EventEmitter {
         if (!this.sessionInfo?.isRunning) {
           console.log('[ClaudeRunner] Session was stopped, breaking from query loop')
           break
+        }
+
+        // Extract session ID from first message if we don't have one yet
+        if (!this.sessionInfo.sessionId && message.session_id) {
+          this.sessionInfo.sessionId = message.session_id
+          console.log(`[ClaudeRunner] Session ID assigned by Claude: ${message.session_id}`)
+          
+          // Update streaming prompt with session ID if it exists
+          if (this.streamingPrompt) {
+            this.streamingPrompt.updateSessionId(message.session_id)
+          }
+          
+          // Re-setup logging now that we have the session ID
+          this.setupLogging()
         }
 
         this.messages.push(message)
@@ -416,6 +436,12 @@ export class ClaudeRunner extends EventEmitter {
    */
   private setupLogging(): void {
     try {
+      // Close existing log stream if we're re-setting up with new session ID
+      if (this.logStream) {
+        this.logStream.end()
+        this.logStream = null
+      }
+      
       // Create logs directory structure: ~/.cyrus/logs/<workspace-name>/
       const cyrusDir = join(homedir(), '.cyrus')
       const logsDir = join(cyrusDir, 'logs')
@@ -431,7 +457,8 @@ export class ClaudeRunner extends EventEmitter {
       
       // Create log file with session ID and timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-      const logFileName = `session-${this.sessionInfo?.sessionId || 'unknown'}-${timestamp}.jsonl`
+      const sessionId = this.sessionInfo?.sessionId || 'pending'
+      const logFileName = `session-${sessionId}-${timestamp}.jsonl`
       const logFilePath = join(workspaceLogsDir, logFileName)
       
       console.log(`[ClaudeRunner] Creating log file at: ${logFilePath}`)

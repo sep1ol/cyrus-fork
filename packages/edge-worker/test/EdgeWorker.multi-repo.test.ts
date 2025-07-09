@@ -366,13 +366,17 @@ describe('EdgeWorker - Multi-Repository Support', () => {
             repositories: reposWithTemplates
     })
 
-    const buildPromptMethod = (edgeWorker as any).buildInitialPrompt.bind(edgeWorker)
+    const buildPromptMethod = (edgeWorker as any).buildPromptV2.bind(edgeWorker)
     
     const issue = {
       id: 'issue-789',
       identifier: 'FE-789',
       title: 'Add feature',
-      description: 'Feature description'
+      description: 'Feature description',
+      state: Promise.resolve({ name: 'In Progress' }),
+      priority: 3,
+      branchName: 'add-feature',
+      url: 'https://linear.app/test/issue/FE-789'
     }
 
     // Build prompt for frontend (has custom template)

@@ -472,6 +472,93 @@ describe('ClaudeRunner', () => {
     })
   })
 
+  describe('Session ID Extraction', () => {
+    it('should extract session ID from first Claude message', async () => {
+      const messageHandler = vi.fn()
+      runner.on('message', messageHandler)
+      
+      mockQuery.mockImplementation(async function* () {
+        // First message without session ID
+        yield {
+          type: 'start',
+          timestamp: '2024-01-01T00:00:00Z'
+        } as any
+        
+        // Second message with session ID
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'Hello!' }] },
+          parent_tool_use_id: null,
+          session_id: 'extracted-session-123'
+        } as any
+      })
+      
+      const sessionInfo = await runner.start('test')
+      
+      expect(sessionInfo.sessionId).toBe('extracted-session-123')
+      expect(messageHandler).toHaveBeenCalledTimes(2)
+    })
+
+    it('should update streaming prompt when session ID is extracted', async () => {
+      let capturedPrompt: any = null
+      
+      mockQuery.mockImplementation(async function* (options: any) {
+        capturedPrompt = options.prompt
+        
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'Hello!' }] },
+          parent_tool_use_id: null,
+          session_id: 'new-session-456'
+        } as any
+      })
+      
+      await runner.start('test')
+      
+      // Verify the streaming prompt was created and would be updated
+      expect(capturedPrompt).toBeDefined()
+    })
+
+    it('should handle messages without session ID gracefully', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'No session ID here!' }] },
+          parent_tool_use_id: null
+          // No session_id field
+        } as any
+      })
+      
+      const sessionInfo = await runner.start('test')
+      
+      expect(sessionInfo.sessionId).toBeNull()
+    })
+
+    it('should only extract session ID once from first message that has it', async () => {
+      const logSpy = vi.spyOn(console, 'log')
+      
+      mockQuery.mockImplementation(async function* () {
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'First' }] },
+          session_id: 'first-session-id'
+        } as any
+        
+        yield {
+          type: 'assistant', 
+          message: { content: [{ type: 'text', text: 'Second' }] },
+          session_id: 'second-session-id' // Should be ignored
+        } as any
+      })
+      
+      const sessionInfo = await runner.start('test')
+      
+      expect(sessionInfo.sessionId).toBe('first-session-id')
+      expect(logSpy).toHaveBeenCalledWith('[ClaudeRunner] Session ID assigned by Claude: first-session-id')
+      expect(logSpy).not.toHaveBeenCalledWith('[ClaudeRunner] Session ID assigned by Claude: second-session-id')
+    })
+  })
+
   describe('Message History', () => {
     it('should return empty messages initially', () => {
       expect(runner.getMessages()).toEqual([])

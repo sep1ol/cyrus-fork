@@ -32,6 +32,8 @@ cyrus/
     └── ndjson-client/# NDJSON streaming client
 ```
 
+For a detailed visual representation of how these components interact and map Claude Code sessions to Linear comment threads, see @architecture.md.
+
 ## Common Commands
 
 ### Monorepo-wide Commands (run from root)

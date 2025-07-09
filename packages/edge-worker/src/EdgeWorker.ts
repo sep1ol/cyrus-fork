@@ -44,9 +44,11 @@ export class EdgeWorker extends EventEmitter {
   private linearClients: Map<string, LinearClient> = new Map()
   private ndjsonClients: Map<string, NdjsonClient> = new Map()
   private sessionManager: SessionManager
-  private claudeRunners: Map<string, ClaudeRunner> = new Map()
-  private sessionToRepo: Map<string, string> = new Map() // Maps session ID to repository ID
-  private issueToCommentId: Map<string, string> = new Map() // Maps issue ID to initial comment ID
+  private claudeRunners: Map<string, ClaudeRunner> = new Map() // Maps comment ID to ClaudeRunner
+  private commentToRepo: Map<string, string> = new Map() // Maps comment ID to repository ID
+  private commentToIssue: Map<string, string> = new Map() // Maps comment ID to issue ID
+  private commentToLatestAgentReply: Map<string, string> = new Map() // Maps thread root comment ID to latest agent comment
+  private issueToCommentThreads: Map<string, Set<string>> = new Map() // Maps issue ID to all comment thread IDs
   private tokenToClientId: Map<string, string> = new Map() // Maps token to NDJSON client ID
   private issueToReplyContext: Map<string, { commentId: string; parentId?: string }> = new Map() // Maps issue ID to reply context
   private sharedApplicationServer: SharedApplicationServer
@@ -203,10 +205,13 @@ export class EdgeWorker extends EventEmitter {
     this.claudeRunners.clear()
     
     // Clear all sessions
-    for (const [issueId] of this.sessionManager.getAllSessions()) {
-      this.sessionManager.removeSession(issueId)
+    for (const [commentId] of this.sessionManager.getAllSessions()) {
+      this.sessionManager.removeSession(commentId)
     }
-    this.sessionToRepo.clear()
+    this.commentToRepo.clear()
+    this.commentToIssue.clear()
+    this.commentToLatestAgentReply.clear()
+    this.issueToCommentThreads.clear()
     
     // Disconnect all NDJSON clients
     for (const client of this.ndjsonClients.values()) {
@@ -399,6 +404,11 @@ export class EdgeWorker extends EventEmitter {
     // Post initial comment immediately
     const initialComment = await this.postInitialComment(fullIssue.id, repository.id)
     
+    if (!initialComment?.id) {
+      throw new Error(`Failed to create initial comment for issue ${fullIssue.identifier}`)
+    }
+    
+    
     // Create workspace using full issue data
     const workspace = this.config.handlers?.createWorkspace
       ? await this.config.handlers.createWorkspace(fullIssue, repository)
@@ -429,28 +439,31 @@ export class EdgeWorker extends EventEmitter {
       workspaceName: fullIssue.identifier,
       mcpConfigPath: repository.mcpConfigPath,
       mcpConfig: this.buildMcpConfig(repository),
-      onMessage: (message) => this.handleClaudeMessage(fullIssue.id, message, repository.id),
-      onComplete: (messages) => this.handleClaudeComplete(fullIssue.id, messages, repository.id),
-      onError: (error) => this.handleClaudeError(fullIssue.id, error, repository.id)
+      onMessage: (message) => this.handleClaudeMessage(initialComment.id, message, repository.id),
+      onComplete: (messages) => this.handleClaudeComplete(initialComment.id, messages, repository.id),
+      onError: (error) => this.handleClaudeError(initialComment.id, error, repository.id)
     })
 
-    // Store runner
-    this.claudeRunners.set(fullIssue.id, runner)
+    // Store runner by comment ID
+    this.claudeRunners.set(initialComment.id, runner)
+    this.commentToRepo.set(initialComment.id, repository.id)
+    this.commentToIssue.set(initialComment.id, fullIssue.id)
 
     // Create session using full Linear issue (convert LinearIssue to CoreIssue)
     const session = new Session({
       issue: this.convertLinearIssueToCore(fullIssue),
       workspace,
-      startedAt: new Date()
+      startedAt: new Date(),
+      agentRootCommentId: initialComment.id
     })
     
-    // Store initial comment ID if we have one
-    if (initialComment?.id) {
-      this.issueToCommentId.set(fullIssue.id, initialComment.id)
-    }
+    // Store session by comment ID
+    this.sessionManager.addSession(initialComment.id, session)
     
-    this.sessionManager.addSession(fullIssue.id, session)
-    this.sessionToRepo.set(fullIssue.id, repository.id)
+    // Track this thread for the issue
+    const threads = this.issueToCommentThreads.get(fullIssue.id) || new Set()
+    threads.add(initialComment.id)
+    this.issueToCommentThreads.set(fullIssue.id, threads)
 
     // Emit events using full Linear issue
     this.emit('session:started', fullIssue.id, fullIssue, repository.id)
@@ -459,7 +472,8 @@ export class EdgeWorker extends EventEmitter {
     // Build and start Claude with initial prompt using full issue (streaming mode)
     console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
     try {
-      const prompt = await this.buildInitialPrompt(fullIssue, repository, attachmentResult.manifest)
+      // Use buildPromptV2 without a new comment for issue assignment
+      const prompt = await this.buildPromptV2(fullIssue, repository, undefined, attachmentResult.manifest)
       console.log(`[EdgeWorker] Initial prompt built successfully, length: ${prompt.length} characters`)
       console.log(`[EdgeWorker] Starting Claude streaming session`)
       const sessionInfo = await runner.startStreaming(prompt)
@@ -471,7 +485,118 @@ export class EdgeWorker extends EventEmitter {
   }
 
   /**
-   * Handle new comment on issue
+   * Find the root comment of a comment thread by traversing parent relationships
+   */
+
+  /**
+   * Handle new root comment - creates a new Claude session for a new comment thread
+   * @param issue Linear issue object from webhook data
+   * @param comment Linear comment object from webhook data
+   * @param repository Repository configuration
+   */
+  private async handleNewRootComment(issue: LinearWebhookIssue, comment: LinearWebhookComment, repository: RepositoryConfig): Promise<void> {
+    console.log(`[EdgeWorker] Handling new root comment ${comment.id} on issue ${issue.identifier}`)
+    
+    // Fetch full Linear issue details
+    const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id)
+    if (!fullIssue) {
+      throw new Error(`Failed to fetch full issue details for ${issue.id}`)
+    }
+    
+    // Post immediate acknowledgment
+    const acknowledgment = await this.postComment(
+      issue.id,
+      "I'm getting started on that right away. I'll update this comment with my plan as I work through it.",
+      repository.id,
+      comment.id  // Reply to the new root comment
+    )
+    
+    if (!acknowledgment?.id) {
+      throw new Error(`Failed to create acknowledgment for root comment ${comment.id}`)
+    }
+    
+    // Create or get workspace
+    const workspace = this.config.handlers?.createWorkspace
+      ? await this.config.handlers.createWorkspace(fullIssue, repository)
+      : {
+          path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
+          isGitWorktree: false
+        }
+    
+    console.log(`[EdgeWorker] Using workspace at: ${workspace.path}`)
+    
+    // Download attachments if any
+    const attachmentResult = await this.downloadIssueAttachments(fullIssue, repository, workspace.path)
+    
+    // Build allowed directories and tools
+    const allowedDirectories: string[] = []
+    if (attachmentResult.attachmentsDir) {
+      allowedDirectories.push(attachmentResult.attachmentsDir)
+    }
+    const allowedTools = this.buildAllowedTools(repository)
+    
+    // Create Claude runner for this new comment thread
+    const runner = new ClaudeRunner({
+      workingDirectory: workspace.path,
+      allowedTools,
+      allowedDirectories,
+      workspaceName: fullIssue.identifier,
+      mcpConfigPath: repository.mcpConfigPath,
+      mcpConfig: this.buildMcpConfig(repository),
+      onMessage: (message) => {
+        // Update session with Claude session ID when first received
+        if (!session.claudeSessionId && message.session_id) {
+          session.claudeSessionId = message.session_id
+          console.log(`[EdgeWorker] Claude session ID assigned: ${message.session_id}`)
+        }
+        this.handleClaudeMessage(acknowledgment.id, message, repository.id)
+      },
+      onComplete: (messages) => this.handleClaudeComplete(acknowledgment.id, messages, repository.id),
+      onError: (error) => this.handleClaudeError(acknowledgment.id, error, repository.id)
+    })
+    
+    // Store runner and mappings
+    this.claudeRunners.set(comment.id, runner)
+    this.commentToRepo.set(comment.id, repository.id)
+    this.commentToIssue.set(comment.id, fullIssue.id)
+    
+    // Create session for this new comment thread
+    const session = new Session({
+      issue: this.convertLinearIssueToCore(fullIssue),
+      workspace,
+      startedAt: new Date(),
+      agentRootCommentId: comment.id
+    })
+    
+    this.sessionManager.addSession(comment.id, session)
+    
+    // Track this new thread for the issue
+    const threads = this.issueToCommentThreads.get(issue.id) || new Set()
+    threads.add(comment.id)
+    this.issueToCommentThreads.set(issue.id, threads)
+    
+    // Track latest reply
+    this.commentToLatestAgentReply.set(comment.id, acknowledgment.id)
+    
+    // Emit session start event
+    this.config.handlers?.onSessionStart?.(fullIssue.id, fullIssue, repository.id)
+    
+    // Build prompt with new comment focus using V2 template
+    console.log(`[EdgeWorker] Building prompt for new root comment`)
+    try {
+      const prompt = await this.buildPromptV2(fullIssue, repository, comment, attachmentResult.manifest)
+      console.log(`[EdgeWorker] Prompt built successfully, length: ${prompt.length} characters`)
+      console.log(`[EdgeWorker] Starting Claude streaming session for new comment thread`)
+      const sessionInfo = await runner.startStreaming(prompt)
+      console.log(`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`)
+    } catch (error) {
+      console.error(`[EdgeWorker] Error in prompt building/starting:`, error)
+      throw error
+    }
+  }
+
+  /**
+   * Handle new comment on issue (updated for comment-based sessions)
    * @param issue Linear issue object from webhook data
    * @param comment Linear comment object from webhook data
    * @param repository Repository configuration
@@ -489,37 +614,51 @@ export class EdgeWorker extends EventEmitter {
       throw new Error(`Failed to fetch full issue details for ${issue.id}`)
     }
 
-    // The webhook doesn't include parentId, so we need to fetch the full comment
-    let replyParentId = comment.id // Default to treating it as root
+    // IMPORTANT: Linear has exactly ONE level of comment nesting:
+    // - Root comments (no parent)
+    // - Reply comments (have a parent, which must be a root comment)
+    // There is NO recursion - a reply cannot have replies
+    
+    // Fetch full comment to determine if this is a root or reply
+    let parentCommentId: string | null = null
+    let rootCommentId: string = comment.id // Default to this comment being the root
     
     try {
       const linearClient = this.linearClients.get(repository.id)
       if (linearClient && comment.id) {
-        // Fetch the full comment data - comment() expects an object with id property
-        // See: node_modules/.pnpm/@linear+sdk@39.0.0/node_modules/@linear/sdk/dist/_generated_sdk.d.ts:L.CommentQueryVariables
         const fullComment = await linearClient.comment({ id: comment.id })
         
-        // Check if comment has a parent (is a reply in a thread)
-        // Try the async parent relation
+        // Check if comment has a parent (making it a reply)
         if (fullComment.parent) {
           const parent = await fullComment.parent
           if (parent?.id) {
-            replyParentId = parent.id
+            parentCommentId = parent.id
+            // In Linear's 2-level structure, the parent IS always the root
+            // No need for recursion - replies can't have replies
+            rootCommentId = parent.id
           }
         }
-        // If no parent found, replyParentId stays as comment.id (treat as root)
       }
     } catch (error) {
       console.error('Failed to fetch full comment data:', error)
     }
     
+    // Determine comment type based on whether it has a parent
+    const isRootComment = parentCommentId === null
+    const threadRootCommentId = rootCommentId
+    
+    console.log(`[EdgeWorker] Comment ${comment.id} - isRoot: ${isRootComment}, threadRoot: ${threadRootCommentId}, parent: ${parentCommentId}`)
+    
+    // Store reply context for Linear commenting
+    // parentId will be: the parent comment ID (if this is a reply) OR this comment's ID (if root)
+    // This ensures our bot's replies appear at the correct nesting level
     this.issueToReplyContext.set(issue.id, {
       commentId: comment.id,
-      parentId: replyParentId
+      parentId: parentCommentId || comment.id
     })
-    console.log(`Stored reply context for issue ${issue.id}: commentId=${comment.id}, replyParentId=${replyParentId}`)
     
-    let session = this.sessionManager.getSession(issue.id)
+    // Look for existing session for this comment thread
+    let session = this.sessionManager.getSession(threadRootCommentId)
     
     // If no session exists, we need to create one
     if (!session) {
@@ -545,31 +684,39 @@ export class EdgeWorker extends EventEmitter {
             isGitWorktree: false
           }
       
-      // Create session without spawning Claude yet (use full Linear issue)
+      // Create session for this comment thread
       session = new Session({
         issue: this.convertLinearIssueToCore(fullIssue),
         workspace,
         process: null,
-        startedAt: new Date()
+        startedAt: new Date(),
+        agentRootCommentId: threadRootCommentId
       })
       
-      this.sessionManager.addSession(issue.id, session)
-      this.sessionToRepo.set(issue.id, repository.id)
+      this.sessionManager.addSession(threadRootCommentId, session)
+      this.commentToRepo.set(threadRootCommentId, repository.id)
+      this.commentToIssue.set(threadRootCommentId, issue.id)
+      
+      // Track this thread for the issue
+      const threads = this.issueToCommentThreads.get(issue.id) || new Set()
+      threads.add(threadRootCommentId)
+      this.issueToCommentThreads.set(issue.id, threads)
     }
 
-    // Check if there's an existing runner and if it supports streaming
-    const existingRunner = this.claudeRunners.get(issue.id)
+    // Check if there's an existing runner for this comment thread
+    const existingRunner = this.claudeRunners.get(threadRootCommentId)
     if (existingRunner && existingRunner.isStreaming()) {
       // Post immediate reply for streaming case
+      // parentId ensures correct nesting: replies to parent if this is a reply, or to comment itself if root
       await this.postComment(
         issue.id,
         "I've queued up your message to address it right after I resolve my current focus.",
         repository.id,
-        replyParentId
+        parentCommentId || comment.id  // Same nesting level as the triggering comment
       )
       
       // Add comment to existing stream instead of restarting
-      console.log(`[EdgeWorker] Adding comment to existing stream for issue ${issue.identifier}`)
+      console.log(`[EdgeWorker] Adding comment to existing stream for thread ${threadRootCommentId}`)
       try {
         existingRunner.addStreamMessage(comment.body || '')
         return // Exit early - comment has been added to stream
@@ -579,19 +726,21 @@ export class EdgeWorker extends EventEmitter {
       }
     }
 
-    // Post immediate reply for new session case
-    const immediateReply = await this.postComment(
+    // For root comments without existing sessions, call placeholder handler
+    if (isRootComment && !session) {
+      console.log(`[EdgeWorker] Detected new root comment ${comment.id}, delegating to handleNewRootComment`)
+      await this.handleNewRootComment(issue, comment, repository)
+      return
+    }
+
+    // Post immediate reply for continuing existing thread
+    // parentId ensures correct nesting: replies to parent if this is a reply, or to comment itself if root
+    await this.postComment(
       issue.id,
       "I'm getting started on that right away. I'll update this comment with my plan as I work through it.",
       repository.id,
-      replyParentId
+      parentCommentId || comment.id  // Same nesting level as the triggering comment
     )
-    
-    if (immediateReply?.id) {
-      // Store this as the comment to update with TODOs
-      this.issueToCommentId.set(issue.id, immediateReply.id)
-      console.log(`Posted immediate reply with ID: ${immediateReply.id}`)
-    }
 
     // Stop existing runner if it's not streaming or stream addition failed
     if (existingRunner) {
@@ -602,15 +751,21 @@ export class EdgeWorker extends EventEmitter {
       // Build allowed tools list with Linear MCP tools
       const allowedTools = this.buildAllowedTools(repository)
 
-      // Create new runner with streaming mode
+      // Create new runner with resume mode if we have a Claude session ID
       const runner = new ClaudeRunner({
         workingDirectory: session.workspace.path,
         allowedTools,
-        continueSession: true,
+        resumeSessionId: session.claudeSessionId || undefined,
         workspaceName: issue.identifier,
         mcpConfigPath: repository.mcpConfigPath,
         mcpConfig: this.buildMcpConfig(repository),
         onMessage: (message) => {
+          // Update session with Claude session ID when first received
+          if (!session.claudeSessionId && message.session_id) {
+            session.claudeSessionId = message.session_id
+            console.log(`[EdgeWorker] Stored Claude session ID ${message.session_id} for comment thread ${threadRootCommentId}`)
+          }
+          
           // Check for continuation errors
           if (message.type === 'assistant' && 'message' in message && message.message?.content) {
             const content = Array.isArray(message.message.content) ? message.message.content : [message.message.content]
@@ -620,29 +775,30 @@ export class EdgeWorker extends EventEmitter {
                 // Kill this runner
                 runner.stop()
                 // Remove from map
-                this.claudeRunners.delete(issue.id)
-                // Start fresh
-                this.handleIssueAssigned(issue, repository).catch(error => {
-                  console.error(`[EdgeWorker] Failed to restart fresh session for issue ${issue.identifier}:`, error)
+                this.claudeRunners.delete(threadRootCommentId)
+                // Start fresh by calling root comment handler
+                this.handleNewRootComment(issue, comment, repository).catch(error => {
+                  console.error(`[EdgeWorker] Failed to restart fresh session for comment thread ${threadRootCommentId}:`, error)
                   // Clean up any partial state
-                  this.claudeRunners.delete(issue.id)
-                  this.sessionToRepo.delete(issue.id)
+                  this.claudeRunners.delete(threadRootCommentId)
+                  this.commentToRepo.delete(threadRootCommentId)
+                  this.commentToIssue.delete(threadRootCommentId)
                   // Emit error event to notify handlers
-                  this.emit('session:ended', issue.id, 1, repository.id)
-                  this.config.handlers?.onSessionEnd?.(issue.id, 1, repository.id)
+                  this.emit('session:ended', threadRootCommentId, 1, repository.id)
+                  this.config.handlers?.onSessionEnd?.(threadRootCommentId, 1, repository.id)
                 })
                 return
               }
             }
           }
-          this.handleClaudeMessage(issue.id, message, repository.id)
+          this.handleClaudeMessage(threadRootCommentId, message, repository.id)
         },
-        onComplete: (messages) => this.handleClaudeComplete(issue.id, messages, repository.id),
-        onError: (error) => this.handleClaudeError(issue.id, error, repository.id)
+        onComplete: (messages) => this.handleClaudeComplete(threadRootCommentId, messages, repository.id),
+        onError: (error) => this.handleClaudeError(threadRootCommentId, error, repository.id)
       })
 
-      // Store new runner
-      this.claudeRunners.set(issue.id, runner)
+      // Store new runner by comment thread root
+      this.claudeRunners.set(threadRootCommentId, runner)
 
       // Start streaming session with the comment as initial prompt
       console.log(`[EdgeWorker] Starting new streaming session for issue ${issue.identifier}`)
@@ -650,10 +806,15 @@ export class EdgeWorker extends EventEmitter {
     } catch (error) {
       console.error('Failed to continue conversation, starting fresh:', error)
       // Remove any partially created session
-      this.sessionManager.removeSession(issue.id)
-      this.sessionToRepo.delete(issue.id)
-      // Start fresh
-      await this.handleIssueAssigned(issue, repository)
+      this.sessionManager.removeSession(threadRootCommentId)
+      this.commentToRepo.delete(threadRootCommentId)
+      this.commentToIssue.delete(threadRootCommentId)
+      // Start fresh for root comments, or fall back to issue assignment
+      if (isRootComment) {
+        await this.handleNewRootComment(issue, comment, repository)
+      } else {
+        await this.handleIssueAssigned(issue, repository)
+      }
     }
   }
 
@@ -663,59 +824,65 @@ export class EdgeWorker extends EventEmitter {
    * @param repository Repository configuration
    */
   private async handleIssueUnassigned(issue: LinearWebhookIssue, repository: RepositoryConfig): Promise<void> {
-    // Check if there's an active session for this issue
-    const session = this.sessionManager.getSession(issue.id)
+    // Get all comment threads for this issue
+    const threadRootCommentIds = this.issueToCommentThreads.get(issue.id) || new Set()
     
-    // Post farewell comment if there's an active session
-    if (session) {
-      // Use the same threading logic as regular replies
-      const replyContext = this.issueToReplyContext.get(issue.id)
-      if (replyContext) {
-        // Reply using the same context as regular comments (handles threading correctly)
-        await this.postComment(
-          issue.id,
-          "I've been unassigned and am stopping work now.",
-          repository.id,
-          replyContext.parentId
-        )
-        // Clear the reply context after using it
-        this.issueToReplyContext.delete(issue.id)
-      } else {
-        // Fall back to replying to initial comment (for direct assignments)
-        const initialCommentId = this.issueToCommentId.get(issue.id)
-        await this.postComment(
-          issue.id,
-          "I've been unassigned and am stopping work now.",
-          repository.id,
-          initialCommentId
-        )
+    // Stop all Claude runners for this issue
+    let activeThreadCount = 0
+    for (const threadRootCommentId of threadRootCommentIds) {
+      const runner = this.claudeRunners.get(threadRootCommentId)
+      if (runner) {
+        console.log(`[EdgeWorker] Stopping Claude runner for thread ${threadRootCommentId}`)
+        await runner.stop()
+        activeThreadCount++
       }
     }
     
-    // Kill Claude process
-    const runner = this.claudeRunners.get(issue.id)
-    if (runner) {
-      runner.stop()
-      this.claudeRunners.delete(issue.id)
+    // Post ONE farewell comment on the issue (not in any thread) if there were active sessions
+    if (activeThreadCount > 0) {
+      await this.postComment(
+        issue.id,
+        "I've been unassigned and am stopping work now.",
+        repository.id
+        // No parentId - post as a new comment on the issue
+      )
     }
-
-    // Remove session
-    this.sessionManager.removeSession(issue.id)
-    const repoId = this.sessionToRepo.get(issue.id)
-    this.sessionToRepo.delete(issue.id)
     
-    // Clean up comment ID mapping
-    this.issueToCommentId.delete(issue.id)
+    // Clean up thread mappings for each stopped thread
+    for (const threadRootCommentId of threadRootCommentIds) {
+      // Remove from runners map
+      this.claudeRunners.delete(threadRootCommentId)
+      
+      // Clean up comment mappings
+      this.commentToRepo.delete(threadRootCommentId)
+      this.commentToIssue.delete(threadRootCommentId)
+      this.commentToLatestAgentReply.delete(threadRootCommentId)
+      
+      // Remove session
+      this.sessionManager.removeSession(threadRootCommentId)
+    }
+    
+    // Clean up issue-level mappings
+    this.issueToCommentThreads.delete(issue.id)
+    this.issueToReplyContext.delete(issue.id)
 
     // Emit events
-    this.emit('session:ended', issue.id, null, repoId || repository.id)
-    this.config.handlers?.onSessionEnd?.(issue.id, null, repoId || repository.id)
+    console.log(`[EdgeWorker] Stopped ${activeThreadCount} sessions for unassigned issue ${issue.identifier}`)
+    this.emit('session:ended', issue.id, null, repository.id)
+    this.config.handlers?.onSessionEnd?.(issue.id, null, repository.id)
   }
 
   /**
    * Handle Claude messages
    */
-  private async handleClaudeMessage(issueId: string, message: SDKMessage, repositoryId: string): Promise<void> {
+  private async handleClaudeMessage(commentId: string, message: SDKMessage, repositoryId: string): Promise<void> {
+    // Get issue ID from comment mapping
+    const issueId = this.commentToIssue.get(commentId)
+    if (!issueId) {
+      console.error(`[EdgeWorker] No issue mapping found for comment ${commentId}`)
+      return
+    }
+    
     // Emit generic message event
     this.emit('claude:message', issueId, message, repositoryId)
     this.config.handlers?.onClaudeMessage?.(issueId, message, repositoryId)
@@ -738,7 +905,7 @@ export class EdgeWorker extends EventEmitter {
             // Handle TodoWrite tool specifically
             if ('name' in item && item.name === 'TodoWrite' && 'input' in item && item.input?.todos) {
               console.log(`[EdgeWorker] Detected TodoWrite tool use with ${item.input.todos.length} todos`)
-              await this.updateCommentWithTodos(issueId, item.input.todos, repositoryId)
+              await this.updateCommentWithTodos(item.input.todos, repositoryId, commentId)
             }
           }
         }
@@ -746,18 +913,8 @@ export class EdgeWorker extends EventEmitter {
     } else if (message.type === 'result') {
       if (message.subtype === 'success' && 'result' in message && message.result) {
         // Post the successful result to Linear
-        // Check if we have reply context (from a comment mention)
-        const replyContext = this.issueToReplyContext.get(issueId)
-        if (replyContext) {
-          // Reply to the comment that mentioned us, using appropriate parentId
-          await this.postComment(issueId, message.result, repositoryId, replyContext.parentId)
-          // Clear the reply context after using it
-          this.issueToReplyContext.delete(issueId)
-        } else {
-          // Fall back to replying to initial comment (for direct assignments)
-          const initialCommentId = this.issueToCommentId.get(issueId)
-          await this.postComment(issueId, message.result, repositoryId, initialCommentId)
-        }
+        // For comment-based sessions, reply to the root comment of this thread
+        await this.postComment(issueId, message.result, repositoryId, commentId)
       } else if (message.subtype === 'error_max_turns' || message.subtype === 'error_during_execution') {
         // Handle error results
         const errorMessage = message.subtype === 'error_max_turns' 
@@ -767,7 +924,7 @@ export class EdgeWorker extends EventEmitter {
         
         // Handle token limit specifically for max turns error
         if (this.config.features?.enableTokenLimitHandling && message.subtype === 'error_max_turns') {
-          await this.handleTokenLimit(issueId, repositoryId)
+          await this.handleTokenLimit(commentId, repositoryId)
         }
       }
     }
@@ -776,59 +933,72 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle Claude session completion (successful)
    */
-  private handleClaudeComplete(issueId: string, messages: SDKMessage[], repositoryId: string): void {
-    console.log(`[EdgeWorker] Claude session completed for issue ${issueId} with ${messages.length} messages`)
-    this.claudeRunners.delete(issueId)
-    this.sessionToRepo.delete(issueId)
-    this.emit('session:ended', issueId, 0, repositoryId)  // 0 indicates success
-    this.config.handlers?.onSessionEnd?.(issueId, 0, repositoryId)
+  private handleClaudeComplete(commentId: string, messages: SDKMessage[], repositoryId: string): void {
+    const issueId = this.commentToIssue.get(commentId)
+    console.log(`[EdgeWorker] Claude session completed for comment thread ${commentId} (issue ${issueId}) with ${messages.length} messages`)
+    this.claudeRunners.delete(commentId)
+    this.commentToRepo.delete(commentId)
+    if (issueId) {
+      this.commentToIssue.delete(commentId)
+      this.emit('session:ended', issueId, 0, repositoryId)  // 0 indicates success
+      this.config.handlers?.onSessionEnd?.(issueId, 0, repositoryId)
+    }
   }
 
   /**
    * Handle Claude session error
    */
-  private handleClaudeError(issueId: string, error: Error, repositoryId: string): void {
-    console.error(`[EdgeWorker] Claude session error for issue ${issueId}:`, error.message)
+  private handleClaudeError(commentId: string, error: Error, repositoryId: string): void {
+    const issueId = this.commentToIssue.get(commentId)
+    console.error(`[EdgeWorker] Claude session error for comment thread ${commentId} (issue ${issueId}):`, error.message)
     console.error(`[EdgeWorker] Error type: ${error.constructor.name}`)
     if (error.stack) {
       console.error(`[EdgeWorker] Stack trace:`, error.stack)
     }
     
     // Clean up resources
-    this.claudeRunners.delete(issueId)
-    this.sessionToRepo.delete(issueId)
+    this.claudeRunners.delete(commentId)
+    this.commentToRepo.delete(commentId)
+    if (issueId) {
+      this.commentToIssue.delete(commentId)
+      // Emit events for external handlers
+      this.emit('session:ended', issueId, 1, repositoryId)  // 1 indicates error
+      this.config.handlers?.onSessionEnd?.(issueId, 1, repositoryId)
+    }
     
-    // Emit events for external handlers
-    this.emit('session:ended', issueId, 1, repositoryId)  // 1 indicates error
-    this.config.handlers?.onSessionEnd?.(issueId, 1, repositoryId)
-    
-    console.log(`[EdgeWorker] Cleaned up resources for failed session ${issueId}`)
+    console.log(`[EdgeWorker] Cleaned up resources for failed session ${commentId}`)
   }
 
 
   /**
    * Handle token limit by restarting session
    */
-  private async handleTokenLimit(issueId: string, repositoryId: string): Promise<void> {
-    const session = this.sessionManager.getSession(issueId)
+  private async handleTokenLimit(commentId: string, repositoryId: string): Promise<void> {
+    const session = this.sessionManager.getSession(commentId)
     if (!session) return
 
     const repository = this.repositories.get(repositoryId)
     if (!repository) return
 
+    const issueId = this.commentToIssue.get(commentId)
+    if (!issueId) return
+
     // Post warning to Linear
     await this.postComment(
       issueId,
       '[System] Token limit reached. Starting fresh session with issue context.',
-      repositoryId
+      repositoryId,
+      commentId
     )
 
-    // Fetch fresh LinearIssue data and restart session
+    // Fetch fresh LinearIssue data and restart session for this comment thread
     const linearIssue = await this.fetchFullIssueDetails(issueId, repositoryId)
     if (!linearIssue) {
       throw new Error(`Failed to fetch full issue details for ${issueId}`)
     }
     
+    // For now, fall back to creating a new root comment handler
+    // TODO: Implement proper comment thread restart
     await this.handleIssueAssignedWithFullIssue(linearIssue, repository)
   }
 
@@ -869,24 +1039,122 @@ export class EdgeWorker extends EventEmitter {
   }
 
 
+
   /**
-   * Build initial prompt for issue
-   * @param issue Linear issue object from webhook data
-   * @param repository Repository configuration
-   * @param attachmentManifest Generated attachment manifest text
+   * Sanitize branch name by removing backticks to prevent command injection
    */
-  private async buildInitialPrompt(issue: LinearIssue, repository: RepositoryConfig, attachmentManifest: string = ''): Promise<string> {
-    console.log(`[EdgeWorker] buildInitialPrompt called for issue ${issue.identifier}`)
-    // No need for enhancedIssue anymore - we already have the full Linear issue!
+  private sanitizeBranchName(name: string): string {
+    return name ? name.replace(/`/g, '') : name
+  }
+
+  /**
+   * Format Linear comments into a threaded structure that mirrors the Linear UI
+   * @param comments Array of Linear comments
+   * @returns Formatted string showing comment threads
+   */
+  private async formatCommentThreads(comments: Comment[]): Promise<string> {
+    if (comments.length === 0) {
+      return 'No comments yet.'
+    }
+
+    // Group comments by thread (root comments and their replies)
+    const threads = new Map<string, { root: Comment, replies: Comment[] }>()
+    const rootComments: Comment[] = []
+
+    // First pass: identify root comments and create thread structure
+    for (const comment of comments) {
+      const parent = await comment.parent
+      if (!parent) {
+        // This is a root comment
+        rootComments.push(comment)
+        threads.set(comment.id, { root: comment, replies: [] })
+      }
+    }
+
+    // Second pass: assign replies to their threads
+    for (const comment of comments) {
+      const parent = await comment.parent
+      if (parent?.id) {
+        const thread = threads.get(parent.id)
+        if (thread) {
+          thread.replies.push(comment)
+        }
+      }
+    }
+
+    // Format threads in chronological order
+    const formattedThreads: string[] = []
+    
+    for (const rootComment of rootComments) {
+      const thread = threads.get(rootComment.id)
+      if (!thread) continue
+
+      // Format root comment
+      const rootUser = await rootComment.user
+      const rootAuthor = rootUser?.displayName || rootUser?.name || rootUser?.email || 'Unknown'
+      const rootTime = new Date(rootComment.createdAt).toLocaleString()
+      
+      let threadText = `<comment_thread>
+  <root_comment>
+    <author>@${rootAuthor}</author>
+    <timestamp>${rootTime}</timestamp>
+    <content>
+${rootComment.body}
+    </content>
+  </root_comment>`
+
+      // Format replies if any
+      if (thread.replies.length > 0) {
+        threadText += '\n  <replies>'
+        for (const reply of thread.replies) {
+          const replyUser = await reply.user
+          const replyAuthor = replyUser?.displayName || replyUser?.name || replyUser?.email || 'Unknown'
+          const replyTime = new Date(reply.createdAt).toLocaleString()
+          
+          threadText += `
+    <reply>
+      <author>@${replyAuthor}</author>
+      <timestamp>${replyTime}</timestamp>
+      <content>
+${reply.body}
+      </content>
+    </reply>`
+        }
+        threadText += '\n  </replies>'
+      }
+      
+      threadText += '\n</comment_thread>'
+      formattedThreads.push(threadText)
+    }
+
+    return formattedThreads.join('\n\n')
+  }
+
+  /**
+   * Build a prompt for Claude using the improved XML-style template
+   * @param issue Full Linear issue
+   * @param repository Repository configuration  
+   * @param newComment Optional new comment to focus on (for handleNewRootComment)
+   * @param attachmentManifest Optional attachment manifest
+   * @returns Formatted prompt string
+   */
+  private async buildPromptV2(
+    issue: LinearIssue, 
+    repository: RepositoryConfig, 
+    newComment?: LinearWebhookComment,
+    attachmentManifest: string = ''
+  ): Promise<string> {
+    console.log(`[EdgeWorker] buildPromptV2 called for issue ${issue.identifier}${newComment ? ' with new comment' : ''}`)
+    
     try {
       // Use custom template if provided (repository-specific takes precedence)
       let templatePath = repository.promptTemplatePath || this.config.features?.promptTemplatePath
       
-      // If no custom template, use the default one
+      // If no custom template, use the v2 template
       if (!templatePath) {
         const __filename = fileURLToPath(import.meta.url)
         const __dirname = dirname(__filename)
-        templatePath = resolve(__dirname, '../prompt-template.md')
+        templatePath = resolve(__dirname, '../prompt-template-v2.md')
       }
 
       // Load the template
@@ -898,15 +1166,9 @@ export class EdgeWorker extends EventEmitter {
       const state = await issue.state
       const stateName = state?.name || 'Unknown'
       
-      console.log(`[EdgeWorker] Issue description: ${issue.description ? 'present' : 'missing'}`)
-      console.log(`[EdgeWorker] Issue state: ${stateName}`)
-      console.log(`[EdgeWorker] Issue priority: ${issue.priority || 'none'}`)
-      console.log(`[EdgeWorker] Issue branchName: ${issue.branchName}`)
-      
-      // Get comment history
+      // Get formatted comment threads
       const linearClient = this.linearClients.get(repository.id)
-      let commentHistory = ''
-      let latestComment = ''
+      let commentThreads = 'No comments yet.'
       
       if (linearClient && issue.id) {
         try {
@@ -917,55 +1179,80 @@ export class EdgeWorker extends EventEmitter {
           
           const commentNodes = await comments.nodes
           if (commentNodes.length > 0) {
-            // Resolve user information for each comment
-            const commentPromises = commentNodes.map(async (comment: Comment, index: number) => {
-              const user = await comment.user
-              const authorName = user?.displayName || user?.name || user?.email || 'Unknown'
-              const createdAt = new Date(comment.createdAt).toLocaleString()
-              return `Comment ${index + 1} by ${authorName} at ${createdAt}:\n${comment.body}`
-            })
-            
-            const resolvedComments = await Promise.all(commentPromises)
-            commentHistory = resolvedComments.join('\n\n')
-            
-            latestComment = commentNodes[commentNodes.length - 1]?.body || ''
-            console.log(`[EdgeWorker] Processed ${commentNodes.length} comments for issue ${issue.identifier}`)
+            commentThreads = await this.formatCommentThreads(commentNodes)
+            console.log(`[EdgeWorker] Formatted ${commentNodes.length} comments into threads`)
           }
         } catch (error) {
           console.error('Failed to fetch comments:', error)
         }
       }
       
-      // Replace template variables using the full Linear issue
-      const prompt = template
+      // Build the prompt with all variables
+      let prompt = template
         .replace(/{{repository_name}}/g, repository.name)
-        .replace(/{{issue_id}}/g, issue.id || issue.identifier || '')
+        .replace(/{{issue_id}}/g, issue.id || '')
+        .replace(/{{issue_identifier}}/g, issue.identifier || '')
         .replace(/{{issue_title}}/g, issue.title || '')
         .replace(/{{issue_description}}/g, issue.description || 'No description provided')
         .replace(/{{issue_state}}/g, stateName)
         .replace(/{{issue_priority}}/g, issue.priority?.toString() || 'None')
         .replace(/{{issue_url}}/g, issue.url || '')
-        .replace(/{{comment_history}}/g, commentHistory || 'No comments yet')
-        .replace(/{{latest_comment}}/g, latestComment || 'No comments yet')
+        .replace(/{{comment_threads}}/g, commentThreads)
         .replace(/{{working_directory}}/g, this.config.handlers?.createWorkspace ? 
           'Will be created based on issue' : repository.repositoryPath)
         .replace(/{{base_branch}}/g, repository.baseBranch)
         .replace(/{{branch_name}}/g, this.sanitizeBranchName(issue.branchName))
       
+      // Handle the optional new comment section
+      if (newComment) {
+        // Replace the conditional block
+        const newCommentSection = `<new_comment_to_address>
+  <author>{{new_comment_author}}</author>
+  <timestamp>{{new_comment_timestamp}}</timestamp>
+  <content>
+{{new_comment_content}}
+  </content>
+</new_comment_to_address>
+
+IMPORTANT: Focus specifically on addressing the new comment above. This is a new request that requires your attention.`
+        
+        prompt = prompt.replace(/{{#if new_comment}}[\s\S]*?{{\/if}}/g, newCommentSection)
+        
+        // Now replace the new comment variables
+        // We'll need to fetch the comment author
+        let authorName = 'Unknown'
+        if (linearClient) {
+          try {
+            const fullComment = await linearClient.comment({ id: newComment.id })
+            const user = await fullComment.user
+            authorName = user?.displayName || user?.name || user?.email || 'Unknown'
+          } catch (error) {
+            console.error('Failed to fetch comment author:', error)
+          }
+        }
+        
+        prompt = prompt
+          .replace(/{{new_comment_author}}/g, authorName)
+          .replace(/{{new_comment_timestamp}}/g, new Date().toLocaleString())
+          .replace(/{{new_comment_content}}/g, newComment.body || '')
+      } else {
+        // Remove the new comment section entirely
+        prompt = prompt.replace(/{{#if new_comment}}[\s\S]*?{{\/if}}/g, '')
+      }
+      
       // Append attachment manifest if provided
       if (attachmentManifest) {
         console.log(`[EdgeWorker] Adding attachment manifest, length: ${attachmentManifest.length} characters`)
-        const finalPrompt = prompt + '\n\n' + attachmentManifest
-        console.log(`[EdgeWorker] Final prompt with attachments, total length: ${finalPrompt.length} characters`)
-        return finalPrompt
+        prompt = prompt + '\n\n' + attachmentManifest
       }
       
-      console.log(`[EdgeWorker] Returning prompt without attachments, length: ${prompt.length} characters`)
+      console.log(`[EdgeWorker] Final prompt length: ${prompt.length} characters`)
       return prompt
+      
     } catch (error) {
       console.error('[EdgeWorker] Failed to load prompt template:', error)
       
-      // Fallback to simple prompt using the full Linear issue
+      // Fallback to simple prompt
       const state = await issue.state
       const stateName = state?.name || 'Unknown'
       
@@ -982,15 +1269,8 @@ Branch: ${issue.branchName}
 Working directory: ${repository.repositoryPath}
 Base branch: ${repository.baseBranch}
 
-Please analyze this issue and help implement a solution.`
+${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please analyze this issue and help implement a solution.`
     }
-  }
-
-  /**
-   * Sanitize branch name by removing backticks to prevent command injection
-   */
-  private sanitizeBranchName(name: string): string {
-    return name ? name.replace(/`/g, '') : name
   }
 
   /**
@@ -1159,6 +1439,12 @@ Please analyze this issue and help implement a solution.`
       if (response && response.comment) {
         const comment = await response.comment
         console.log(`✅ Posted initial comment on issue ${issueId} (ID: ${comment.id})`)
+        
+        // Track this as the latest agent reply for the thread (initial comment is its own root)
+        if (comment.id) {
+          this.commentToLatestAgentReply.set(comment.id, comment.id)
+        }
+        
         return comment
       } else {
         throw new Error('Initial comment creation failed')
@@ -1198,6 +1484,12 @@ Please analyze this issue and help implement a solution.`
         const comment = await response.comment
         if (comment?.id) {
           console.log(`Comment ID: ${comment.id}`)
+          
+          // Track this as the latest agent reply for the thread
+          // If parentId exists, that's the thread root; otherwise this comment IS the root
+          const threadRootCommentId = parentId || comment.id
+          this.commentToLatestAgentReply.set(threadRootCommentId, comment.id)
+          
           return comment
         }
         return null
@@ -1215,11 +1507,12 @@ Please analyze this issue and help implement a solution.`
   /**
    * Update initial comment with TODO checklist
    */
-  private async updateCommentWithTodos(issueId: string, todos: Array<{id: string, content: string, status: string, priority: string}>, repositoryId: string): Promise<void> {
+  private async updateCommentWithTodos(todos: Array<{id: string, content: string, status: string, priority: string}>, repositoryId: string, threadRootCommentId: string): Promise<void> {
     try {
-      const commentId = this.issueToCommentId.get(issueId)
+      // Get the latest agent comment in this thread
+      const commentId = this.commentToLatestAgentReply.get(threadRootCommentId) || threadRootCommentId
       if (!commentId) {
-        console.log('No initial comment ID found for issue, cannot update with todos')
+        console.log('No comment ID found for thread, cannot update with todos')
         return
       }
 
