@@ -472,7 +472,8 @@ export class EdgeWorker extends EventEmitter {
     // Build and start Claude with initial prompt using full issue (streaming mode)
     console.log(`[EdgeWorker] Building initial prompt for issue ${fullIssue.identifier}`)
     try {
-      const prompt = await this.buildInitialPrompt(fullIssue, repository, attachmentResult.manifest)
+      // Use buildPromptV2 without a new comment for issue assignment
+      const prompt = await this.buildPromptV2(fullIssue, repository, undefined, attachmentResult.manifest)
       console.log(`[EdgeWorker] Initial prompt built successfully, length: ${prompt.length} characters`)
       console.log(`[EdgeWorker] Starting Claude streaming session`)
       const sessionInfo = await runner.startStreaming(prompt)
@@ -488,20 +489,110 @@ export class EdgeWorker extends EventEmitter {
    */
 
   /**
-   * Handle new root comment on issue (placeholder for future implementation)
-   * This will be similar to issue assignment but for root comments
+   * Handle new root comment - creates a new Claude session for a new comment thread
    * @param issue Linear issue object from webhook data
    * @param comment Linear comment object from webhook data
    * @param repository Repository configuration
    */
   private async handleNewRootComment(issue: LinearWebhookIssue, comment: LinearWebhookComment, repository: RepositoryConfig): Promise<void> {
-    // TODO: Implement root comment handling
-    // This should create a new Claude session for the root comment thread
-    // Similar to handleIssueAssigned but for a new comment thread
-    console.log(`[EdgeWorker] TODO: Handle new root comment ${comment.id} on issue ${issue.identifier}`)
+    console.log(`[EdgeWorker] Handling new root comment ${comment.id} on issue ${issue.identifier}`)
     
-    // For now, fall back to existing handleNewComment logic
-    await this.handleNewComment(issue, comment, repository)
+    // Fetch full Linear issue details
+    const fullIssue = await this.fetchFullIssueDetails(issue.id, repository.id)
+    if (!fullIssue) {
+      throw new Error(`Failed to fetch full issue details for ${issue.id}`)
+    }
+    
+    // Post immediate acknowledgment
+    const acknowledgment = await this.postComment(
+      issue.id,
+      "I'm getting started on that right away. I'll update this comment with my plan as I work through it.",
+      repository.id,
+      comment.id  // Reply to the new root comment
+    )
+    
+    if (!acknowledgment?.id) {
+      throw new Error(`Failed to create acknowledgment for root comment ${comment.id}`)
+    }
+    
+    // Create or get workspace
+    const workspace = this.config.handlers?.createWorkspace
+      ? await this.config.handlers.createWorkspace(fullIssue, repository)
+      : {
+          path: `${repository.workspaceBaseDir}/${fullIssue.identifier}`,
+          isGitWorktree: false
+        }
+    
+    console.log(`[EdgeWorker] Using workspace at: ${workspace.path}`)
+    
+    // Download attachments if any
+    const attachmentResult = await this.downloadIssueAttachments(fullIssue, repository, workspace.path)
+    
+    // Build allowed directories and tools
+    const allowedDirectories: string[] = []
+    if (attachmentResult.attachmentsDir) {
+      allowedDirectories.push(attachmentResult.attachmentsDir)
+    }
+    const allowedTools = this.buildAllowedTools(repository)
+    
+    // Create Claude runner for this new comment thread
+    const runner = new ClaudeRunner({
+      workingDirectory: workspace.path,
+      allowedTools,
+      allowedDirectories,
+      workspaceName: fullIssue.identifier,
+      mcpConfigPath: repository.mcpConfigPath,
+      mcpConfig: this.buildMcpConfig(repository),
+      onMessage: (message) => {
+        // Update session with Claude session ID when first received
+        if (!session.claudeSessionId && message.session_id) {
+          session.claudeSessionId = message.session_id
+          console.log(`[EdgeWorker] Claude session ID assigned: ${message.session_id}`)
+        }
+        this.handleClaudeMessage(acknowledgment.id, message, repository.id)
+      },
+      onComplete: (messages) => this.handleClaudeComplete(acknowledgment.id, messages, repository.id),
+      onError: (error) => this.handleClaudeError(acknowledgment.id, error, repository.id)
+    })
+    
+    // Store runner and mappings
+    this.claudeRunners.set(comment.id, runner)
+    this.commentToRepo.set(comment.id, repository.id)
+    this.commentToIssue.set(comment.id, fullIssue.id)
+    
+    // Create session for this new comment thread
+    const session = new Session({
+      issue: this.convertLinearIssueToCore(fullIssue),
+      workspace,
+      startedAt: new Date(),
+      agentRootCommentId: comment.id
+    })
+    
+    this.sessionManager.addSession(comment.id, session)
+    
+    // Track this new thread for the issue
+    const threads = this.issueToCommentThreads.get(issue.id) || new Set()
+    threads.add(comment.id)
+    this.issueToCommentThreads.set(issue.id, threads)
+    
+    // Track latest reply
+    this.commentToLatestAgentReply.set(comment.id, acknowledgment.id)
+    
+    // Emit session start event
+    this.config.handlers?.onSessionStart?.(fullIssue.id, fullIssue, repository.id)
+    
+    // Build prompt with new comment focus using V2 template
+    console.log(`[EdgeWorker] Building prompt for new root comment`)
+    try {
+      const prompt = await this.buildPromptV2(fullIssue, repository, comment, attachmentResult.manifest)
+      console.log(`[EdgeWorker] Prompt built successfully, length: ${prompt.length} characters`)
+      console.log(`[EdgeWorker] Starting Claude streaming session for new comment thread`)
+      const sessionInfo = await runner.startStreaming(prompt)
+      console.log(`[EdgeWorker] Claude streaming session started: ${sessionInfo.sessionId}`)
+    } catch (error) {
+      console.error(`[EdgeWorker] Error in prompt building/starting:`, error)
+      throw error
+    }
   }
 
   /**
@@ -1070,6 +1161,232 @@ Please analyze this issue and help implement a solution.`
    */
   private sanitizeBranchName(name: string): string {
     return name ? name.replace(/`/g, '') : name
+  }
+
+  /**
+   * Format Linear comments into a threaded structure that mirrors the Linear UI
+   * @param comments Array of Linear comments
+   * @returns Formatted string showing comment threads
+   */
+  private async formatCommentThreads(comments: Comment[]): Promise<string> {
+    if (comments.length === 0) {
+      return 'No comments yet.'
+    }
+
+    // Group comments by thread (root comments and their replies)
+    const threads = new Map<string, { root: Comment, replies: Comment[] }>()
+    const rootComments: Comment[] = []
+
+    // First pass: identify root comments and create thread structure
+    for (const comment of comments) {
+      const parent = await comment.parent
+      if (!parent) {
+        // This is a root comment
+        rootComments.push(comment)
+        threads.set(comment.id, { root: comment, replies: [] })
+      }
+    }
+
+    // Second pass: assign replies to their threads
+    for (const comment of comments) {
+      const parent = await comment.parent
+      if (parent?.id) {
+        const thread = threads.get(parent.id)
+        if (thread) {
+          thread.replies.push(comment)
+        }
+      }
+    }
+
+    // Format threads in chronological order
+    const formattedThreads: string[] = []
+    
+    for (const rootComment of rootComments) {
+      const thread = threads.get(rootComment.id)
+      if (!thread) continue
+
+      // Format root comment
+      const rootUser = await rootComment.user
+      const rootAuthor = rootUser?.displayName || rootUser?.name || rootUser?.email || 'Unknown'
+      const rootTime = new Date(rootComment.createdAt).toLocaleString()
+      
+      let threadText = `<comment_thread>
+  <root_comment>
+    <author>@${rootAuthor}</author>
+    <timestamp>${rootTime}</timestamp>
+    <content>
+${rootComment.body}
+    </content>
+  </root_comment>`
+
+      // Format replies if any
+      if (thread.replies.length > 0) {
+        threadText += '\n  <replies>'
+        for (const reply of thread.replies) {
+          const replyUser = await reply.user
+          const replyAuthor = replyUser?.displayName || replyUser?.name || replyUser?.email || 'Unknown'
+          const replyTime = new Date(reply.createdAt).toLocaleString()
+          
+          threadText += `
+    <reply>
+      <author>@${replyAuthor}</author>
+      <timestamp>${replyTime}</timestamp>
+      <content>
+${reply.body}
+      </content>
+    </reply>`
+        }
+        threadText += '\n  </replies>'
+      }
+      
+      threadText += '\n</comment_thread>'
+      formattedThreads.push(threadText)
+    }
+
+    return formattedThreads.join('\n\n')
+  }
+
+  /**
+   * Build a prompt for Claude using the improved XML-style template
+   * @param issue Full Linear issue
+   * @param repository Repository configuration  
+   * @param newComment Optional new comment to focus on (for handleNewRootComment)
+   * @param attachmentManifest Optional attachment manifest
+   * @returns Formatted prompt string
+   */
+  private async buildPromptV2(
+    issue: LinearIssue, 
+    repository: RepositoryConfig, 
+    newComment?: LinearWebhookComment,
+    attachmentManifest: string = ''
+  ): Promise<string> {
+    console.log(`[EdgeWorker] buildPromptV2 called for issue ${issue.identifier}${newComment ? ' with new comment' : ''}`)
+    
+    try {
+      // Use custom template if provided (repository-specific takes precedence)
+      let templatePath = repository.promptTemplatePath || this.config.features?.promptTemplatePath
+      
+      // If no custom template, use the v2 template
+      if (!templatePath) {
+        const __filename = fileURLToPath(import.meta.url)
+        const __dirname = dirname(__filename)
+        templatePath = resolve(__dirname, '../prompt-template-v2.md')
+      }
+
+      // Load the template
+      console.log(`[EdgeWorker] Loading prompt template from: ${templatePath}`)
+      const template = await readFile(templatePath, 'utf-8')
+      console.log(`[EdgeWorker] Template loaded, length: ${template.length} characters`)
+      
+      // Get state name from Linear API
+      const state = await issue.state
+      const stateName = state?.name || 'Unknown'
+      
+      // Get formatted comment threads
+      const linearClient = this.linearClients.get(repository.id)
+      let commentThreads = 'No comments yet.'
+      
+      if (linearClient && issue.id) {
+        try {
+          console.log(`[EdgeWorker] Fetching comments for issue ${issue.identifier}`)
+          const comments = await linearClient.comments({
+            filter: { issue: { id: { eq: issue.id } } }
+          })
+          
+          const commentNodes = await comments.nodes
+          if (commentNodes.length > 0) {
+            commentThreads = await this.formatCommentThreads(commentNodes)
+            console.log(`[EdgeWorker] Formatted ${commentNodes.length} comments into threads`)
+          }
+        } catch (error) {
+          console.error('Failed to fetch comments:', error)
+        }
+      }
+      
+      // Build the prompt with all variables
+      let prompt = template
+        .replace(/{{repository_name}}/g, repository.name)
+        .replace(/{{issue_id}}/g, issue.id || '')
+        .replace(/{{issue_identifier}}/g, issue.identifier || '')
+        .replace(/{{issue_title}}/g, issue.title || '')
+        .replace(/{{issue_description}}/g, issue.description || 'No description provided')
+        .replace(/{{issue_state}}/g, stateName)
+        .replace(/{{issue_priority}}/g, issue.priority?.toString() || 'None')
+        .replace(/{{issue_url}}/g, issue.url || '')
+        .replace(/{{comment_threads}}/g, commentThreads)
+        .replace(/{{working_directory}}/g, this.config.handlers?.createWorkspace ? 
+          'Will be created based on issue' : repository.repositoryPath)
+        .replace(/{{base_branch}}/g, repository.baseBranch)
+        .replace(/{{branch_name}}/g, this.sanitizeBranchName(issue.branchName))
+      
+      // Handle the optional new comment section
+      if (newComment) {
+        // Replace the conditional block
+        const newCommentSection = `<new_comment_to_address>
+  <author>{{new_comment_author}}</author>
+  <timestamp>{{new_comment_timestamp}}</timestamp>
+  <content>
+{{new_comment_content}}
+  </content>
+</new_comment_to_address>
+
+IMPORTANT: Focus specifically on addressing the new comment above. This is a new request that requires your attention.`
+        
+        prompt = prompt.replace(/{{#if new_comment}}[\s\S]*?{{\/if}}/g, newCommentSection)
+        
+        // Now replace the new comment variables
+        // We'll need to fetch the comment author
+        let authorName = 'Unknown'
+        if (linearClient) {
+          try {
+            const fullComment = await linearClient.comment({ id: newComment.id })
+            const user = await fullComment.user
+            authorName = user?.displayName || user?.name || user?.email || 'Unknown'
+          } catch (error) {
+            console.error('Failed to fetch comment author:', error)
+          }
+        }
+        
+        prompt = prompt
+          .replace(/{{new_comment_author}}/g, authorName)
+          .replace(/{{new_comment_timestamp}}/g, new Date().toLocaleString())
+          .replace(/{{new_comment_content}}/g, newComment.body || '')
+      } else {
+        // Remove the new comment section entirely
+        prompt = prompt.replace(/{{#if new_comment}}[\s\S]*?{{\/if}}/g, '')
+      }
+      
+      // Append attachment manifest if provided
+      if (attachmentManifest) {
+        console.log(`[EdgeWorker] Adding attachment manifest, length: ${attachmentManifest.length} characters`)
+        prompt = prompt + '\n\n' + attachmentManifest
+      }
+      
+      console.log(`[EdgeWorker] Final prompt length: ${prompt.length} characters`)
+      return prompt
+      
+    } catch (error) {
+      console.error('[EdgeWorker] Failed to load prompt template:', error)
+      
+      // Fallback to simple prompt
+      const state = await issue.state
+      const stateName = state?.name || 'Unknown'
+      
+      return `Please help me with the following Linear issue:
+
+Repository: ${repository.name}
+Issue: ${issue.identifier}
+Title: ${issue.title}
+Description: ${issue.description || 'No description provided'}
+State: ${stateName}
+Priority: ${issue.priority?.toString() || 'None'}
+Branch: ${issue.branchName}
+
+Working directory: ${repository.repositoryPath}
+Base branch: ${repository.baseBranch}
+
+${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please analyze this issue and help implement a solution.`
+    }
   }
 
   /**
