@@ -14,30 +14,23 @@ Linear Cloud                              Repository (Git)
 │  │                    Proxy Server                        │  │
 │  │  • Handles Linear OAuth flow                          │  │
 │  │  • Receives Linear webhooks                           │  │
-│  │  • Forwards events to edge workers via NDJSON         │  │
+│  │  • Forwards events to edge workers via webhooks       │  │
 │  │  • Manages authentication & webhook verification       │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                                │
-                               │ [NDJSON stream]
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        apps/cli                              │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                LinearIssueService                      │  │
-│  │  • Polls Linear API for assigned issues               │  │
-│  │  • Creates git worktrees per issue                    │  │
-│  │  • Launches Claude sessions                           │  │
-│  │  • Maps: issue.identifier → workspace path            │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                               │
-                               │ [launches]
+                               │ [webhooks via HTTP]
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    packages/edge-worker                      │
+│                  (runs in CLI or standalone)                 │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │                    EdgeWorker                          │  │
+│  │  • Registers webhook endpoint with proxy               │  │
+│  │  • Receives Linear webhook events                      │  │
+│  │  • Creates git worktrees per issue                    │  │
+│  │  • Launches Claude sessions                           │  │
+│  │  • Manages session-to-comment-thread mapping          │  │
 │  │                                                        │  │
 │  │  Maps (Comment Thread Architecture):                   │  │
 │  │  ────────────────────────────────────────             │  │
@@ -46,6 +39,7 @@ Linear Cloud                              Repository (Git)
 │  │  • commentToIssue: commentId → issueId                 │  │
 │  │  • commentToLatestAgentReply: commentId → commentId    │  │
 │  │  • issueToCommentThreads: issueId → Set<commentId>     │  │
+│  │  • issue.identifier → workspace path (git worktree)     │  │
 │  │                                                        │  │
 │  │  Linear Structure:                                     │  │
 │  │  ─────────────────                                     │  │
@@ -118,10 +112,19 @@ Linear Cloud                              Repository (Git)
 
 ## Key Flows
 
-1. **Issue Assignment**: Linear → Proxy → EdgeWorker → Create comment → Create session → ClaudeRunner
-2. **User Comment**: Linear → Proxy → EdgeWorker → Find/create session for thread → ClaudeRunner
+1. **Issue Assignment**: Linear webhook → Proxy → EdgeWorker (via webhook) → Create comment → Create session → ClaudeRunner
+2. **User Comment**: Linear webhook → Proxy → EdgeWorker (via webhook) → Find/create session for thread → ClaudeRunner
 3. **Multiple Sessions**: One issue can have multiple comment threads, each with its own Claude session
 4. **Session Continuation**: Uses Claude's `--resume` with session ID extracted from first message
+
+## Communication Architecture
+
+- **Proxy ↔ EdgeWorker**: Webhook-based transport using HTTP POST
+  - EdgeWorker registers its webhook endpoint with the proxy
+  - Proxy forwards Linear events to registered EdgeWorkers
+  - Webhook payloads are authenticated with HMAC signatures
+- **EdgeWorker ↔ Linear**: Direct API calls using Linear SDK
+- **EdgeWorker ↔ ClaudeRunner**: In-process communication (EventEmitter)
 
 ## Session Management
 
