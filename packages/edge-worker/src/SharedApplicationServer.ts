@@ -36,11 +36,13 @@ export class SharedApplicationServer {
   private ngrokListener: any = null
   private ngrokAuthToken: string | null = null
   private ngrokUrl: string | null = null
+  private proxyUrl: string
 
-  constructor(port: number = 3456, host: string = 'localhost', ngrokAuthToken?: string) {
+  constructor(port: number = 3456, host: string = 'localhost', ngrokAuthToken?: string, proxyUrl?: string) {
     this.port = port
     this.host = host
     this.ngrokAuthToken = ngrokAuthToken || null
+    this.proxyUrl = proxyUrl || process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
   }
 
   /**
@@ -363,7 +365,7 @@ export class SharedApplicationServer {
               <p>You can close this window and return to the terminal.</p>
               <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
               <p style="margin-top: 30px;">
-                <a href="${process.env.PROXY_URL}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback" 
+                <a href="${this.proxyUrl}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback" 
                    style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                   Connect Another Workspace
                 </a>
