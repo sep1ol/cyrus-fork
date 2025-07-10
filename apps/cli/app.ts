@@ -435,7 +435,7 @@ class EdgeApp {
               console.log(`📊 Adding repository "${newRepo.name}", new total: ${edgeConfig.repositories.length}`)
               this.saveEdgeConfig(edgeConfig)
                             console.log('\n✅ Repository configured successfully!')
-              console.log('📝 .edge-config.json file has been updated with your new repository configuration.')
+              console.log('📝 ~/.cyrus/config.json file has been updated with your new repository configuration.')
               console.log('💡 You can edit this file and restart Cyrus at any time to modify settings.')
               
               // Restart edge worker with new config
@@ -610,7 +610,7 @@ class EdgeApp {
           this.saveEdgeConfig(edgeConfig)
           
           console.log('\n✅ Repository configured successfully!')
-          console.log('📝 .edge-config.json file has been updated with your repository configuration.')
+          console.log('📝 ~/.cyrus/config.json file has been updated with your repository configuration.')
           console.log('💡 You can edit this file and restart Cyrus at any time to modify settings.')
           
           // Ask if they want to add another
