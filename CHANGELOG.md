@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Made conversation history of threads be resumable after Cyrus restarts
+- Fixed the issue with continuity of conversation in a thread, after the first comment
+
 ## [0.1.32] - 2025-01-09
 
 ### CLI
