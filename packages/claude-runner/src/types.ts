@@ -10,9 +10,9 @@ export interface ClaudeRunnerConfig {
   appendSystemPrompt?: string  // Additional prompt to append to the default system prompt
   mcpConfigPath?: string | string[]  // Single path or array of paths to compose
   mcpConfig?: Record<string, McpServerConfig>  // Additional/override MCP servers
-  onMessage?: (message: SDKMessage) => void
-  onError?: (error: Error) => void
-  onComplete?: (messages: SDKMessage[]) => void
+  onMessage?: (message: SDKMessage) => void | Promise<void>
+  onError?: (error: Error) => void | Promise<void>
+  onComplete?: (messages: SDKMessage[]) => void | Promise<void>
 }
 
 export interface ClaudeSessionInfo {
@@ -27,8 +27,8 @@ export interface ClaudeRunnerEvents {
   'tool-use': (toolName: string, input: any) => void
   'text': (text: string) => void
   'end-turn': (lastText: string) => void
-  'error': (error: Error) => void
-  'complete': (messages: SDKMessage[]) => void
+  'error': (error: Error) => void | Promise<void>
+  'complete': (messages: SDKMessage[]) => void | Promise<void>
 }
 
 // Re-export SDK types for convenience

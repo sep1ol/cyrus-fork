@@ -665,7 +665,7 @@ describe('EdgeWorker', () => {
 
       // Now test completion handling
       const messages = [mockClaudeAssistantMessage('Task completed')]
-      completeHandler!(messages)
+      await completeHandler!(messages)
 
       expect(edgeWorker['claudeRunners'].has('issue-123')).toBe(false)
       expect(mockConfig.handlers.onSessionEnd).toHaveBeenCalledWith('issue-123', 0, 'test-repo')

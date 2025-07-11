@@ -1,4 +1,6 @@
 import { Session } from './Session.js'
+import { PersistenceManager } from './PersistenceManager.js'
+import type { SerializableSession } from './PersistenceManager.js'
 
 /**
  * Manages active Claude sessions
@@ -7,10 +9,12 @@ import { Session } from './Session.js'
 export class SessionManager {
   private sessionsByCommentId: Map<string, Session>
   private sessionsByIssueId: Map<string, Session[]>
+  // private persistenceManager: PersistenceManager // Reserved for future use
 
-  constructor() {
+  constructor(_persistenceManager?: PersistenceManager) {
     this.sessionsByCommentId = new Map()
     this.sessionsByIssueId = new Map()
+    // this.persistenceManager = persistenceManager || new PersistenceManager() // Reserved for future use
   }
   
   /**
@@ -157,5 +161,94 @@ export class SessionManager {
    */
   countActiveSessionsForIssue(issueId: string): number {
     return this.getActiveSessionsForIssue(issueId).length
+  }
+
+  /**
+   * Serialize sessions to a format suitable for persistence
+   */
+  serializeSessions(): { sessionsByCommentId: Record<string, SerializableSession>; sessionsByIssueId: Record<string, SerializableSession[]> } {
+    const sessionsByCommentId: Record<string, SerializableSession> = {}
+    const sessionsByIssueId: Record<string, SerializableSession[]> = {}
+
+    // Serialize sessionsByCommentId
+    for (const [commentId, session] of this.sessionsByCommentId.entries()) {
+      sessionsByCommentId[commentId] = this.serializeSession(session)
+    }
+
+    // Serialize sessionsByIssueId
+    for (const [issueId, sessions] of this.sessionsByIssueId.entries()) {
+      sessionsByIssueId[issueId] = sessions.map(session => this.serializeSession(session))
+    }
+
+    return { sessionsByCommentId, sessionsByIssueId }
+  }
+
+  /**
+   * Restore sessions from serialized data
+   */
+  deserializeSessions(data: { sessionsByCommentId: Record<string, SerializableSession>; sessionsByIssueId: Record<string, SerializableSession[]> }): void {
+    // Clear existing sessions
+    this.sessionsByCommentId.clear()
+    this.sessionsByIssueId.clear()
+
+    // Restore sessionsByCommentId
+    for (const [commentId, serializedSession] of Object.entries(data.sessionsByCommentId)) {
+      const session = this.deserializeSession(serializedSession)
+      this.sessionsByCommentId.set(commentId, session)
+    }
+
+    // Restore sessionsByIssueId
+    for (const [issueId, serializedSessions] of Object.entries(data.sessionsByIssueId)) {
+      const sessions = serializedSessions.map(serializedSession => this.deserializeSession(serializedSession))
+      this.sessionsByIssueId.set(issueId, sessions)
+    }
+  }
+
+  /**
+   * Convert a Session to SerializableSession
+   */
+  private serializeSession(session: Session): SerializableSession {
+    return {
+      issueId: session.issue.id,
+      issueIdentifier: session.issue.identifier,
+      issueTitle: session.issue.title,
+      branchName: session.issue.getBranchName(),
+      workspacePath: session.workspace.path,
+      isGitWorktree: session.workspace.isGitWorktree,
+      historyPath: session.workspace.historyPath,
+      claudeSessionId: session.claudeSessionId,
+      agentRootCommentId: session.agentRootCommentId,
+      lastCommentId: session.lastCommentId,
+      currentParentId: session.currentParentId,
+      startedAt: session.startedAt.toISOString(),
+      exitedAt: session.exitedAt?.toISOString() || null,
+      conversationContext: session.conversationContext
+    }
+  }
+
+  /**
+   * Convert a SerializableSession to Session
+   */
+  private deserializeSession(serializedSession: SerializableSession): Session {
+    return new Session({
+      issue: {
+        id: serializedSession.issueId,
+        identifier: serializedSession.issueIdentifier,
+        title: serializedSession.issueTitle,
+        getBranchName: () => serializedSession.branchName
+      },
+      workspace: {
+        path: serializedSession.workspacePath,
+        isGitWorktree: serializedSession.isGitWorktree,
+        historyPath: serializedSession.historyPath
+      },
+      claudeSessionId: serializedSession.claudeSessionId,
+      agentRootCommentId: serializedSession.agentRootCommentId,
+      lastCommentId: serializedSession.lastCommentId,
+      currentParentId: serializedSession.currentParentId,
+      startedAt: serializedSession.startedAt,
+      exitedAt: serializedSession.exitedAt,
+      conversationContext: serializedSession.conversationContext
+    })
   }
 }
