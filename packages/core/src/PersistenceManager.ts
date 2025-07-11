@@ -10,6 +10,7 @@ export interface SerializableSession {
   issueId: string
   issueIdentifier: string
   issueTitle: string
+  branchName: string
   workspacePath: string
   isGitWorktree: boolean
   historyPath?: string

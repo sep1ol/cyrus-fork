@@ -212,6 +212,7 @@ export class SessionManager {
       issueId: session.issue.id,
       issueIdentifier: session.issue.identifier,
       issueTitle: session.issue.title,
+      branchName: session.issue.getBranchName(),
       workspacePath: session.workspace.path,
       isGitWorktree: session.workspace.isGitWorktree,
       historyPath: session.workspace.historyPath,
@@ -234,7 +235,7 @@ export class SessionManager {
         id: serializedSession.issueId,
         identifier: serializedSession.issueIdentifier,
         title: serializedSession.issueTitle,
-        getBranchName: () => serializedSession.issueIdentifier.toLowerCase().replace(/[^a-z0-9]/g, '-')
+        getBranchName: () => serializedSession.branchName
       },
       workspace: {
         path: serializedSession.workspacePath,
