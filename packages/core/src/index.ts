@@ -1,6 +1,8 @@
 export { Session } from './Session.js'
 export type { SessionOptions, Issue, Workspace, NarrativeItem } from './Session.js'
 export { SessionManager } from './SessionManager.js'
+export { PersistenceManager } from './PersistenceManager.js'
+export type { SerializableSession, SerializableEdgeWorkerState } from './PersistenceManager.js'
 
 // Webhook types
 export type {

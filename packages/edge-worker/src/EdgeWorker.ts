@@ -3,8 +3,8 @@ import { LinearClient, Issue as LinearIssue, Comment } from '@linear/sdk'
 import { NdjsonClient } from 'cyrus-ndjson-client'
 import { ClaudeRunner, getSafeTools } from 'cyrus-claude-runner'
 import type { McpServerConfig } from 'cyrus-claude-runner'
-import { SessionManager, Session } from 'cyrus-core'
-import type { Issue as CoreIssue } from 'cyrus-core'
+import { SessionManager, Session, PersistenceManager } from 'cyrus-core'
+import type { Issue as CoreIssue, SerializableEdgeWorkerState } from 'cyrus-core'
 import type {
   LinearWebhook,
   LinearIssueAssignedWebhook,
@@ -44,6 +44,7 @@ export class EdgeWorker extends EventEmitter {
   private linearClients: Map<string, LinearClient> = new Map()
   private ndjsonClients: Map<string, NdjsonClient> = new Map()
   private sessionManager: SessionManager
+  private persistenceManager: PersistenceManager
   private claudeRunners: Map<string, ClaudeRunner> = new Map() // Maps comment ID to ClaudeRunner
   private commentToRepo: Map<string, string> = new Map() // Maps comment ID to repository ID
   private commentToIssue: Map<string, string> = new Map() // Maps comment ID to issue ID
@@ -56,7 +57,8 @@ export class EdgeWorker extends EventEmitter {
   constructor(config: EdgeWorkerConfig) {
     super()
     this.config = config
-    this.sessionManager = new SessionManager()
+    this.persistenceManager = new PersistenceManager()
+    this.sessionManager = new SessionManager(this.persistenceManager)
 
     // Initialize shared application server
     const serverPort = config.serverPort || config.webhookPort || 3456
@@ -136,6 +138,9 @@ export class EdgeWorker extends EventEmitter {
    * Start the edge worker
    */
   async start(): Promise<void> {
+    // Load persisted state for each repository
+    await this.loadPersistedState()
+    
     // Start shared application server first
     await this.sharedApplicationServer.start()
     
@@ -481,6 +486,9 @@ export class EdgeWorker extends EventEmitter {
     threads.add(initialComment.id)
     this.issueToCommentThreads.set(fullIssue.id, threads)
 
+    // Save state after mapping changes
+    await this.savePersistedState()
+
     // Emit events using full Linear issue
     this.emit('session:started', fullIssue.id, fullIssue, repository.id)
     this.config.handlers?.onSessionStart?.(fullIssue.id, fullIssue, repository.id)
@@ -593,6 +601,9 @@ export class EdgeWorker extends EventEmitter {
     
     // Track latest reply
     this.commentToLatestAgentReply.set(comment.id, acknowledgment.id)
+    
+    // Save state after mapping changes
+    await this.savePersistedState()
     
     // Emit session start event
     this.config.handlers?.onSessionStart?.(fullIssue.id, fullIssue, repository.id)
@@ -717,6 +728,9 @@ export class EdgeWorker extends EventEmitter {
       const threads = this.issueToCommentThreads.get(issue.id) || new Set()
       threads.add(threadRootCommentId)
       this.issueToCommentThreads.set(issue.id, threads)
+      
+      // Save state after mapping changes
+      await this.savePersistedState()
     }
 
     // Check if there's an existing runner for this comment thread
@@ -882,6 +896,9 @@ export class EdgeWorker extends EventEmitter {
     this.issueToCommentThreads.delete(issue.id)
     this.issueToReplyContext.delete(issue.id)
 
+    // Save state after mapping changes
+    await this.savePersistedState()
+
     // Emit events
     console.log(`[EdgeWorker] Stopped ${activeThreadCount} sessions for unassigned issue ${issue.identifier}`)
     this.emit('session:ended', issue.id, null, repository.id)
@@ -949,13 +966,17 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle Claude session completion (successful)
    */
-  private handleClaudeComplete(commentId: string, messages: SDKMessage[], repositoryId: string): void {
+  private async handleClaudeComplete(commentId: string, messages: SDKMessage[], repositoryId: string): Promise<void> {
     const issueId = this.commentToIssue.get(commentId)
     console.log(`[EdgeWorker] Claude session completed for comment thread ${commentId} (issue ${issueId}) with ${messages.length} messages`)
     this.claudeRunners.delete(commentId)
     this.commentToRepo.delete(commentId)
     if (issueId) {
       this.commentToIssue.delete(commentId)
+      
+      // Save state after mapping changes
+      await this.savePersistedState()
+      
       this.emit('session:ended', issueId, 0, repositoryId)  // 0 indicates success
       this.config.handlers?.onSessionEnd?.(issueId, 0, repositoryId)
     }
@@ -964,7 +985,7 @@ export class EdgeWorker extends EventEmitter {
   /**
    * Handle Claude session error
    */
-  private handleClaudeError(commentId: string, error: Error, repositoryId: string): void {
+  private async handleClaudeError(commentId: string, error: Error, repositoryId: string): Promise<void> {
     const issueId = this.commentToIssue.get(commentId)
     console.error(`[EdgeWorker] Claude session error for comment thread ${commentId} (issue ${issueId}):`, error.message)
     console.error(`[EdgeWorker] Error type: ${error.constructor.name}`)
@@ -977,6 +998,10 @@ export class EdgeWorker extends EventEmitter {
     this.commentToRepo.delete(commentId)
     if (issueId) {
       this.commentToIssue.delete(commentId)
+      
+      // Save state after mapping changes
+      await this.savePersistedState()
+      
       // Emit events for external handlers
       this.emit('session:ended', issueId, 1, repositoryId)  // 1 indicates error
       this.config.handlers?.onSessionEnd?.(issueId, 1, repositoryId)
@@ -1459,6 +1484,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
         // Track this as the latest agent reply for the thread (initial comment is its own root)
         if (comment.id) {
           this.commentToLatestAgentReply.set(comment.id, comment.id)
+          
+          // Save state after successful comment creation and mapping update
+          await this.savePersistedState()
         }
         
         return comment
@@ -1505,6 +1533,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
           // If parentId exists, that's the thread root; otherwise this comment IS the root
           const threadRootCommentId = parentId || comment.id
           this.commentToLatestAgentReply.set(threadRootCommentId, comment.id)
+          
+          // Save state after successful comment creation and mapping update
+          await this.savePersistedState()
           
           return comment
         }
@@ -1919,5 +1950,111 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ''}Please ana
     const allTools = [...new Set([...baseToolsArray, ...linearMcpTools])]
     
     return allTools
+  }
+
+  /**
+   * Load persisted EdgeWorker state for all repositories
+   */
+  private async loadPersistedState(): Promise<void> {
+    for (const repo of this.repositories.values()) {
+      try {
+        const state = await this.persistenceManager.loadEdgeWorkerState(repo.id)
+        if (state) {
+          this.restoreMappings(state)
+          console.log(`✅ Loaded persisted state for repository: ${repo.name}`)
+        }
+      } catch (error) {
+        console.error(`Failed to load persisted state for repository ${repo.name}:`, error)
+      }
+    }
+  }
+
+  /**
+   * Save current EdgeWorker state for all repositories
+   */
+  private async savePersistedState(): Promise<void> {
+    for (const repo of this.repositories.values()) {
+      try {
+        const state = this.serializeMappings()
+        await this.persistenceManager.saveEdgeWorkerState(repo.id, state)
+      } catch (error) {
+        console.error(`Failed to save persisted state for repository ${repo.name}:`, error)
+      }
+    }
+  }
+
+  /**
+   * Serialize EdgeWorker mappings to a serializable format
+   */
+  public serializeMappings(): SerializableEdgeWorkerState {
+    // Convert issueToCommentThreads Map<string, Set<string>> to Record<string, string[]>
+    const issueToCommentThreads: Record<string, string[]> = {}
+    for (const [issueId, threadSet] of this.issueToCommentThreads.entries()) {
+      issueToCommentThreads[issueId] = Array.from(threadSet)
+    }
+
+    // Serialize session manager state
+    const sessionManagerState = this.sessionManager.serializeSessions()
+
+    return {
+      commentToRepo: PersistenceManager.mapToRecord(this.commentToRepo),
+      commentToIssue: PersistenceManager.mapToRecord(this.commentToIssue),
+      commentToLatestAgentReply: PersistenceManager.mapToRecord(this.commentToLatestAgentReply),
+      issueToCommentThreads,
+      issueToReplyContext: PersistenceManager.mapToRecord(this.issueToReplyContext),
+      sessionsByCommentId: sessionManagerState.sessionsByCommentId,
+      sessionsByIssueId: sessionManagerState.sessionsByIssueId
+    }
+  }
+
+  /**
+   * Restore EdgeWorker mappings from serialized state
+   */
+  public restoreMappings(state: SerializableEdgeWorkerState): void {
+    // Restore basic mappings
+    this.commentToRepo = PersistenceManager.recordToMap(state.commentToRepo)
+    this.commentToIssue = PersistenceManager.recordToMap(state.commentToIssue)
+    this.commentToLatestAgentReply = PersistenceManager.recordToMap(state.commentToLatestAgentReply)
+    this.issueToReplyContext = PersistenceManager.recordToMap(state.issueToReplyContext)
+
+    // Restore issueToCommentThreads Record<string, string[]> to Map<string, Set<string>>
+    this.issueToCommentThreads.clear()
+    for (const [issueId, threadArray] of Object.entries(state.issueToCommentThreads)) {
+      this.issueToCommentThreads.set(issueId, new Set(threadArray))
+    }
+
+    // Restore session manager state
+    this.sessionManager.deserializeSessions({
+      sessionsByCommentId: state.sessionsByCommentId,
+      sessionsByIssueId: state.sessionsByIssueId
+    })
+  }
+
+  /**
+   * Save state and cleanup on shutdown
+   */
+  public async shutdown(): Promise<void> {
+    try {
+      await this.savePersistedState()
+      console.log('✅ EdgeWorker state saved successfully')
+    } catch (error) {
+      console.error('❌ Failed to save EdgeWorker state during shutdown:', error)
+    }
+
+    // Stop all Claude runners
+    for (const [commentId, runner] of this.claudeRunners.entries()) {
+      try {
+        await runner.stop()
+      } catch (error) {
+        console.error(`Failed to stop Claude runner for comment ${commentId}:`, error)
+      }
+    }
+
+    // Stop shared application server
+    try {
+      await this.sharedApplicationServer.stop()
+    } catch (error) {
+      console.error('Failed to stop shared application server:', error)
+    }
   }
 }
