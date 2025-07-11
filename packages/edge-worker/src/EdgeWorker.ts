@@ -970,13 +970,8 @@ export class EdgeWorker extends EventEmitter {
     const issueId = this.commentToIssue.get(commentId)
     console.log(`[EdgeWorker] Claude session completed for comment thread ${commentId} (issue ${issueId}) with ${messages.length} messages`)
     this.claudeRunners.delete(commentId)
-    this.commentToRepo.delete(commentId)
+
     if (issueId) {
-      this.commentToIssue.delete(commentId)
-      
-      // Save state after mapping changes
-      await this.savePersistedState()
-      
       this.emit('session:ended', issueId, 0, repositoryId)  // 0 indicates success
       this.config.handlers?.onSessionEnd?.(issueId, 0, repositoryId)
     }
@@ -995,13 +990,7 @@ export class EdgeWorker extends EventEmitter {
     
     // Clean up resources
     this.claudeRunners.delete(commentId)
-    this.commentToRepo.delete(commentId)
     if (issueId) {
-      this.commentToIssue.delete(commentId)
-      
-      // Save state after mapping changes
-      await this.savePersistedState()
-      
       // Emit events for external handlers
       this.emit('session:ended', issueId, 1, repositoryId)  // 1 indicates error
       this.config.handlers?.onSessionEnd?.(issueId, 1, repositoryId)
