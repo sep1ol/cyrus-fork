@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- You can now append custom instructions to Claude's system prompt via `appendInstruction` in repository config - because sometimes Claude needs a gentle reminder that your variable names are art, not accidents
+- You can now append custom instructions to Claude's system prompt via `appendInstruction` in repository config (~/.cyrus/config.json) - because sometimes Claude needs a gentle reminder that your variable names are art, not accidents
 
 ### Fixed
 - Made conversation history of threads be resumable after Cyrus restarts
