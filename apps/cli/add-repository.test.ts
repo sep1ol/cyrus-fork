@@ -1,5 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import { execSync } from 'child_process'
+import { basename, resolve, isAbsolute } from 'path'
+
+// Extract actual path processing logic from app.ts:253
+const processRepositoryPath = (repositoryPath: string): string => {
+  return resolve(repositoryPath)
+}
+
+// Extract actual repository name generation from app.ts:207
+const generateRepositoryName = (repositoryPath: string): string => {
+  return basename(repositoryPath)
+}
+
+// Extract actual safe name generation logic from app.ts:210
+const generateSafeRepositoryName = (repositoryName: string): string => {
+  return repositoryName.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase()
+}
 
 describe('add-repository command', () => {
   describe('CLI integration', () => {
@@ -12,23 +28,6 @@ describe('add-repository command', () => {
       expect(helpOutput).toContain('add-repository')
       expect(helpOutput).toContain('Add a new repository configuration')
       expect(helpOutput).toContain('cyrus add-repository           Add a new repository interactively')
-    })
-    
-    it('should accept add-repository as a valid command', () => {
-      // Test that the command is recognized by checking it appears in help
-      // We can't easily test the actual execution without mocking OAuth
-      const helpOutput = execSync('node dist/app.js --help', { 
-        encoding: 'utf-8',
-        cwd: __dirname 
-      })
-      
-      // The command should be listed in available commands
-      expect(helpOutput).toContain('add-repository')
-      
-      // This confirms the command parsing works correctly
-      const lines = helpOutput.split('\n')
-      const commandLines = lines.filter(line => line.includes('add-repository'))
-      expect(commandLines.length).toBeGreaterThan(0)
     })
   })
   
@@ -50,11 +49,18 @@ describe('add-repository command', () => {
       ]
 
       validPaths.forEach(path => {
-        expect(path.startsWith('/')).toBe(true)
+        const processedPath = processRepositoryPath(path)
+        expect(isAbsolute(processedPath)).toBe(true)
+        // Input paths should already be absolute for valid cases
+        expect(isAbsolute(path)).toBe(true)
       })
 
       invalidPaths.forEach(path => {
-        expect(path.startsWith('/')).toBe(false)
+        const processedPath = processRepositoryPath(path)
+        // resolve() always makes paths absolute, even from relative input
+        expect(isAbsolute(processedPath)).toBe(true)
+        // Input paths should be relative for invalid cases
+        expect(isAbsolute(path)).toBe(false)
       })
     })
 
@@ -67,7 +73,7 @@ describe('add-repository command', () => {
       ]
 
       testCases.forEach(({ path, expectedName }) => {
-        const actualName = path.split('/').pop()
+        const actualName = generateRepositoryName(path)
         expect(actualName).toBe(expectedName)
       })
     })
@@ -81,10 +87,14 @@ describe('add-repository command', () => {
       ]
 
       edgeCases.forEach(path => {
-        expect(path.startsWith('/')).toBe(true)
-        const name = path.split('/').pop()
+        const processedPath = processRepositoryPath(path)
+        expect(isAbsolute(processedPath)).toBe(true)
+        const name = generateRepositoryName(processedPath)
         expect(name).toBeTruthy()
-        expect(name!.length).toBeGreaterThan(0)
+        expect(name.length).toBeGreaterThan(0)
+        // Test the safe name generation as well
+        const safeName = generateSafeRepositoryName(name)
+        expect(safeName).toMatch(/^[a-z0-9-_]+$/)
       })
     })
   })
