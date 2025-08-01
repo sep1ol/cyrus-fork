@@ -334,7 +334,7 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Find the appropriate repository for this webhook
-		const repository = this.findRepositoryForWebhook(webhook, repos);
+		const repository = await this.findRepositoryForWebhook(webhook, repos);
 		if (!repository) {
 			console.log(
 				"No repository configured for webhook from workspace",
@@ -417,13 +417,77 @@ export class EdgeWorker extends EventEmitter {
 	/**
 	 * Find the repository configuration for a webhook
 	 */
-	private findRepositoryForWebhook(
+	public async findRepositoryForWebhook(
 		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
-	): RepositoryConfig | null {
+	): Promise<RepositoryConfig | null> {
 		const workspaceId = webhook.organizationId;
 		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
 
+		// Try team-based routing first
+		const teamBasedRepo = this.tryTeamBasedRouting(webhook, repos);
+		if (teamBasedRepo) return teamBasedRepo;
+
+		// Try project-based routing
+		const projectBasedRepo = await this.tryProjectBasedRouting(webhook, repos);
+		if (projectBasedRepo) return projectBasedRepo;
+
+		// Fallback to workspace matching
+		return this.tryWorkspaceBasedRouting(workspaceId, repos);
+	}
+
+	/**
+	 * Helper method to find repository by team key
+	 */
+	private findRepositoryByTeamKey(teamKey: string, repos: RepositoryConfig[]): RepositoryConfig | null {
+		return repos.find((r) => r.teamKeys?.includes(teamKey)) || null;
+	}
+
+	/**
+	 * Helper method to find repository by issue identifier
+	 */
+	private findRepositoryByIssueIdentifier(issueId: string, repos: RepositoryConfig[]): RepositoryConfig | null {
+		if (!issueId?.includes("-")) return null;
+		const prefix = issueId.split("-")[0];
+		return prefix ? repos.find((r) => r.teamKeys?.includes(prefix)) || null : null;
+	}
+
+	/**
+	 * Helper method to find repository by project name
+	 */
+	private async findRepositoryByProject(issueId: string, repos: RepositoryConfig[]): Promise<RepositoryConfig | null> {
+		// Try each repository's Linear client to fetch project for the issue
+		for (const repo of repos) {
+			if (!repo.projectKeys || repo.projectKeys.length === 0) continue;
+
+			try {
+				const linearClient = this.linearClients.get(repo.id);
+				if (!linearClient) continue;
+
+				const issue = await linearClient.issue(issueId);
+				const project = await issue.project;
+				
+				if (project?.name && repo.projectKeys.includes(project.name)) {
+					console.log(
+						`[EdgeWorker] Matched issue ${issueId} to repository ${repo.name} via project: ${project.name}`
+					);
+					return repo;
+				}
+			} catch (error) {
+				// Continue to next repository if this one fails
+				console.debug(
+					`[EdgeWorker] Failed to fetch project for issue ${issueId} from repository ${repo.name}:`,
+					error
+				);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Try team-based routing (existing logic)
+	 */
+	private tryTeamBasedRouting(webhook: LinearWebhook, repos: RepositoryConfig[]): RepositoryConfig | null {
 		// Handle agent session webhooks which have different structure
 		if (
 			isAgentSessionCreatedWebhook(webhook) ||
@@ -431,48 +495,70 @@ export class EdgeWorker extends EventEmitter {
 		) {
 			const teamKey = webhook.agentSession?.issue?.team?.key;
 			if (teamKey) {
-				const repo = repos.find((r) => r.teamKeys?.includes(teamKey));
+				const repo = this.findRepositoryByTeamKey(teamKey, repos);
 				if (repo) return repo;
 			}
 
 			// Try parsing issue identifier as fallback
 			const issueId = webhook.agentSession?.issue?.identifier;
-			if (issueId?.includes("-")) {
-				const prefix = issueId.split("-")[0];
-				if (prefix) {
-					const repo = repos.find((r) => r.teamKeys?.includes(prefix));
-					if (repo) return repo;
-				}
+			if (issueId) {
+				return this.findRepositoryByIssueIdentifier(issueId, repos);
 			}
 		} else {
 			// Original logic for other webhook types
 			const teamKey = webhook.notification?.issue?.team?.key;
 			if (teamKey) {
-				const repo = repos.find((r) => r.teamKeys?.includes(teamKey));
+				const repo = this.findRepositoryByTeamKey(teamKey, repos);
 				if (repo) return repo;
 			}
 
 			// Try parsing issue identifier as fallback
 			const issueId = webhook.notification?.issue?.identifier;
-			if (issueId?.includes("-")) {
-				const prefix = issueId.split("-")[0];
-				if (prefix) {
-					const repo = repos.find((r) => r.teamKeys?.includes(prefix));
-					if (repo) return repo;
-				}
+			if (issueId) {
+				return this.findRepositoryByIssueIdentifier(issueId, repos);
 			}
 		}
 
-		// Original workspace fallback - find first repo without teamKeys or matching workspace
-		return (
-			repos.find(
-				(repo) =>
-					repo.linearWorkspaceId === workspaceId &&
-					(!repo.teamKeys || repo.teamKeys.length === 0),
-			) ||
-			repos.find((repo) => repo.linearWorkspaceId === workspaceId) ||
-			null
+		return null;
+	}
+
+	/**
+	 * Try project-based routing (new functionality)
+	 */
+	private async tryProjectBasedRouting(webhook: LinearWebhook, repos: RepositoryConfig[]): Promise<RepositoryConfig | null> {
+		// Extract issue ID from webhook
+		let issueId: string | null = null;
+		
+		if (
+			isAgentSessionCreatedWebhook(webhook) ||
+			isAgentSessionPromptedWebhook(webhook)
+		) {
+			issueId = webhook.agentSession?.issue?.id || null;
+		} else {
+			issueId = webhook.notification?.issue?.id || null;
+		}
+
+		if (!issueId) return null;
+
+		return this.findRepositoryByProject(issueId, repos);
+	}
+
+	/**
+	 * Try workspace-based routing (fallback)
+	 */
+	private tryWorkspaceBasedRouting(workspaceId: string, repos: RepositoryConfig[]): RepositoryConfig | null {
+		// Find first repo without teamKeys or projectKeys (catch-all) in the workspace
+		const catchAllRepo = repos.find(
+			(repo) =>
+				repo.linearWorkspaceId === workspaceId &&
+				(!repo.teamKeys || repo.teamKeys.length === 0) &&
+				(!repo.projectKeys || repo.projectKeys.length === 0)
 		);
+		
+		if (catchAllRepo) return catchAllRepo;
+
+		// Find any repo in the workspace as final fallback
+		return repos.find((repo) => repo.linearWorkspaceId === workspaceId) || null;
 	}
 
 	/**
