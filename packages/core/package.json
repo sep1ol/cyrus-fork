@@ -1,6 +1,6 @@
 {
   "name": "cyrus-core",
-  "version": "0.0.6",
+  "version": "0.0.6-alpha.0",
   "description": "Core business logic for Cyrus",
   "type": "module",
   "main": "dist/index.js",
@@ -12,10 +12,13 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest",
-    "test:run": "vitest run",
+    "test:run": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+     "@linear/sdk": "^52.0.0",
+     "cyrus-claude-runner": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.3.3",

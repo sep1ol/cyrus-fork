@@ -1,4 +1,4 @@
-import type { SDKMessage, McpServerConfig } from '@anthropic-ai/claude-code'
+import type { SDKMessage, SDKSystemMessage, SDKUserMessage, SDKAssistantMessage, SDKResultMessage, McpServerConfig } from '@anthropic-ai/claude-code'
 
 export interface ClaudeRunnerConfig {
   workingDirectory?: string
@@ -10,6 +10,10 @@ export interface ClaudeRunnerConfig {
   appendSystemPrompt?: string  // Additional prompt to append to the default system prompt
   mcpConfigPath?: string | string[]  // Single path or array of paths to compose
   mcpConfig?: Record<string, McpServerConfig>  // Additional/override MCP servers
+  promptVersions?: {  // Optional prompt template version information
+    userPromptVersion?: string
+    systemPromptVersion?: string
+  }
   onMessage?: (message: SDKMessage) => void | Promise<void>
   onError?: (error: Error) => void | Promise<void>
   onComplete?: (messages: SDKMessage[]) => void | Promise<void>
@@ -32,4 +36,11 @@ export interface ClaudeRunnerEvents {
 }
 
 // Re-export SDK types for convenience
-export type { SDKMessage, McpServerConfig } from '@anthropic-ai/claude-code'
+export type { SDKMessage, SDKSystemMessage, SDKUserMessage, SDKAssistantMessage, SDKResultMessage, McpServerConfig } from '@anthropic-ai/claude-code'
+// Re-export Anthropic API message types
+export type { Message as APIAssistantMessage, MessageParam as APIUserMessage } from '@anthropic-ai/sdk/resources/messages.js'
+// Type aliases for re-export
+export type ClaudeSystemMessage = SDKSystemMessage
+export type ClaudeUserMessage = SDKUserMessage
+export type ClaudeAssistantMessage = SDKAssistantMessage
+export type ClaudeResultMessage = SDKResultMessage

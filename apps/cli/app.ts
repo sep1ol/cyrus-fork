@@ -241,6 +241,24 @@ class EdgeApp {
       console.log('Leave blank to receive all issues from the workspace.')
       const teamKeysInput = await question('Team keys (comma-separated, optional): ')
       const teamKeys = teamKeysInput ? teamKeysInput.split(',').map(t => t.trim().toUpperCase()) : undefined
+
+      // Ask for label-based system prompt configuration
+      console.log('\n🎯 Label-Based System Prompts (Optional)')
+      console.log('Cyrus can use different strategies based on Linear issue labels.')
+      console.log('Configure which labels trigger each specialized mode:')
+      console.log('• Debugger mode: Focuses on systematic problem investigation')
+      console.log('• Builder mode: Emphasizes feature implementation and code quality')
+      console.log('• Scoper mode: Helps analyze requirements and create technical plans')
+      
+      const debuggerLabelsInput = await question('Labels for debugger mode (comma-separated, e.g., "Bug"): ')
+      const builderLabelsInput = await question('Labels for builder mode (comma-separated, e.g., "Feature,Improvement"): ')
+      const scoperLabelsInput = await question('Labels for scoper mode (comma-separated, e.g., "PRD"): ')
+      
+      const labelPrompts = (debuggerLabelsInput || builderLabelsInput || scoperLabelsInput) ? {
+        ...(debuggerLabelsInput && { debugger: debuggerLabelsInput.split(',').map(l => l.trim()) }),
+        ...(builderLabelsInput && { builder: builderLabelsInput.split(',').map(l => l.trim()) }),
+        ...(scoperLabelsInput && { scoper: scoperLabelsInput.split(',').map(l => l.trim()) })
+      } : undefined
       
       rl.close()
       
@@ -256,7 +274,8 @@ class EdgeApp {
         isActive: true,
         ...(allowedTools && { allowedTools }),
         ...(mcpConfigPath && { mcpConfigPath: resolve(mcpConfigPath) }),
-        ...(teamKeys && { teamKeys })
+        ...(teamKeys && { teamKeys }),
+        ...(labelPrompts && { labelPrompts })
       }
       
       return repository
@@ -374,7 +393,7 @@ class EdgeApp {
         // Save token to config
         config.ngrokAuthToken = token.trim()
         try {
-          await this.saveEdgeConfig(config)
+          this.saveEdgeConfig(config)
           console.log(`✅ Ngrok auth token saved to config`)
           resolve(token.trim())
         } catch (error) {
@@ -393,7 +412,7 @@ class EdgeApp {
     // Get ngrok auth token (prompt if needed and not external host)
     let ngrokAuthToken: string | undefined
     if (process.env.CYRUS_HOST_EXTERNAL !== "true") {
-      const config = await this.loadEdgeConfig()
+      const config = this.loadEdgeConfig()
       ngrokAuthToken = await this.getNgrokAuthToken(config)
     }
 
@@ -704,6 +723,33 @@ class EdgeApp {
 
   
   /**
+   * Check if a branch exists locally or remotely
+   */
+  async branchExists(branchName: string, repoPath: string): Promise<boolean> {
+    const { execSync } = await import('child_process')
+    
+    try {
+      // Check if branch exists locally
+      execSync(`git rev-parse --verify "${branchName}"`, {
+        cwd: repoPath,
+        stdio: 'pipe'
+      })
+      return true
+    } catch {
+      // Branch doesn't exist locally, check remote
+      try {
+        execSync(`git ls-remote --heads origin "${branchName}"`, {
+          cwd: repoPath,
+          stdio: 'pipe'
+        })
+        return true
+      } catch {
+        return false
+      }
+    }
+  }
+
+  /**
    * Set up event handlers for EdgeWorker
    */
   setupEventHandlers(): void {
@@ -798,6 +844,34 @@ class EdgeApp {
         // Branch doesn't exist, we'll create it
       }
       
+      // Determine base branch for this issue
+      let baseBranch = repository.baseBranch
+      
+      // Check if issue has a parent
+      try {
+        const parent = await (issue as any).parent
+        if (parent) {
+          console.log(`Issue ${issue.identifier} has parent: ${parent.identifier}`)
+          
+          // Get parent's branch name
+          const parentRawBranchName = parent.branchName || `${parent.identifier}-${parent.title?.toLowerCase().replace(/\s+/g, '-').substring(0, 30)}`
+          const parentBranchName = sanitizeBranchName(parentRawBranchName)
+          
+          // Check if parent branch exists
+          const parentBranchExists = await this.branchExists(parentBranchName, repository.repositoryPath)
+          
+          if (parentBranchExists) {
+            baseBranch = parentBranchName
+            console.log(`Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`)
+          } else {
+            console.log(`Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`)
+          }
+        }
+      } catch (error) {
+        // Parent field might not exist or couldn't be fetched, use default base branch
+        console.log(`No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`)
+      }
+
       // Fetch latest changes from remote
       console.log('Fetching latest changes from remote...')
       let hasRemote = true
@@ -811,17 +885,18 @@ class EdgeApp {
         hasRemote = false
       }
 
-      // Create the worktree - use remote branch if available, otherwise local
+      // Create the worktree - use determined base branch
       let worktreeCmd: string
       if (createBranch) {
         if (hasRemote) {
-          const remoteBranch = `origin/${repository.baseBranch}`
+          // Always prefer remote version if available
+          const remoteBranch = `origin/${baseBranch}`
           console.log(`Creating git worktree at ${workspacePath} from ${remoteBranch}`)
           worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`
         } else {
-          // No remote, use local base branch
-          console.log(`Creating git worktree at ${workspacePath} from local ${repository.baseBranch}`)
-          worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${repository.baseBranch}"`
+          // No remote, use local branch
+          console.log(`Creating git worktree at ${workspacePath} from local ${baseBranch}`)
+          worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`
         }
       } else {
         // Branch already exists, just check it out

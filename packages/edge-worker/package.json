@@ -1,13 +1,16 @@
 {
   "name": "cyrus-edge-worker",
-  "version": "0.0.18",
+  "version": "0.0.18-alpha.2",
   "description": "Unified edge worker for processing Linear issues with Claude",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "prompt-template-v2.md"
+    "prompt-template-v2.md",
+    "prompt-template.md",
+    "label-prompt-template.md",
+    "prompts"
   ],
   "scripts": {
     "build": "tsc",
@@ -19,7 +22,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@linear/sdk": "^39.0.0",
+    "@linear/sdk": "^52.0.0",
     "@ngrok/ngrok": "^1.5.1",
     "cyrus-claude-runner": "workspace:*",
     "cyrus-core": "workspace:*",
