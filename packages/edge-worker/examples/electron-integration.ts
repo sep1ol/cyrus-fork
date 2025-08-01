@@ -157,10 +157,10 @@ export async function setupEdgeWorker(mainWindow: BrowserWindow) {
 				token,
 				proxyUrl,
 			);
-			await edgeWorker.start()
-      
-      // Store reference for cleanup
-      (global as any).edgeWorker = edgeWorker;
+			await edgeWorker.start();
+
+			// Store reference for cleanup
+			(global as any).edgeWorker = edgeWorker;
 
 			return { success: true };
 		} catch (error) {

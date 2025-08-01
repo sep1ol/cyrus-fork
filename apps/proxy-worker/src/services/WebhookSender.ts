@@ -145,7 +145,7 @@ export class WebhookSender {
 	 */
 	async handleStatusUpdate(request: Request): Promise<Response> {
 		try {
-			const { eventId, status, error } = await request.json();
+			const { eventId, status } = await request.json();
 
 			// Extract edge authentication
 			const authHeader = request.headers.get("authorization");

@@ -414,6 +414,7 @@ describe("ClaudeRunner", () => {
 			runner.on("error", errorHandler);
 
 			const testError = new Error("Query failed");
+			// biome-ignore lint/correctness/useYield: This is just mocked for testing
 			mockQuery.mockImplementation(async function* () {
 				throw testError;
 			});
@@ -429,6 +430,7 @@ describe("ClaudeRunner", () => {
 			const errorHandler = vi.fn();
 			runner.on("error", errorHandler);
 
+			// biome-ignore lint/correctness/useYield: This is just mocked for testing
 			mockQuery.mockImplementation(async function* () {
 				throw new AbortError("Session aborted");
 			});
@@ -443,6 +445,7 @@ describe("ClaudeRunner", () => {
 			const errorHandler = vi.fn();
 			runner.on("error", errorHandler);
 
+			// biome-ignore lint/correctness/useYield: This is just mocked for testing
 			mockQuery.mockImplementation(async function* () {
 				throw new Error("Claude Code process exited with code 143");
 			});

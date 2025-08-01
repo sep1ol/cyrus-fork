@@ -10,7 +10,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -65,11 +65,7 @@ export function Settings({ onClose }: SettingsProps) {
 	const [localChanges, setLocalChanges] = useState<Partial<Config>>({});
 	const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-	useEffect(() => {
-		loadSettings();
-	}, [loadSettings]);
-
-	const loadSettings = async () => {
+	const loadSettings = useCallback(async () => {
 		setIsLoading(true);
 		try {
 			const [configData, statusData] = await Promise.all([
@@ -84,7 +80,11 @@ export function Settings({ onClose }: SettingsProps) {
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, []);
+
+	useEffect(() => {
+		loadSettings();
+	}, [loadSettings]);
 
 	const handleSave = async () => {
 		setIsSaving(true);
@@ -503,6 +503,7 @@ export function Settings({ onClose }: SettingsProps) {
 					{/* Advanced Settings */}
 					<div className="border-t flex-shrink-0">
 						<button
+							type="button"
 							onClick={() => setShowAdvanced(!showAdvanced)}
 							className="w-full px-6 py-3 flex items-center justify-between text-sm hover:bg-muted/50 transition-colors"
 						>

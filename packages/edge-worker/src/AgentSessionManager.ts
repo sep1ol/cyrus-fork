@@ -921,7 +921,7 @@ export class AgentSessionManager {
 		// Serialize sessions
 		for (const [sessionId, session] of this.sessions.entries()) {
 			// Exclude claudeRunner from serialization as it's not serializable
-			const { claudeRunner, ...serializableSession } = session;
+			const { claudeRunner: _claudeRunner, ...serializableSession } = session;
 			sessions[sessionId] = serializableSession;
 		}
 

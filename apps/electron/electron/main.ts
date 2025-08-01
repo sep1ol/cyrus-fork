@@ -16,16 +16,6 @@ import { NdjsonClient } from "./ndjson-client";
 // Add isQuitting property to app
 const extendedApp = app as typeof app & { isQuitting?: boolean };
 
-interface StoreSchema {
-	proxyUrl?: string;
-	edgeToken?: string;
-	linearToken?: string;
-	workspaceId?: string;
-	workspaceName?: string;
-	claudePath?: string;
-	workspaceBaseDir?: string;
-}
-
 const store = new Conf({
 	defaults: {
 		claudePath: "/usr/local/bin/claude",

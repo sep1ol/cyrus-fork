@@ -114,6 +114,7 @@ export function Dashboard({
 					<div className="p-2">
 						{activeIssues.map((issue) => (
 							<button
+								type="button"
 								key={issue.id}
 								onClick={() => onSelectIssue(issue.id)}
 								className={`w-full text-left p-3 rounded-lg mb-1 transition-colors ${
@@ -148,6 +149,7 @@ export function Dashboard({
 								</p>
 								{completedIssues.map((issue) => (
 									<button
+										type="button"
 										key={issue.id}
 										onClick={() => onSelectIssue(issue.id)}
 										className={`w-full text-left p-3 rounded-lg mb-1 transition-colors ${

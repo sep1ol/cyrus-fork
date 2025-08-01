@@ -58,7 +58,7 @@ export class EventStreamer {
 	 * Handle status update from edge worker
 	 */
 	async handleStatus(request: Request): Promise<Response> {
-		const { eventId, status, error } = await request.json();
+		const { eventId, status } = await request.json();
 
 		// Extract edge authentication
 		const authHeader = request.headers.get("authorization");
