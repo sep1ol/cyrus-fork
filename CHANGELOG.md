@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.36] - 2025-01-31
+
 ### Added
 - Instant response is now sent when receiving follow-up messages in an existing conversation, providing immediate feedback that Cyrus is working on the request
   - Shows "I've queued up your message as guidance" when Cyrus is still processing a previous request
@@ -17,6 +19,22 @@ All notable changes to this project will be documented in this file.
   - Tools invoked within a Task display "↪ ToolName" to indicate they're part of the Task
   - Shows "✅ Task Completed" when the Task finishes and displays the output from the Task
 
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.7
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.19
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.14
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.36
 ## [0.1.35-alpha.0] - 2025-01-26
 
 ### Added
