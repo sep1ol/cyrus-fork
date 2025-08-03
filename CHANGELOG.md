@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed "RateLimit exceeded" errors when interacting with Linear API by updating SDK from v52 to v54
+  - Linear API had breaking changes that caused compatibility issues with SDK v52
+  - The outdated SDK was triggering excessive API calls leading to rate limit errors
+  - Upgrading to v54 resolves these compatibility issues and restores normal operation
+
 ## [0.1.36] - 2025-01-31
 
 ### Added
