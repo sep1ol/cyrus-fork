@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.1.33] - 2025-01-17
+## [0.1.38] - 2025-08-03
 
 ### Added
 - Subscription management built right into the CLI (because who wants another dashboard?)
@@ -12,10 +12,114 @@ All notable changes to this project will be documented in this file.
   - `cyrus set-customer-id` - Saves your customer ID after signup (copy-paste friendly)
   - Interactive prompt on startup if you're using our proxy without a subscription
   - Self-hosting option for the DIY crowd who prefer their own Linear app and infrastructure
+  - existed in v0.1.34 but was missing since then
+
+## [0.1.37] - 2025-08-03
+
+### Fixed
+- Fixed "RateLimit exceeded" and `Cannot query field "agentContext" on type "AgentActivity".` errors when interacting with Linear API by updating SDK from v52 to v54
+  - Linear API had breaking changes that caused compatibility issues with SDK v52
+  - The outdated SDK was triggering excessive API calls leading to rate limit errors
+  - Upgrading to v54 resolves these compatibility issues and restores normal operation
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.8
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.20
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.37
+
+## [0.1.36] - 2025-01-31
+
+### Added
+- Instant response is now sent when receiving follow-up messages in an existing conversation, providing immediate feedback that Cyrus is working on the request
+  - Shows "I've queued up your message as guidance" when Cyrus is still processing a previous request
+  - Shows "Getting started on that..." when Cyrus is ready to process the new request immediately
+- Parent branch inheritance for sub-issues - sub-issue branches now automatically use their parent issue's branch as the base instead of the default repository branch
+  - Maintains proper Git hierarchy matching Linear's issue structure
+  - Gracefully falls back to default base branch if parent branch doesn't exist
+  - Clear logging shows branch inheritance decisions
+- Model notification at thread initialization - Cyrus now announces which Claude model is being used (e.g., "Using model: claude-3-opus-20240229") when starting work on an issue
+- Task tool execution markers in Linear comments - Cyrus now clearly indicates when automated Task tools are running
+  - Tools invoked within a Task display "↪ ToolName" to indicate they're part of the Task
+  - Shows "✅ Task Completed" when the Task finishes and displays the output from the Task
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.7
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.19
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.14
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.36
+## [0.1.35-alpha.0] - 2025-01-26
+
+### Added
+- Instant acknowledgment responses when Cyrus receives a request, providing immediate feedback to users
+- Role mode notifications when issue labels trigger specific workflows (e.g., "Entering 'debugger' mode because of the 'Bug' label")
+- You can now append custom instructions to Claude's system prompt via `appendInstruction` in repository config (~/.cyrus/config.json) - because sometimes Claude needs a gentle reminder that your variable names are art, not accidents
+
+### Changed
+- TodoWrite tool messages are now displayed as "thoughts" instead of "actions" in Linear for better visual organization
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.6-alpha.0
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.13-alpha.0
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.18-alpha.0
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.13-alpha.0
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.35-alpha.0
+
+## [0.1.33] - 2025-01-11
+
+### CLI
+- cyrus-ai@0.1.33
+>>>>>>> main
 
 ### Fixed
 - Made conversation history of threads be resumable after Cyrus restarts
 - Fixed the issue with continuity of conversation in a thread, after the first comment
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.6
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.13
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.18
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.13
 
 ## [0.1.32] - 2025-01-09
 
