@@ -1,156 +1,153 @@
-import { readFile, writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
-import { homedir } from 'os'
-import { existsSync } from 'fs'
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type {
+	CyrusAgentSession,
+	CyrusAgentSessionEntry,
+} from "./CyrusAgentSession.js";
 
-/**
- * Serializable session state for persistence
- */
-export interface SerializableSession {
-  issueId: string
-  issueIdentifier: string
-  issueTitle: string
-  branchName: string
-  workspacePath: string
-  isGitWorktree: boolean
-  historyPath?: string
-  claudeSessionId: string | null
-  agentRootCommentId: string | null
-  lastCommentId: string | null
-  currentParentId: string | null
-  startedAt: string
-  exitedAt: string | null
-  conversationContext: any
-}
+// Serialized versions with Date fields as strings
+export type SerializedCyrusAgentSession = CyrusAgentSession;
+// extends Omit<CyrusAgentSession, 'createdAt' | 'updatedAt'> {
+//   createdAt: string
+//   updatedAt: string
+// }
+
+export type SerializedCyrusAgentSessionEntry = CyrusAgentSessionEntry;
+// extends Omit<CyrusAgentSessionEntry, 'metadata'> {
+//   metadata?: Omit<CyrusAgentSessionEntry['metadata'], 'timestamp'> & {
+//     timestamp?: string
+//   }
+// }
 
 /**
  * Serializable EdgeWorker state for persistence
  */
 export interface SerializableEdgeWorkerState {
-  commentToRepo: Record<string, string>
-  commentToIssue: Record<string, string>
-  commentToLatestAgentReply: Record<string, string>
-  issueToCommentThreads: Record<string, string[]>
-  issueToReplyContext: Record<string, { commentId: string; parentId?: string }>
-  sessionsByCommentId: Record<string, SerializableSession>
-  sessionsByIssueId: Record<string, SerializableSession[]>
+	// Agent Session state - keyed by repository ID, since that's how we construct AgentSessionManagers
+	agentSessions?: Record<string, Record<string, SerializedCyrusAgentSession>>;
+	agentSessionEntries?: Record<
+		string,
+		Record<string, SerializedCyrusAgentSessionEntry[]>
+	>;
 }
 
 /**
  * Manages persistence of critical mappings to survive restarts
  */
 export class PersistenceManager {
-  private persistencePath: string
+	private persistencePath: string;
 
-  constructor(persistencePath?: string) {
-    this.persistencePath = persistencePath || join(homedir(), '.cyrus', 'state')
-  }
+	constructor(persistencePath?: string) {
+		this.persistencePath =
+			persistencePath || join(homedir(), ".cyrus", "state");
+	}
 
-  /**
-   * Get the full path to the state file for a repository
-   */
-  private getStateFilePath(repositoryId: string): string {
-    return join(this.persistencePath, `${repositoryId}-state.json`)
-  }
+	/**
+	 * Get the full path to the single EdgeWorker state file
+	 */
+	private getEdgeWorkerStateFilePath(): string {
+		return join(this.persistencePath, "edge-worker-state.json");
+	}
 
-  /**
-   * Ensure the persistence directory exists
-   */
-  private async ensurePersistenceDirectory(): Promise<void> {
-    await mkdir(this.persistencePath, { recursive: true })
-  }
+	/**
+	 * Ensure the persistence directory exists
+	 */
+	private async ensurePersistenceDirectory(): Promise<void> {
+		await mkdir(this.persistencePath, { recursive: true });
+	}
 
-  /**
-   * Save EdgeWorker state to disk
-   */
-  async saveEdgeWorkerState(repositoryId: string, state: SerializableEdgeWorkerState): Promise<void> {
-    try {
-      await this.ensurePersistenceDirectory()
-      const stateFile = this.getStateFilePath(repositoryId)
-      const stateData = {
-        version: '1.0',
-        savedAt: new Date().toISOString(),
-        repositoryId,
-        state
-      }
-      await writeFile(stateFile, JSON.stringify(stateData, null, 2), 'utf8')
-    } catch (error) {
-      console.error(`Failed to save EdgeWorker state for ${repositoryId}:`, error)
-      throw error
-    }
-  }
+	/**
+	 * Save EdgeWorker state to disk (single file for all repositories)
+	 */
+	async saveEdgeWorkerState(state: SerializableEdgeWorkerState): Promise<void> {
+		try {
+			await this.ensurePersistenceDirectory();
+			const stateFile = this.getEdgeWorkerStateFilePath();
+			const stateData = {
+				version: "2.0",
+				savedAt: new Date().toISOString(),
+				state,
+			};
+			await writeFile(stateFile, JSON.stringify(stateData, null, 2), "utf8");
+		} catch (error) {
+			console.error(`Failed to save EdgeWorker state:`, error);
+			throw error;
+		}
+	}
 
-  /**
-   * Load EdgeWorker state from disk
-   */
-  async loadEdgeWorkerState(repositoryId: string): Promise<SerializableEdgeWorkerState | null> {
-    try {
-      const stateFile = this.getStateFilePath(repositoryId)
-      if (!existsSync(stateFile)) {
-        return null
-      }
+	/**
+	 * Load EdgeWorker state from disk (single file for all repositories)
+	 */
+	async loadEdgeWorkerState(): Promise<SerializableEdgeWorkerState | null> {
+		try {
+			const stateFile = this.getEdgeWorkerStateFilePath();
+			if (!existsSync(stateFile)) {
+				return null;
+			}
 
-      const stateData = JSON.parse(await readFile(stateFile, 'utf8'))
-      
-      // Validate state structure
-      if (!stateData.state || !stateData.repositoryId || stateData.repositoryId !== repositoryId) {
-        console.warn(`Invalid state file for ${repositoryId}, ignoring`)
-        return null
-      }
+			const stateData = JSON.parse(await readFile(stateFile, "utf8"));
 
-      return stateData.state
-    } catch (error) {
-      console.error(`Failed to load EdgeWorker state for ${repositoryId}:`, error)
-      return null
-    }
-  }
+			// Validate state structure
+			if (!stateData.state || stateData.version !== "2.0") {
+				console.warn(`Invalid or outdated state file, ignoring`);
+				return null;
+			}
 
-  /**
-   * Check if state file exists for a repository
-   */
-  hasStateFile(repositoryId: string): boolean {
-    return existsSync(this.getStateFilePath(repositoryId))
-  }
+			return stateData.state;
+		} catch (error) {
+			console.error(`Failed to load EdgeWorker state:`, error);
+			return null;
+		}
+	}
 
-  /**
-   * Delete state file for a repository
-   */
-  async deleteStateFile(repositoryId: string): Promise<void> {
-    try {
-      const stateFile = this.getStateFilePath(repositoryId)
-      if (existsSync(stateFile)) {
-        await writeFile(stateFile, '', 'utf8') // Clear file instead of deleting
-      }
-    } catch (error) {
-      console.error(`Failed to delete state file for ${repositoryId}:`, error)
-    }
-  }
+	/**
+	 * Check if EdgeWorker state file exists
+	 */
+	hasStateFile(): boolean {
+		return existsSync(this.getEdgeWorkerStateFilePath());
+	}
 
-  /**
-   * Convert Map to Record for serialization
-   */
-  static mapToRecord<T>(map: Map<string, T>): Record<string, T> {
-    return Object.fromEntries(map.entries())
-  }
+	/**
+	 * Delete EdgeWorker state file
+	 */
+	async deleteStateFile(): Promise<void> {
+		try {
+			const stateFile = this.getEdgeWorkerStateFilePath();
+			if (existsSync(stateFile)) {
+				await writeFile(stateFile, "", "utf8"); // Clear file instead of deleting
+			}
+		} catch (error) {
+			console.error(`Failed to delete EdgeWorker state file:`, error);
+		}
+	}
 
-  /**
-   * Convert Record to Map for deserialization
-   */
-  static recordToMap<T>(record: Record<string, T>): Map<string, T> {
-    return new Map(Object.entries(record))
-  }
+	/**
+	 * Convert Map to Record for serialization
+	 */
+	static mapToRecord<T>(map: Map<string, T>): Record<string, T> {
+		return Object.fromEntries(map.entries());
+	}
 
-  /**
-   * Convert Set to Array for serialization
-   */
-  static setToArray<T>(set: Set<T>): T[] {
-    return Array.from(set)
-  }
+	/**
+	 * Convert Record to Map for deserialization
+	 */
+	static recordToMap<T>(record: Record<string, T>): Map<string, T> {
+		return new Map(Object.entries(record));
+	}
 
-  /**
-   * Convert Array to Set for deserialization
-   */
-  static arrayToSet<T>(array: T[]): Set<T> {
-    return new Set(array)
-  }
+	/**
+	 * Convert Set to Array for serialization
+	 */
+	static setToArray<T>(set: Set<T>): T[] {
+		return Array.from(set);
+	}
+
+	/**
+	 * Convert Array to Set for deserialization
+	 */
+	static arrayToSet<T>(array: T[]): Set<T> {
+		return new Set(array);
+	}
 }
