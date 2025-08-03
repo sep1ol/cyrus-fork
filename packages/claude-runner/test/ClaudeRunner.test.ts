@@ -205,7 +205,6 @@ describe("ClaudeRunner", () => {
 			const messageHandler = vi.fn();
 			runner.on("message", messageHandler);
 
-<<<<<<< HEAD
 			const mockMessages: SDKMessage[] = [
 				{
 					type: "assistant",
