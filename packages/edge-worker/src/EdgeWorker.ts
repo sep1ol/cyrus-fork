@@ -431,18 +431,18 @@ export class EdgeWorker extends EventEmitter {
       return fallbackRepo;
     }
 
-    // Try team-based routing first
-    const teamBasedRepo = this.tryTeamBasedRouting(webhook, repos);
-    if (teamBasedRepo) {
-      console.log(`[EdgeWorker] Repository selected: ${teamBasedRepo.name} (team-based routing)`);
-      return teamBasedRepo;
-    }
-
-    // Try project-based routing
+    // Try project-based routing first
     const projectBasedRepo = await this.tryProjectBasedRouting(webhook, repos);
     if (projectBasedRepo) {
       console.log(`[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`);
       return projectBasedRepo;
+    }
+
+    // Try team-based routing
+    const teamBasedRepo = this.tryTeamBasedRouting(webhook, repos);
+    if (teamBasedRepo) {
+      console.log(`[EdgeWorker] Repository selected: ${teamBasedRepo.name} (team-based routing)`);
+      return teamBasedRepo;
     }
 
     // Fallback to workspace matching

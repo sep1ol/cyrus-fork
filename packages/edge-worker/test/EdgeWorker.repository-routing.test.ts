@@ -206,8 +206,8 @@ describe('EdgeWorker - Repository Routing', () => {
       expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-web-456', 'web')
     })
 
-    it('should prefer team-based routing over project-based routing for AgentSession webhooks', async () => {
-      // Setup mock that would return project info, but team routing should win
+    it('should prefer project-based routing over team-based routing for AgentSession webhooks', async () => {
+      // Setup mock that would return project info, and project routing should win
       const mockFetchFullIssueDetails = vi.spyOn(edgeWorker, 'fetchFullIssueDetails')
       const mockIssue: MockProxy<LinearIssue> = mockDeep<LinearIssue>()
       mockIssue.id = 'issue-hybrid-789'
@@ -226,16 +226,16 @@ describe('EdgeWorker - Repository Routing', () => {
       agentSessionWebhook.agentSession.issue.id = 'issue-hybrid-789'
       agentSessionWebhook.agentSession.issue.identifier = 'CEE-789'
       agentSessionWebhook.agentSession.issue.title = 'Hybrid Issue'
-      agentSessionWebhook.agentSession.issue.team.key = 'CEE' // Should match ceedar repo via team routing
+      agentSessionWebhook.agentSession.issue.team.key = 'CEE' // Would match ceedar repo via team routing, but project routing should win
 
       // Call the public method directly to test routing logic
       const result = await edgeWorker.findRepositoryForWebhook(agentSessionWebhook, mockConfig.repositories)
 
-      // Verify team-based routing won over project-based routing
+      // Verify project-based routing won over team-based routing
       expect(result).toBeTruthy()
-      expect(result?.id).toBe('ceedar')
-      // fetchFullIssueDetails should NOT have been called since team routing succeeded
-      expect(mockFetchFullIssueDetails).not.toHaveBeenCalled()
+      expect(result?.id).toBe('web')
+      // fetchFullIssueDetails should have been called for project routing
+      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-hybrid-789', 'web')
     })
 
     it('should handle project routing failures gracefully for AgentSession webhooks', async () => {
