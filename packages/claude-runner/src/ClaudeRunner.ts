@@ -662,8 +662,8 @@ export class ClaudeRunner extends EventEmitter {
 					if (message.message?.content && Array.isArray(message.message.content)) {
 						// Extract text content only, skip tool use noise
 						const textBlocks = message.message.content
-							.filter((block): block is { type: "text"; text: string } => block.type === "text")
-							.map((block) => block.text)
+							.filter((block) => block.type === "text")
+							.map((block) => (block as { text: string }).text)
 							.join("");
 
 						if (textBlocks.trim()) {
@@ -674,18 +674,18 @@ export class ClaudeRunner extends EventEmitter {
 
 						// Log tool usage in a clean format, but filter out noisy tools
 						const toolBlocks = message.message.content
-							.filter((block): block is { type: "tool_use"; name: string; input?: Record<string, unknown>; id: string } => 
-								block.type === "tool_use")
-							.filter((block) => block.name !== "TodoWrite"); // Filter out TodoWrite as it's noisy
+							.filter((block) => block.type === "tool_use")
+							.filter((block) => (block as { name: string }).name !== "TodoWrite"); // Filter out TodoWrite as it's noisy
 
 						if (toolBlocks.length > 0) {
 							for (const tool of toolBlocks) {
+								const toolWithName = tool as { name: string; input?: Record<string, unknown> };
 								this.readableLogStream.write(
-									`### ${timestamp} - Tool: ${tool.name}\n\n`,
+									`### ${timestamp} - Tool: ${toolWithName.name}\n\n`,
 								);
-								if (tool.input && typeof tool.input === "object") {
+								if (toolWithName.input && typeof toolWithName.input === "object") {
 									// Format tool input in a readable way
-									const inputStr = Object.entries(tool.input)
+									const inputStr = Object.entries(toolWithName.input)
 										.map(([key, value]) => `- **${key}**: ${value}`)
 										.join("\n");
 									this.readableLogStream.write(`${inputStr}\n\n`);
@@ -699,8 +699,8 @@ export class ClaudeRunner extends EventEmitter {
 					// Only log user messages that contain actual content (not tool results)
 					if (message.message?.content && Array.isArray(message.message.content)) {
 						const userContent = message.message.content
-							.filter((block): block is { type: "text"; text: string } => block.type === "text")
-							.map((block) => block.text)
+							.filter((block) => block.type === "text")
+							.map((block) => (block as { text: string }).text)
 							.join("");
 
 						if (userContent.trim()) {
