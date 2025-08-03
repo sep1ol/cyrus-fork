@@ -456,20 +456,20 @@ export class EdgeWorker extends EventEmitter {
 	 * Helper method to find repository by project name
 	 */
 	private async findRepositoryByProject(issueId: string, repos: RepositoryConfig[]): Promise<RepositoryConfig | null> {
-		// Try each repository's Linear client to fetch project for the issue
+		// Try each repository that has projectKeys configured
 		for (const repo of repos) {
 			if (!repo.projectKeys || repo.projectKeys.length === 0) continue;
 
 			try {
-				const linearClient = this.linearClients.get(repo.id);
-				if (!linearClient) continue;
+				const fullIssue = await this.fetchFullIssueDetails(issueId, repo.id);
+				if (!fullIssue?.project || typeof fullIssue.project !== 'object' || !('name' in fullIssue.project)) {
+					continue;
+				}
 
-				const issue = await linearClient.issue(issueId);
-				const project = await issue.project;
-				
-				if (project?.name && repo.projectKeys.includes(project.name)) {
+				const projectName = fullIssue.project.name as string;
+				if (repo.projectKeys.includes(projectName)) {
 					console.log(
-						`[EdgeWorker] Matched issue ${issueId} to repository ${repo.name} via project: ${project.name}`
+						`[EdgeWorker] Matched issue ${issueId} to repository ${repo.name} via project: ${projectName}`
 					);
 					return repo;
 				}
@@ -2294,6 +2294,38 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				`[EdgeWorker] Error posting instant prompted acknowledgment:`,
 				error,
 			);
+		}
+	}
+
+	/**
+	 * Fetch complete issue details from Linear API
+	 */
+	public async fetchFullIssueDetails(issueId: string, repositoryId: string): Promise<LinearIssue | null> {
+		const linearClient = this.linearClients.get(repositoryId)
+		if (!linearClient) {
+			console.warn(`[EdgeWorker] No Linear client found for repository ${repositoryId}`)
+			return null
+		}
+
+		try {
+			console.log(`[EdgeWorker] Fetching full issue details for ${issueId}`)
+			const fullIssue = await linearClient.issue(issueId)
+			console.log(`[EdgeWorker] Successfully fetched issue details for ${issueId}`)
+			
+			// Check if issue has a parent
+			try {
+				const parent = await fullIssue.parent
+				if (parent) {
+					console.log(`[EdgeWorker] Issue ${issueId} has parent: ${parent.identifier}`)
+				}
+			} catch (error) {
+				// Parent field might not exist, ignore error
+			}
+
+			return fullIssue
+		} catch (error) {
+			console.error(`[EdgeWorker] Failed to fetch issue details for ${issueId}:`, error)
+			return null
 		}
 	}
 }

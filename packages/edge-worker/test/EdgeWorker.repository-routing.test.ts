@@ -172,7 +172,7 @@ describe('EdgeWorker - Repository Routing', () => {
       // Verify the correct repository was returned based on project name
       expect(result).toBeTruthy()
       expect(result?.id).toBe('mobile')
-      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-mobile-123', 'ceedar')
+      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-mobile-123', 'mobile')
     })
 
     it('should route AgentSession webhook to web repository based on project name', async () => {
@@ -203,7 +203,7 @@ describe('EdgeWorker - Repository Routing', () => {
       // Verify the correct repository was returned based on project name
       expect(result).toBeTruthy()
       expect(result?.id).toBe('web')
-      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-web-456', 'ceedar')
+      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-web-456', 'web')
     })
 
     it('should prefer team-based routing over project-based routing for AgentSession webhooks', async () => {
@@ -259,7 +259,7 @@ describe('EdgeWorker - Repository Routing', () => {
       // Should fall back to workspace-based routing
       expect(result).toBeTruthy()
       expect(result?.linearWorkspaceId).toBe('workspace-1')
-      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-error-123', 'ceedar')
+      expect(mockFetchFullIssueDetails).toHaveBeenCalledWith('issue-error-123', 'mobile')
     })
   })
 
