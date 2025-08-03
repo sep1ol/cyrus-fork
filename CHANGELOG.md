@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated Linear SDK from v52 to v54 for improved API compatibility and access to latest Linear features
+
 ## [0.1.36] - 2025-01-31
 
 ### Added
