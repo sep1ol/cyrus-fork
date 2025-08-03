@@ -422,11 +422,13 @@ export class EdgeWorker extends EventEmitter {
     repos: RepositoryConfig[]
   ): Promise<RepositoryConfig | null> {
     const workspaceId = webhook.organizationId;
-    
+
     if (!workspaceId) {
       const fallbackRepo = repos[0] || null;
       if (fallbackRepo) {
-        console.log(`[EdgeWorker] Repository selected: ${fallbackRepo.name} (no workspace ID - first repo fallback)`);
+        console.log(
+          `[EdgeWorker] Repository selected: ${fallbackRepo.name} (no workspace ID - first repo fallback)`
+        );
       }
       return fallbackRepo;
     }
@@ -434,21 +436,27 @@ export class EdgeWorker extends EventEmitter {
     // Try project-based routing first
     const projectBasedRepo = await this.tryProjectBasedRouting(webhook, repos);
     if (projectBasedRepo) {
-      console.log(`[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`);
+      console.log(
+        `[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`
+      );
       return projectBasedRepo;
     }
 
     // Try team-based routing
     const teamBasedRepo = this.tryTeamBasedRouting(webhook, repos);
     if (teamBasedRepo) {
-      console.log(`[EdgeWorker] Repository selected: ${teamBasedRepo.name} (team-based routing)`);
+      console.log(
+        `[EdgeWorker] Repository selected: ${teamBasedRepo.name} (team-based routing)`
+      );
       return teamBasedRepo;
     }
 
     // Fallback to workspace matching
     const workspaceRepo = this.tryWorkspaceBasedRouting(workspaceId, repos);
     if (workspaceRepo) {
-      console.log(`[EdgeWorker] Repository selected: ${workspaceRepo.name} (workspace-based routing)`);
+      console.log(
+        `[EdgeWorker] Repository selected: ${workspaceRepo.name} (workspace-based routing)`
+      );
     } else {
       console.log("[EdgeWorker] No repository found for webhook");
     }
@@ -492,15 +500,16 @@ export class EdgeWorker extends EventEmitter {
 
       try {
         const fullIssue = await this.fetchFullIssueDetails(issueId, repo.id);
-        if (
-          !fullIssue?.project ||
-          typeof fullIssue.project !== "object" ||
-          !("name" in fullIssue.project)
-        ) {
+        console.debug(JSON.stringify(fullIssue, null, 2));
+        const project = await fullIssue?.project;
+        if (!project || !project.name) {
+          console.warn(
+            `[EdgeWorker] No project name found for issue ${issueId} in repository ${repo.name}`
+          );
           continue;
         }
 
-        const projectName = fullIssue.project.name as string;
+        const projectName = project.name;
         if (repo.projectKeys.includes(projectName)) {
           console.log(
             `[EdgeWorker] Matched issue ${issueId} to repository ${repo.name} via project: ${projectName}`
@@ -579,7 +588,10 @@ export class EdgeWorker extends EventEmitter {
       issueId = webhook.notification?.issue?.id || null;
     }
 
-    if (!issueId) return null;
+    if (!issueId) {
+      console.warn("[EdgeWorker] No issue ID found in webhook");
+      return null;
+    }
 
     return this.findRepositoryByProject(issueId, repos);
   }
