@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.33] - 2025-01-17
+
+### Added
+- Subscription management built right into the CLI (because who wants another dashboard?)
+  - `cyrus billing` - Opens your Stripe portal to manage subscription, payment methods, and download invoices
+  - `cyrus set-customer-id` - Saves your customer ID after signup (copy-paste friendly)
+  - Interactive prompt on startup if you're using our proxy without a subscription
+  - Self-hosting option for the DIY crowd who prefer their own Linear app and infrastructure
+
 ### Fixed
 - Made conversation history of threads be resumable after Cyrus restarts
 - Fixed the issue with continuity of conversation in a thread, after the first comment
