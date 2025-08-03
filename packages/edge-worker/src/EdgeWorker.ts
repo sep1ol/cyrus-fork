@@ -422,18 +422,37 @@ export class EdgeWorker extends EventEmitter {
     repos: RepositoryConfig[]
   ): Promise<RepositoryConfig | null> {
     const workspaceId = webhook.organizationId;
-    if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
+    
+    if (!workspaceId) {
+      const fallbackRepo = repos[0] || null;
+      if (fallbackRepo) {
+        console.log(`[EdgeWorker] Repository selected: ${fallbackRepo.name} (no workspace ID - first repo fallback)`);
+      }
+      return fallbackRepo;
+    }
 
     // Try team-based routing first
     const teamBasedRepo = this.tryTeamBasedRouting(webhook, repos);
-    if (teamBasedRepo) return teamBasedRepo;
+    if (teamBasedRepo) {
+      console.log(`[EdgeWorker] Repository selected: ${teamBasedRepo.name} (team-based routing)`);
+      return teamBasedRepo;
+    }
 
     // Try project-based routing
     const projectBasedRepo = await this.tryProjectBasedRouting(webhook, repos);
-    if (projectBasedRepo) return projectBasedRepo;
+    if (projectBasedRepo) {
+      console.log(`[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`);
+      return projectBasedRepo;
+    }
 
     // Fallback to workspace matching
-    return this.tryWorkspaceBasedRouting(workspaceId, repos);
+    const workspaceRepo = this.tryWorkspaceBasedRouting(workspaceId, repos);
+    if (workspaceRepo) {
+      console.log(`[EdgeWorker] Repository selected: ${workspaceRepo.name} (workspace-based routing)`);
+    } else {
+      console.log("[EdgeWorker] No repository found for webhook");
+    }
+    return workspaceRepo;
   }
 
   /**
@@ -496,6 +515,7 @@ export class EdgeWorker extends EventEmitter {
         );
       }
     }
+
     return null;
   }
 
