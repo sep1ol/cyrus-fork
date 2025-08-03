@@ -101,7 +101,6 @@ All notable changes to this project will be documented in this file.
 
 ### CLI
 - cyrus-ai@0.1.33
->>>>>>> main
 
 ### Fixed
 - Made conversation history of threads be resumable after Cyrus restarts
