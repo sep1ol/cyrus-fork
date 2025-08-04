@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Native Linear attachments (like Sentry error links) are now included in the issue context sent to Claude
+  - Cyrus now fetches attachments using Linear's native attachment API
+  - Attachments appear in a dedicated "Linear Issue Links" section in the prompt
+  - Particularly useful for Sentry error tracking links and other external integrations
+
 ## [0.1.38] - 2025-08-03
 
 ### Added

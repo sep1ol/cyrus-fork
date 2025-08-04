@@ -1598,7 +1598,31 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			// Extract URLs from comments if available
 			const commentUrls: string[] = [];
 			const linearClient = this.linearClients.get(repository.id);
+
+			// Fetch native Linear attachments (e.g., Sentry links)
+			const nativeAttachments: Array<{ title: string; url: string }> = [];
 			if (linearClient && issue.id) {
+				try {
+					// Fetch native attachments using Linear SDK
+					console.log(
+						`[EdgeWorker] Fetching native attachments for issue ${issue.identifier}`,
+					);
+					const attachments = await issue.attachments();
+					if (attachments?.nodes) {
+						for (const attachment of attachments.nodes) {
+							nativeAttachments.push({
+								title: attachment.title || "Untitled attachment",
+								url: attachment.url,
+							});
+						}
+						console.log(
+							`[EdgeWorker] Found ${nativeAttachments.length} native attachments`,
+						);
+					}
+				} catch (error) {
+					console.error("Failed to fetch native attachments:", error);
+				}
+
 				try {
 					const comments = await linearClient.comments({
 						filter: { issue: { id: { eq: issue.id } } },
@@ -1680,6 +1704,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				imagesDownloaded: imageCount,
 				skipped: skippedCount,
 				failed: failedCount,
+				nativeAttachments,
 			});
 
 			// Return manifest and directory path if any attachments were downloaded
@@ -1762,6 +1787,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		imagesDownloaded: number;
 		skipped: number;
 		failed: number;
+		nativeAttachments?: Array<{ title: string; url: string }>;
 	}): string {
 		const {
 			attachmentMap,
@@ -1771,11 +1797,21 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			imagesDownloaded,
 			skipped,
 			failed,
+			nativeAttachments = [],
 		} = downloadResult;
 
 		let manifest = "\n## Downloaded Attachments\n\n";
 
-		if (totalFound === 0) {
+		// Add native Linear attachments section if available
+		if (nativeAttachments.length > 0) {
+			manifest += "### Linear Issue Links\n";
+			nativeAttachments.forEach((attachment, index) => {
+				manifest += `${index + 1}. ${attachment.title}\n`;
+				manifest += `   URL: ${attachment.url}\n\n`;
+			});
+		}
+
+		if (totalFound === 0 && nativeAttachments.length === 0) {
 			manifest += "No attachments were found in this issue.\n";
 			return manifest;
 		}
