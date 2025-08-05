@@ -1018,10 +1018,13 @@ export class EdgeWorker extends EventEmitter {
 				);
 			}
 
+			// Determine the base branch considering parent issues
+			const baseBranch = await this.determineBaseBranch(issue, repository);
+
 			// Build the simplified prompt with only essential variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
-				.replace(/{{base_branch}}/g, repository.baseBranch)
+				.replace(/{{base_branch}}/g, baseBranch)
 				.replace(/{{issue_id}}/g, issue.id || "")
 				.replace(/{{issue_identifier}}/g, issue.identifier || "")
 				.replace(/{{issue_title}}/g, issue.title || "")
@@ -1081,6 +1084,89 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private sanitizeBranchName(name: string): string {
 		return name ? name.replace(/`/g, "") : name;
+	}
+
+	/**
+	 * Check if a branch exists locally or remotely
+	 */
+	private async branchExists(
+		branchName: string,
+		repoPath: string,
+	): Promise<boolean> {
+		const { execSync } = await import("node:child_process");
+		try {
+			// Check if branch exists locally
+			execSync(`git rev-parse --verify "${branchName}"`, {
+				cwd: repoPath,
+				stdio: "pipe",
+			});
+			return true;
+		} catch {
+			// Branch doesn't exist locally, check remote
+			try {
+				execSync(`git ls-remote --heads origin "${branchName}"`, {
+					cwd: repoPath,
+					stdio: "pipe",
+				});
+				return true;
+			} catch {
+				return false;
+			}
+		}
+	}
+
+	/**
+	 * Determine the base branch for an issue, considering parent issues
+	 */
+	private async determineBaseBranch(
+		issue: LinearIssue,
+		repository: RepositoryConfig,
+	): Promise<string> {
+		// Start with the repository's default base branch
+		let baseBranch = repository.baseBranch;
+
+		// Check if issue has a parent
+		try {
+			const parent = await issue.parent;
+			if (parent) {
+				console.log(
+					`[EdgeWorker] Issue ${issue.identifier} has parent: ${parent.identifier}`,
+				);
+
+				// Get parent's branch name
+				const parentRawBranchName =
+					parent.branchName ||
+					`${parent.identifier}-${parent.title
+						?.toLowerCase()
+						.replace(/\s+/g, "-")
+						.substring(0, 30)}`;
+				const parentBranchName = this.sanitizeBranchName(parentRawBranchName);
+
+				// Check if parent branch exists
+				const parentBranchExists = await this.branchExists(
+					parentBranchName,
+					repository.repositoryPath,
+				);
+
+				if (parentBranchExists) {
+					baseBranch = parentBranchName;
+					console.log(
+						`[EdgeWorker] Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
+					);
+				} else {
+					console.log(
+						`[EdgeWorker] Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
+					);
+				}
+			}
+		} catch (_error) {
+			// Parent field might not exist or couldn't be fetched, use default base branch
+			console.log(
+				`[EdgeWorker] No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,
+			);
+		}
+
+		return baseBranch;
 	}
 
 	/**
@@ -1244,6 +1330,9 @@ ${reply.body}
 				}
 			}
 
+			// Determine the base branch considering parent issues
+			const baseBranch = await this.determineBaseBranch(issue, repository);
+
 			// Build the prompt with all variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
@@ -1264,7 +1353,7 @@ ${reply.body}
 						? "Will be created based on issue"
 						: repository.repositoryPath,
 				)
-				.replace(/{{base_branch}}/g, repository.baseBranch)
+				.replace(/{{base_branch}}/g, baseBranch)
 				.replace(/{{branch_name}}/g, this.sanitizeBranchName(issue.branchName));
 
 			// Handle the optional new comment section
@@ -1335,6 +1424,9 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			const state = await issue.state;
 			const stateName = state?.name || "Unknown";
 
+			// Determine the base branch considering parent issues
+			const baseBranch = await this.determineBaseBranch(issue, repository);
+
 			const fallbackPrompt = `Please help me with the following Linear issue:
 
 Repository: ${repository.name}
@@ -1346,7 +1438,7 @@ Priority: ${issue.priority?.toString() || "None"}
 Branch: ${issue.branchName}
 
 Working directory: ${repository.repositoryPath}
-Base branch: ${repository.baseBranch}
+Base branch: ${baseBranch}
 
 ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
 
