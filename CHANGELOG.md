@@ -37,8 +37,17 @@ All notable changes to this project will be documented in this file.
 
 ### Packages
 
+#### cyrus-core
+- cyrus-core@0.0.8
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.16
+
 #### cyrus-edge-worker
 - cyrus-edge-worker@0.0.21
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
 
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.38
