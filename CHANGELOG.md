@@ -35,6 +35,13 @@ All notable changes to this project will be documented in this file.
 - Fixed issue where messages from @ Cyrus mention comments weren't being added to context
 - Fixed issue where sub-issue base branches weren't being added to the user-prompt template, causing Cyrus to create PRs against the default branch instead
 
+### Packages
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.21
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.38
 
 ## [0.1.37] - 2025-08-03
 
