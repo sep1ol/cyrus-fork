@@ -1344,89 +1344,6 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 	}
 
 	/**
-	 * Check if a branch exists locally or remotely
-	 */
-	private async branchExists(
-		branchName: string,
-		repoPath: string,
-	): Promise<boolean> {
-		const { execSync } = await import("node:child_process");
-		try {
-			// Check if branch exists locally
-			execSync(`git rev-parse --verify "${branchName}"`, {
-				cwd: repoPath,
-				stdio: "pipe",
-			});
-			return true;
-		} catch {
-			// Branch doesn't exist locally, check remote
-			try {
-				execSync(`git ls-remote --heads origin "${branchName}"`, {
-					cwd: repoPath,
-					stdio: "pipe",
-				});
-				return true;
-			} catch {
-				return false;
-			}
-		}
-	}
-
-	/**
-	 * Determine the base branch for an issue, considering parent issues
-	 */
-	private async determineBaseBranch(
-		issue: LinearIssue,
-		repository: RepositoryConfig,
-	): Promise<string> {
-		// Start with the repository's default base branch
-		let baseBranch = repository.baseBranch;
-
-		// Check if issue has a parent
-		try {
-			const parent = await issue.parent;
-			if (parent) {
-				console.log(
-					`[EdgeWorker] Issue ${issue.identifier} has parent: ${parent.identifier}`,
-				);
-
-				// Get parent's branch name
-				const parentRawBranchName =
-					parent.branchName ||
-					`${parent.identifier}-${parent.title
-						?.toLowerCase()
-						.replace(/\s+/g, "-")
-						.substring(0, 30)}`;
-				const parentBranchName = this.sanitizeBranchName(parentRawBranchName);
-
-				// Check if parent branch exists
-				const parentBranchExists = await this.branchExists(
-					parentBranchName,
-					repository.repositoryPath,
-				);
-
-				if (parentBranchExists) {
-					baseBranch = parentBranchName;
-					console.log(
-						`[EdgeWorker] Using parent issue branch '${parentBranchName}' as base for sub-issue ${issue.identifier}`,
-					);
-				} else {
-					console.log(
-						`[EdgeWorker] Parent branch '${parentBranchName}' not found, using default base branch '${repository.baseBranch}'`,
-					);
-				}
-			}
-		} catch (_error) {
-			// Parent field might not exist or couldn't be fetched, use default base branch
-			console.log(
-				`[EdgeWorker] No parent issue found for ${issue.identifier}, using default base branch '${repository.baseBranch}'`,
-			);
-		}
-
-		return baseBranch;
-	}
-
-	/**
 	 * Format Linear comments into a threaded structure that mirrors the Linear UI
 	 * @param comments Array of Linear comments
 	 * @returns Formatted string showing comment threads
@@ -1563,7 +1480,7 @@ ${reply.body}
 			const stateName = state?.name || "Unknown";
 
 			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repository);
+			const _baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
 			const linearClient = this.linearClients.get(repository.id);
