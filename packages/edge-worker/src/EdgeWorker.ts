@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -549,11 +549,23 @@ export class EdgeWorker extends EventEmitter {
 			workspace.path,
 		);
 
-		// Build allowed directories list
-		const allowedDirectories: string[] = [];
-		if (attachmentResult.attachmentsDir) {
-			allowedDirectories.push(attachmentResult.attachmentsDir);
-		}
+		// Pre-create attachments directory even if no attachments exist yet
+		const workspaceFolderName = basename(workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		await mkdir(attachmentsDir, { recursive: true });
+
+		// Build allowed directories list - always include attachments directory
+		const allowedDirectories: string[] = [attachmentsDir];
+
+		console.log(
+			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
+			allowedDirectories,
+		);
 
 		// Build allowed tools list with Linear MCP tools
 		const allowedTools = this.buildAllowedTools(repository);
@@ -693,7 +705,7 @@ export class EdgeWorker extends EventEmitter {
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
 
-		const promptBody = webhook.agentActivity.content.body;
+		const commentId = webhook.agentActivity.sourceCommentId;
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -715,7 +727,7 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Check if there's an existing runner for this comment thread
+		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
 		const existingRunner = session.claudeRunner;
 		if (existingRunner?.isStreaming()) {
 			// Post instant acknowledgment for streaming case
@@ -724,21 +736,95 @@ export class EdgeWorker extends EventEmitter {
 				repository.id,
 				true,
 			);
+		} else {
+			// Post instant acknowledgment for non-streaming case
+			await this.postInstantPromptedAcknowledgment(
+				linearAgentActivitySessionId,
+				repository.id,
+				false,
+			);
+		}
 
-			// Add comment to existing stream instead of restarting
+		// Get Linear client for this repository
+		const linearClient = this.linearClients.get(repository.id);
+		if (!linearClient) {
+			console.error(
+				"Unexpected: There was no LinearClient for the repository with id",
+				repository.id,
+			);
+			return;
+		}
+
+		// Always set up attachments directory, even if no attachments in current comment
+		const workspaceFolderName = basename(session.workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		// Ensure directory exists
+		await mkdir(attachmentsDir, { recursive: true });
+
+		let attachmentManifest = "";
+		try {
+			const result = await linearClient.client.rawRequest(
+				`
+          query GetComment($id: String!) {
+            comment(id: $id) {
+              id
+              body
+              createdAt
+              updatedAt
+              user {
+                name
+                id
+              }
+            }
+          }
+        `,
+				{ id: commentId },
+			);
+
+			// Count existing attachments
+			const existingFiles = await readdir(attachmentsDir).catch(() => []);
+			const existingAttachmentCount = existingFiles.filter(
+				(file) => file.startsWith("attachment_") || file.startsWith("image_"),
+			).length;
+
+			// Download new attachments from the comment
+			const downloadResult = await this.downloadCommentAttachments(
+				(result.data as any).comment.body,
+				attachmentsDir,
+				repository.linearToken,
+				existingAttachmentCount,
+			);
+
+			if (downloadResult.totalNewAttachments > 0) {
+				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
+			}
+		} catch (error) {
+			console.error("Failed to fetch comments for attachments:", error);
+		}
+
+		const promptBody = webhook.agentActivity.content.body;
+
+		// Check if there's an existing runner for this comment thread
+		if (existingRunner?.isStreaming()) {
+			// Add comment with attachment manifest to existing stream
 			console.log(
 				`[EdgeWorker] Adding comment to existing stream for agent activity session ${linearAgentActivitySessionId}`,
 			);
-			existingRunner.addStreamMessage(promptBody);
+
+			// Append attachment manifest to the prompt if we have one
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
+			existingRunner.addStreamMessage(fullPrompt);
 			return; // Exit early - comment has been added to stream
 		}
-
-		// Post instant acknowledgment for non-streaming case
-		await this.postInstantPromptedAcknowledgment(
-			linearAgentActivitySessionId,
-			repository.id,
-			false,
-		);
 
 		// Stop existing runner if it's not streaming or stream addition failed
 		if (existingRunner) {
@@ -747,7 +833,7 @@ export class EdgeWorker extends EventEmitter {
 
 		if (!session.claudeSessionId) {
 			console.error(
-				`Unexpected: Handling a 'prompted' webhook but did not find an existing claudeSessionId for the linearAgentActivitySessionId ${linearAgentActivitySessionId}. Not continuing.`,
+				`Unexpected: Handling a ("prompted") webhook but did not find an existing claudeSessionId for the linearAgentActivitySessionId ${linearAgentActivitySessionId}. Not continuing.`,
 			);
 			return;
 		}
@@ -772,6 +858,7 @@ export class EdgeWorker extends EventEmitter {
 				repository,
 			);
 			const systemPrompt = systemPromptResult?.prompt;
+			const allowedDirectories = [attachmentsDir];
 
 			// Create new runner with resume mode if we have a Claude session ID
 			// Always append the last message marker to prevent duplication
@@ -780,6 +867,7 @@ export class EdgeWorker extends EventEmitter {
 			const runner = new ClaudeRunner({
 				workingDirectory: session.workspace.path,
 				allowedTools,
+				allowedDirectories,
 				resumeSessionId: session.claudeSessionId,
 				workspaceName: issue.identifier,
 				mcpConfigPath: repository.mcpConfigPath,
@@ -803,11 +891,17 @@ export class EdgeWorker extends EventEmitter {
 			// Save state after mapping changes
 			await this.savePersistedState();
 
+			// Prepare the prompt with attachment manifest
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
 			// Start streaming session with the comment as initial prompt
 			console.log(
 				`[EdgeWorker] Starting new streaming session for issue ${issue.identifier}`,
 			);
-			await runner.startStreaming(promptBody);
+			await runner.startStreaming(fullPrompt);
 		} catch (error) {
 			console.error("Failed to continue conversation:", error);
 			// Remove any partially created session
@@ -1739,6 +1833,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
+		// Create attachments directory in home directory
+		const workspaceFolderName = basename(workspacePath);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+
 		try {
 			const attachmentMap: Record<string, string> = {};
 			const imageMap: Record<string, string> = {};
@@ -1747,15 +1850,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			let skippedCount = 0;
 			let failedCount = 0;
 			const maxAttachments = 10;
-
-			// Create attachments directory in home directory
-			const workspaceFolderName = basename(workspacePath);
-			const attachmentsDir = join(
-				homedir(),
-				".cyrus",
-				workspaceFolderName,
-				"attachments",
-			);
 
 			// Ensure directory exists
 			await mkdir(attachmentsDir, { recursive: true });
@@ -1877,14 +1971,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				nativeAttachments,
 			});
 
-			// Return manifest and directory path if any attachments were downloaded
+			// Always return the attachments directory path (it's pre-created)
 			return {
 				manifest,
-				attachmentsDir: attachmentCount > 0 ? attachmentsDir : null,
+				attachmentsDir: attachmentsDir,
 			};
 		} catch (error) {
 			console.error("Error downloading attachments:", error);
-			return { manifest: "", attachmentsDir: null }; // Return empty manifest on error
+			// Still return the attachments directory even on error
+			return { manifest: "", attachmentsDir: attachmentsDir };
 		}
 	}
 
@@ -1947,6 +2042,162 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
+	 * Download attachments from a specific comment
+	 * @param commentBody The body text of the comment
+	 * @param attachmentsDir Directory where attachments should be saved
+	 * @param linearToken Linear API token
+	 * @param existingAttachmentCount Current number of attachments already downloaded
+	 */
+	private async downloadCommentAttachments(
+		commentBody: string,
+		attachmentsDir: string,
+		linearToken: string,
+		existingAttachmentCount: number,
+	): Promise<{
+		newAttachmentMap: Record<string, string>;
+		newImageMap: Record<string, string>;
+		totalNewAttachments: number;
+		failedCount: number;
+	}> {
+		const newAttachmentMap: Record<string, string> = {};
+		const newImageMap: Record<string, string> = {};
+		let newAttachmentCount = 0;
+		let newImageCount = 0;
+		let failedCount = 0;
+		const maxAttachments = 10;
+
+		// Extract URLs from the comment
+		const urls = this.extractAttachmentUrls(commentBody);
+
+		if (urls.length === 0) {
+			return {
+				newAttachmentMap,
+				newImageMap,
+				totalNewAttachments: 0,
+				failedCount: 0,
+			};
+		}
+
+		console.log(`Found ${urls.length} attachment URLs in new comment`);
+
+		// Download new attachments
+		for (const url of urls) {
+			// Skip if we've already reached the total attachment limit
+			if (existingAttachmentCount + newAttachmentCount >= maxAttachments) {
+				console.warn(
+					`Skipping attachment due to ${maxAttachments} total attachment limit`,
+				);
+				break;
+			}
+
+			// Generate filename based on total attachment count
+			const attachmentNumber = existingAttachmentCount + newAttachmentCount + 1;
+			const tempFilename = `attachment_${attachmentNumber}.tmp`;
+			const tempPath = join(attachmentsDir, tempFilename);
+
+			const result = await this.downloadAttachment(url, tempPath, linearToken);
+
+			if (result.success) {
+				// Determine the final filename based on type
+				let finalFilename: string;
+				if (result.isImage) {
+					newImageCount++;
+					// Count existing images to get correct numbering
+					const existingImageCount =
+						await this.countExistingImages(attachmentsDir);
+					finalFilename = `image_${existingImageCount + newImageCount}${result.fileType || ".png"}`;
+				} else {
+					finalFilename = `attachment_${attachmentNumber}${result.fileType || ""}`;
+				}
+
+				const finalPath = join(attachmentsDir, finalFilename);
+
+				// Rename the file to include the correct extension
+				await rename(tempPath, finalPath);
+
+				// Store in appropriate map
+				if (result.isImage) {
+					newImageMap[url] = finalPath;
+				} else {
+					newAttachmentMap[url] = finalPath;
+				}
+				newAttachmentCount++;
+			} else {
+				failedCount++;
+				console.warn(`Failed to download attachment: ${url}`);
+			}
+		}
+
+		return {
+			newAttachmentMap,
+			newImageMap,
+			totalNewAttachments: newAttachmentCount,
+			failedCount,
+		};
+	}
+
+	/**
+	 * Count existing images in the attachments directory
+	 */
+	private async countExistingImages(attachmentsDir: string): Promise<number> {
+		try {
+			const files = await readdir(attachmentsDir);
+			return files.filter((file) => file.startsWith("image_")).length;
+		} catch {
+			return 0;
+		}
+	}
+
+	/**
+	 * Generate attachment manifest for new comment attachments
+	 */
+	private generateNewAttachmentManifest(result: {
+		newAttachmentMap: Record<string, string>;
+		newImageMap: Record<string, string>;
+		totalNewAttachments: number;
+		failedCount: number;
+	}): string {
+		const { newAttachmentMap, newImageMap, totalNewAttachments, failedCount } =
+			result;
+
+		if (totalNewAttachments === 0) {
+			return "";
+		}
+
+		let manifest = "\n## New Attachments from Comment\n\n";
+
+		manifest += `Downloaded ${totalNewAttachments} new attachment${totalNewAttachments > 1 ? "s" : ""}`;
+		if (failedCount > 0) {
+			manifest += ` (${failedCount} failed)`;
+		}
+		manifest += ".\n\n";
+
+		// List new images
+		if (Object.keys(newImageMap).length > 0) {
+			manifest += "### New Images\n";
+			Object.entries(newImageMap).forEach(([url, localPath], index) => {
+				const filename = basename(localPath);
+				manifest += `${index + 1}. ${filename} - Original URL: ${url}\n`;
+				manifest += `   Local path: ${localPath}\n\n`;
+			});
+			manifest += "You can use the Read tool to view these images.\n\n";
+		}
+
+		// List new other attachments
+		if (Object.keys(newAttachmentMap).length > 0) {
+			manifest += "### New Attachments\n";
+			Object.entries(newAttachmentMap).forEach(([url, localPath], index) => {
+				const filename = basename(localPath);
+				manifest += `${index + 1}. ${filename} - Original URL: ${url}\n`;
+				manifest += `   Local path: ${localPath}\n\n`;
+			});
+			manifest += "You can use the Read tool to view these files.\n\n";
+		}
+
+		return manifest;
+	}
+
+	/**
 	 * Generate a markdown section describing downloaded attachments
 	 */
 	private generateAttachmentManifest(downloadResult: {
@@ -1982,7 +2233,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		if (totalFound === 0 && nativeAttachments.length === 0) {
-			manifest += "No attachments were found in this issue.\n";
+			manifest += "No attachments were found in this issue.\n\n";
+			manifest +=
+				"The attachments directory `~/.cyrus/<workspace>/attachments` has been created and is available for any future attachments that may be added to this issue.\n";
 			return manifest;
 		}
 
