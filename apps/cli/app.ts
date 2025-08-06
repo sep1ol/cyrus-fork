@@ -58,8 +58,8 @@ Examples:
   cyrus check-tokens             Check all Linear token statuses
   cyrus refresh-token            Interactive token refresh
   cyrus add-repository           Add a new repository interactively
-`)
-  process.exit(0);
+`);
+	process.exit(0);
 }
 
 // Load environment variables only if --env-file is specified
@@ -1524,69 +1524,70 @@ async function refreshTokenCommand() {
 
 // Command: add-repository
 async function addRepositoryCommand() {
-  const app = new EdgeApp()
-  
-  console.log('📋 Add New Repository')
-  console.log('─'.repeat(50))
-  console.log()
-  
-  try {
-    // Load existing configuration
-    const config = app.loadEdgeConfig()
-    
-    // Check if we have any Linear credentials
-    const existingRepos = config.repositories || []
-    let linearCredentials: LinearCredentials | null = null
-    
-    if (existingRepos.length > 0) {
-      // Try to get credentials from existing repositories
-      const repoWithToken = existingRepos.find(r => r.linearToken)
-      if (repoWithToken) {
-        linearCredentials = {
-          linearToken: repoWithToken.linearToken,
-          linearWorkspaceId: repoWithToken.linearWorkspaceId,
-          linearWorkspaceName: repoWithToken.linearWorkspaceName || 'Your Workspace'
-        }
-        console.log(`✅ Using Linear credentials from existing configuration`)
-        console.log(`   Workspace: ${linearCredentials.linearWorkspaceName}`)
-      }
-    }
-    
-    // If no credentials found, run OAuth flow
-    if (!linearCredentials) {
-      console.log('🔐 No Linear credentials found. Starting OAuth flow...')
-      
-      // Start OAuth flow using the default proxy URL
-      const proxyUrl = process.env.PROXY_URL || 'https://cyrus-proxy.ceedar.workers.dev'
-      linearCredentials = await app.startOAuthFlow(proxyUrl)
-      
-      if (!linearCredentials) {
-        throw new Error('OAuth flow cancelled or failed')
-      }
-    }
-    
-    // Now set up the new repository
-    console.log('\n📂 Configure New Repository')
-    console.log('─'.repeat(50))
-    
-    const newRepo = await app.setupRepositoryWizard(linearCredentials)
-    
-    // Add to existing repositories
-    config.repositories = [...existingRepos, newRepo]
-    
-    // Save the updated configuration
-    app.saveEdgeConfig(config)
-    
-    console.log('\n✅ Repository added successfully!')
-    console.log(`📁 Repository: ${newRepo.name}`)
-    console.log(`🔗 Path: ${newRepo.repositoryPath}`)
-    console.log(`🌿 Base branch: ${newRepo.baseBranch}`)
-    console.log(`📂 Workspace directory: ${newRepo.workspaceBaseDir}`)
-    
-  } catch (error) {
-    console.error('\n❌ Failed to add repository:', error)
-    throw error
-  }
+	const app = new EdgeApp();
+
+	console.log("📋 Add New Repository");
+	console.log("─".repeat(50));
+	console.log();
+
+	try {
+		// Load existing configuration
+		const config = app.loadEdgeConfig();
+
+		// Check if we have any Linear credentials
+		const existingRepos = config.repositories || [];
+		let linearCredentials: LinearCredentials | null = null;
+
+		if (existingRepos.length > 0) {
+			// Try to get credentials from existing repositories
+			const repoWithToken = existingRepos.find((r) => r.linearToken);
+			if (repoWithToken) {
+				linearCredentials = {
+					linearToken: repoWithToken.linearToken,
+					linearWorkspaceId: repoWithToken.linearWorkspaceId,
+					linearWorkspaceName:
+						repoWithToken.linearWorkspaceName || "Your Workspace",
+				};
+				console.log(`✅ Using Linear credentials from existing configuration`);
+				console.log(`   Workspace: ${linearCredentials.linearWorkspaceName}`);
+			}
+		}
+
+		// If no credentials found, run OAuth flow
+		if (!linearCredentials) {
+			console.log("🔐 No Linear credentials found. Starting OAuth flow...");
+
+			// Start OAuth flow using the default proxy URL
+			const proxyUrl =
+				process.env.PROXY_URL || "https://cyrus-proxy.ceedar.workers.dev";
+			linearCredentials = await app.startOAuthFlow(proxyUrl);
+
+			if (!linearCredentials) {
+				throw new Error("OAuth flow cancelled or failed");
+			}
+		}
+
+		// Now set up the new repository
+		console.log("\n📂 Configure New Repository");
+		console.log("─".repeat(50));
+
+		const newRepo = await app.setupRepositoryWizard(linearCredentials);
+
+		// Add to existing repositories
+		config.repositories = [...existingRepos, newRepo];
+
+		// Save the updated configuration
+		app.saveEdgeConfig(config);
+
+		console.log("\n✅ Repository added successfully!");
+		console.log(`📁 Repository: ${newRepo.name}`);
+		console.log(`🔗 Path: ${newRepo.repositoryPath}`);
+		console.log(`🌿 Base branch: ${newRepo.baseBranch}`);
+		console.log(`📂 Workspace directory: ${newRepo.workspaceBaseDir}`);
+	} catch (error) {
+		console.error("\n❌ Failed to add repository:", error);
+		throw error;
+	}
 }
 
 // Command: set-customer-id
@@ -1706,13 +1707,13 @@ switch (command) {
 			process.exit(1);
 		});
 		break;
-    
-  case "add-repository":
-    addRepositoryCommand().catch(error => {
-      console.error('Error:', error)
-      process.exit(1)
-    })
-    break;
+
+	case "add-repository":
+		addRepositoryCommand().catch((error) => {
+			console.error("Error:", error);
+			process.exit(1);
+		});
+		break;
 
 	case "billing":
 		billingCommand().catch((error) => {
