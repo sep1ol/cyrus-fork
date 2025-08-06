@@ -1,6 +1,6 @@
 {
 	"name": "cyrus-core",
-	"version": "0.0.7",
+	"version": "0.0.8",
 	"description": "Core business logic for Cyrus",
 	"type": "module",
 	"main": "dist/index.js",
@@ -16,7 +16,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@linear/sdk": "^52.0.0",
+		"@linear/sdk": "^54.0.0",
 		"cyrus-claude-runner": "workspace:*"
 	},
 	"devDependencies": {
