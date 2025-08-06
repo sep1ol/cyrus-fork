@@ -619,7 +619,9 @@ export class ClaudeRunner extends EventEmitter {
 			console.log(`[ClaudeRunner] Creating readable log: ${readableLogPath}`);
 
 			this.logStream = createWriteStream(detailedLogPath, { flags: "a" });
-			this.readableLogStream = createWriteStream(readableLogPath, { flags: "a" });
+			this.readableLogStream = createWriteStream(readableLogPath, {
+				flags: "a",
+			});
 
 			// Write initial metadata to detailed log
 			const metadata = {
@@ -659,7 +661,10 @@ export class ClaudeRunner extends EventEmitter {
 		try {
 			switch (message.type) {
 				case "assistant":
-					if (message.message?.content && Array.isArray(message.message.content)) {
+					if (
+						message.message?.content &&
+						Array.isArray(message.message.content)
+					) {
 						// Extract text content only, skip tool use noise
 						const textBlocks = message.message.content
 							.filter((block) => block.type === "text")
@@ -675,15 +680,23 @@ export class ClaudeRunner extends EventEmitter {
 						// Log tool usage in a clean format, but filter out noisy tools
 						const toolBlocks = message.message.content
 							.filter((block) => block.type === "tool_use")
-							.filter((block) => (block as { name: string }).name !== "TodoWrite"); // Filter out TodoWrite as it's noisy
+							.filter(
+								(block) => (block as { name: string }).name !== "TodoWrite",
+							); // Filter out TodoWrite as it's noisy
 
 						if (toolBlocks.length > 0) {
 							for (const tool of toolBlocks) {
-								const toolWithName = tool as { name: string; input?: Record<string, unknown> };
+								const toolWithName = tool as {
+									name: string;
+									input?: Record<string, unknown>;
+								};
 								this.readableLogStream.write(
 									`### ${timestamp} - Tool: ${toolWithName.name}\n\n`,
 								);
-								if (toolWithName.input && typeof toolWithName.input === "object") {
+								if (
+									toolWithName.input &&
+									typeof toolWithName.input === "object"
+								) {
 									// Format tool input in a readable way
 									const inputStr = Object.entries(toolWithName.input)
 										.map(([key, value]) => `- **${key}**: ${value}`)
@@ -697,7 +710,10 @@ export class ClaudeRunner extends EventEmitter {
 
 				case "user":
 					// Only log user messages that contain actual content (not tool results)
-					if (message.message?.content && Array.isArray(message.message.content)) {
+					if (
+						message.message?.content &&
+						Array.isArray(message.message.content)
+					) {
 						const userContent = message.message.content
 							.filter((block) => block.type === "text")
 							.map((block) => (block as { text: string }).text)
@@ -713,9 +729,13 @@ export class ClaudeRunner extends EventEmitter {
 
 				case "result":
 					if (message.subtype === "success") {
-						this.readableLogStream.write(`## ${timestamp} - Session Complete\n\n`);
+						this.readableLogStream.write(
+							`## ${timestamp} - Session Complete\n\n`,
+						);
 						if (message.duration_ms) {
-							this.readableLogStream.write(`**Duration**: ${message.duration_ms}ms\n`);
+							this.readableLogStream.write(
+								`**Duration**: ${message.duration_ms}ms\n`,
+							);
 						}
 						if (message.total_cost_usd) {
 							this.readableLogStream.write(

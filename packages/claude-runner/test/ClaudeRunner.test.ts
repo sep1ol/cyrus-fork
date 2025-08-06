@@ -631,7 +631,9 @@ describe("ClaudeRunner", () => {
 				{
 					type: "assistant",
 					message: {
-						content: [{ type: "text", text: "Hello! I can help you with your tasks." }],
+						content: [
+							{ type: "text", text: "Hello! I can help you with your tasks." },
+						],
 					},
 					parent_tool_use_id: null,
 					session_id: "test-session",
@@ -663,7 +665,10 @@ describe("ClaudeRunner", () => {
 					type: "assistant",
 					message: {
 						content: [
-							{ type: "text", text: "This is Claude responding to your question." },
+							{
+								type: "text",
+								text: "This is Claude responding to your question.",
+							},
 							{
 								type: "tool_use",
 								name: "Read",
@@ -757,7 +762,10 @@ describe("ClaudeRunner", () => {
 					type: "assistant",
 					message: {
 						content: [
-							{ type: "text", text: "Let me create a todo list and read a file." },
+							{
+								type: "text",
+								text: "Let me create a todo list and read a file.",
+							},
 							{
 								type: "tool_use",
 								name: "TodoWrite",
