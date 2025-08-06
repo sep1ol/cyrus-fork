@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.38] - 2025-08-06
+
 ### Added
 - Native Linear attachments (like Sentry error links) are now included in the issue context sent to Claude
   - Cyrus now fetches attachments using Linear's native attachment API
@@ -33,8 +35,22 @@ All notable changes to this project will be documented in this file.
 - Fixed issue where messages from @ Cyrus mention comments weren't being added to context
 - Fixed issue where sub-issue base branches weren't being added to the user-prompt template, causing Cyrus to create PRs against the default branch instead
 
-### Added
+### Packages
 
+#### cyrus-core
+- cyrus-core@0.0.8
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.16
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.21
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.38
 
 ## [0.1.37] - 2025-08-03
 
