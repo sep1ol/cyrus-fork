@@ -1507,9 +1507,6 @@ ${reply.body}
 				}
 			}
 
-			// Determine the base branch considering parent issues
-			const baseBranch = await this.determineBaseBranch(issue, repository);
-
 			// Build the prompt with all variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
