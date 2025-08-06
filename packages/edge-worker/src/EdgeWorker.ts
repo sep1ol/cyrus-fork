@@ -1119,11 +1119,6 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
-			// Append repository-specific instructions if any
-			if (repository.appendInstruction) {
-				prompt = `${prompt}\n\n## Additional Instructions\n\n${repository.appendInstruction}`;
-			}
-
 			return { prompt };
 		} catch (error) {
 			console.error(`[EdgeWorker] Error building mention prompt:`, error);
