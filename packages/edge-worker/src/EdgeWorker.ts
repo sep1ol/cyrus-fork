@@ -1480,7 +1480,7 @@ ${reply.body}
 			const stateName = state?.name || "Unknown";
 
 			// Determine the base branch considering parent issues
-			const _baseBranch = await this.determineBaseBranch(issue, repository);
+			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
 			const linearClient = this.linearClients.get(repository.id);
