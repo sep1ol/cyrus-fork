@@ -19,21 +19,22 @@ All notable changes to this project will be documented in this file.
   - @ mentions now trigger focused responses without system prompts
   - Delegations continue to use full system prompts for comprehensive task handling
   - Aligns with Linear's expected agent activity behavior
-
-### Fixed
-- Fixed attachments not being accessible to Claude during active streaming sessions
-  - Pre-create attachments directory for every session to ensure future attachments are accessible
-  - Always include attachments directory in allowedDirectories configuration
-
-## [0.1.38] - 2025-08-03
-
-### Added
 - Subscription management built right into the CLI (because who wants another dashboard?)
   - `cyrus billing` - Opens your Stripe portal to manage subscription, payment methods, and download invoices
   - `cyrus set-customer-id` - Saves your customer ID after signup (copy-paste friendly)
   - Interactive prompt on startup if you're using our proxy without a subscription
   - Self-hosting option for the DIY crowd who prefer their own Linear app and infrastructure
   - existed in v0.1.34 but was missing since then
+
+### Fixed
+- Fixed attachments not being accessible to Claude during active streaming sessions
+  - Pre-create attachments directory for every session to ensure future attachments are accessible
+  - Always include attachments directory in allowedDirectories configuration
+- Fixed issue where messages from @ Cyrus mention comments weren't being added to context
+- Fixed issue where sub-issue base branches weren't being added to the user-prompt template, causing Cyrus to create PRs against the default branch instead
+
+### Added
+
 
 ## [0.1.37] - 2025-08-03
 
