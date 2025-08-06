@@ -355,7 +355,10 @@ class EdgeApp {
 				"Project names (comma-separated, optional): ",
 			);
 			const projectKeys = projectKeysInput
-				? projectKeysInput.split(",").map((p) => p.trim()).filter((p) => p.length > 0)
+				? projectKeysInput
+						.split(",")
+						.map((p) => p.trim())
+						.filter((p) => p.length > 0)
 				: undefined;
 
 			rl.close();
