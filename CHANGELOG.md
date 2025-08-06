@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.39] - 2025-08-06
+
 ### Added
 - Native Linear attachments (like Sentry error links) are now included in the issue context sent to Claude
   - Cyrus now fetches attachments using Linear's native attachment API
@@ -32,8 +34,6 @@ All notable changes to this project will be documented in this file.
   - Always include attachments directory in allowedDirectories configuration
 - Fixed issue where messages from @ Cyrus mention comments weren't being added to context
 - Fixed issue where sub-issue base branches weren't being added to the user-prompt template, causing Cyrus to create PRs against the default branch instead
-
-### Added
 
 
 ## [0.1.37] - 2025-08-03
