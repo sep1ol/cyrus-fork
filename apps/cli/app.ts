@@ -45,6 +45,8 @@ Commands:
   check-tokens       Check the status of all Linear tokens
   refresh-token      Refresh a specific Linear token
   add-repository     Add a new repository configuration
+  billing            Open Stripe billing portal (Pro plan only)
+  set-customer-id    Set your Stripe customer ID
 
 Options:
   --version          Show version number
@@ -77,6 +79,7 @@ interface LinearCredentials {
 interface EdgeConfig {
 	repositories: RepositoryConfig[];
 	ngrokAuthToken?: string;
+	stripeCustomerId?: string;
 }
 
 interface Workspace {
@@ -565,7 +568,9 @@ class EdgeApp {
 							// Add to existing repositories
 							const edgeConfig = this.loadEdgeConfig();
 							console.log(
-								`📊 Current config has ${edgeConfig.repositories?.length || 0} repositories`,
+								`📊 Current config has ${
+									edgeConfig.repositories?.length || 0
+								} repositories`,
 							);
 							edgeConfig.repositories = [
 								...(edgeConfig.repositories || []),
@@ -593,7 +598,9 @@ class EdgeApp {
 							// Reload configuration and restart worker without going through setup
 							const updatedConfig = this.loadEdgeConfig();
 							console.log(
-								`\n🔄 Reloading with ${updatedConfig.repositories?.length || 0} repositories from config file`,
+								`\n🔄 Reloading with ${
+									updatedConfig.repositories?.length || 0
+								} repositories from config file`,
 							);
 
 							return this.startEdgeWorker({
@@ -640,8 +647,101 @@ class EdgeApp {
 			// No need to validate Claude CLI - using Claude TypeScript SDK now
 
 			// Load edge configuration
-			const edgeConfig = this.loadEdgeConfig();
+			let edgeConfig = this.loadEdgeConfig();
 			let repositories = edgeConfig.repositories || [];
+
+			// Check if using default proxy URL without a customer ID
+			const defaultProxyUrl = "https://cyrus-proxy.ceedar.workers.dev";
+			const isUsingDefaultProxy = proxyUrl === defaultProxyUrl;
+			const hasCustomerId = !!edgeConfig.stripeCustomerId;
+
+			if (isUsingDefaultProxy && !hasCustomerId) {
+				console.log("\n🎯 Pro Plan Required");
+				console.log("─".repeat(50));
+				console.log("You are using the default Cyrus proxy URL.");
+				console.log("\nWith Cyrus Pro you get:");
+				console.log("• No-hassle configuration");
+				console.log("• Priority support");
+				console.log("• Help fund product development");
+				console.log("\nChoose an option:");
+				console.log("1. Start a free trial");
+				console.log("2. I have a customer ID to enter");
+				console.log("3. Setup your own proxy (advanced)");
+				console.log("4. Exit");
+
+				const rl = readline.createInterface({
+					input: process.stdin,
+					output: process.stdout,
+				});
+
+				const choice = await new Promise<string>((resolve) => {
+					rl.question("\nYour choice (1-4): ", (answer) => {
+						resolve(answer.trim());
+					});
+				});
+
+				if (choice === "1") {
+					console.log("\n👉 Opening your browser to start a free trial...");
+					console.log("Visit: https://www.atcyrus.com/pricing");
+					await open("https://www.atcyrus.com/pricing");
+					rl.close();
+					process.exit(0);
+				} else if (choice === "2") {
+					console.log(
+						"\n📋 After completing payment, you'll see your customer ID on the success page.",
+					);
+					console.log(
+						'It starts with "cus_" and can be copied from the website.',
+					);
+
+					const customerId = await new Promise<string>((resolve) => {
+						rl.question("\nPaste your customer ID here: ", (answer) => {
+							resolve(answer.trim());
+						});
+					});
+
+					rl.close();
+
+					if (!customerId.startsWith("cus_")) {
+						console.error("\n❌ Invalid customer ID format");
+						console.log('Customer IDs should start with "cus_"');
+						process.exit(1);
+					}
+
+					// Save the customer ID
+					edgeConfig.stripeCustomerId = customerId;
+					this.saveEdgeConfig(edgeConfig);
+
+					console.log("\n✅ Customer ID saved successfully!");
+					console.log("Continuing with startup...\n");
+
+					// Reload config to include the new customer ID
+					edgeConfig = this.loadEdgeConfig();
+				} else if (choice === "3") {
+					console.log("\n🔧 Self-Hosted Proxy Setup");
+					console.log("─".repeat(50));
+					console.log(
+						"Configure your own Linear app and proxy to have full control over your stack.",
+					);
+					console.log("\nDocumentation:");
+					console.log(
+						"• Linear OAuth setup: https://linear.app/developers/agents",
+					);
+					console.log(
+						"• Proxy implementation: https://github.com/ceedaragents/cyrus/tree/main/apps/proxy-worker",
+					);
+					console.log(
+						"\nOnce deployed, set the PROXY_URL environment variable:",
+					);
+					console.log("export PROXY_URL=https://your-proxy-url.com");
+					rl.close();
+					process.exit(0);
+				} else {
+					rl.close();
+					console.log("\nExiting...");
+					process.exit(0);
+				}
+			}
 
 			// Check if we need to set up
 			const needsSetup = repositories.length === 0;
@@ -822,6 +922,23 @@ class EdgeApp {
 			// Start the edge worker
 			await this.startEdgeWorker({ proxyUrl, repositories });
 
+			// Display plan status
+			const defaultProxyUrlForStatus = "https://cyrus-proxy.ceedar.workers.dev";
+			const isUsingDefaultProxyForStatus =
+				proxyUrl === defaultProxyUrlForStatus;
+			const hasCustomerIdForStatus = !!edgeConfig.stripeCustomerId;
+
+			console.log(`\n${"─".repeat(70)}`);
+			if (isUsingDefaultProxyForStatus && hasCustomerIdForStatus) {
+				console.log("💎 Plan: Cyrus Pro");
+				console.log(`📋 Customer ID: ${edgeConfig.stripeCustomerId}`);
+				console.log('💳 Manage subscription: Run "cyrus billing"');
+			} else if (!isUsingDefaultProxyForStatus) {
+				console.log("🛠️  Plan: Community (Self-hosted proxy)");
+				console.log(`🔗 Proxy URL: ${proxyUrl}`);
+			}
+			console.log("─".repeat(70));
+
 			// Display OAuth information after EdgeWorker is started
 			const serverPort = this.edgeWorker?.getServerPort() || 3456;
 			const oauthCallbackBaseUrl =
@@ -946,7 +1063,9 @@ class EdgeApp {
 
 		this.edgeWorker.on("disconnected", (token: string, reason?: string) => {
 			console.error(
-				`❌ Disconnected from proxy (token ...${token.slice(-4)}): ${reason || "Unknown reason"}`,
+				`❌ Disconnected from proxy (token ...${token.slice(-4)}): ${
+					reason || "Unknown reason"
+				}`,
 			);
 		});
 
@@ -986,7 +1105,10 @@ class EdgeApp {
 			// Use Linear's preferred branch name, or generate one if not available
 			const rawBranchName =
 				issue.branchName ||
-				`${issue.identifier}-${issue.title?.toLowerCase().replace(/\s+/g, "-").substring(0, 30)}`;
+				`${issue.identifier}-${issue.title
+					?.toLowerCase()
+					.replace(/\s+/g, "-")
+					.substring(0, 30)}`;
 			const branchName = sanitizeBranchName(rawBranchName);
 			const workspacePath = join(repository.workspaceBaseDir, issue.identifier);
 
@@ -1042,7 +1164,10 @@ class EdgeApp {
 					// Get parent's branch name
 					const parentRawBranchName =
 						parent.branchName ||
-						`${parent.identifier}-${parent.title?.toLowerCase().replace(/\s+/g, "-").substring(0, 30)}`;
+						`${parent.identifier}-${parent.title
+							?.toLowerCase()
+							.replace(/\s+/g, "-")
+							.substring(0, 30)}`;
 					const parentBranchName = sanitizeBranchName(parentRawBranchName);
 
 					// Check if parent branch exists
@@ -1251,7 +1376,9 @@ async function refreshTokenCommand() {
 		const result = await checkLinearToken(repo.linearToken);
 		tokenStatuses.push({ repo, valid: result.valid });
 		console.log(
-			`${tokenStatuses.length}. ${repo.name} (${repo.linearWorkspaceName}): ${result.valid ? "✅ Valid" : "❌ Invalid"}`,
+			`${tokenStatuses.length}. ${repo.name} (${repo.linearWorkspaceName}): ${
+				result.valid ? "✅ Valid" : "❌ Invalid"
+			}`,
 		);
 	}
 
@@ -1291,7 +1418,9 @@ async function refreshTokenCommand() {
 
 		const { repo } = tokenStatus;
 		console.log(
-			`\nRefreshing token for ${repo.name} (${repo.linearWorkspaceName || repo.linearWorkspaceId})...`,
+			`\nRefreshing token for ${repo.name} (${
+				repo.linearWorkspaceName || repo.linearWorkspaceId
+			})...`,
 		);
 		console.log("Opening Linear OAuth flow in your browser...");
 
@@ -1300,7 +1429,9 @@ async function refreshTokenCommand() {
 			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 			: 3456;
 		const callbackUrl = `http://localhost:${serverPort}/callback`;
-		const oauthUrl = `https://cyrus-proxy.ceedar.workers.dev/oauth/authorize?callback=${encodeURIComponent(callbackUrl)}`;
+		const oauthUrl = `https://cyrus-proxy.ceedar.workers.dev/oauth/authorize?callback=${encodeURIComponent(
+			callbackUrl,
+		)}`;
 
 		console.log(`\nPlease complete the OAuth flow in your browser.`);
 		console.log(
@@ -1458,6 +1589,105 @@ async function addRepositoryCommand() {
   }
 }
 
+// Command: set-customer-id
+async function setCustomerIdCommand() {
+	const app = new EdgeApp();
+	const configPath = app.getEdgeConfigPath();
+
+	// Get customer ID from command line args
+	const customerId = args[1];
+
+	if (!customerId) {
+		console.error("Please provide a customer ID");
+		console.log("Usage: cyrus set-customer-id cus_XXXXX");
+		process.exit(1);
+	}
+
+	if (!customerId.startsWith("cus_")) {
+		console.error("Invalid customer ID format");
+		console.log('Customer IDs should start with "cus_"');
+		process.exit(1);
+	}
+
+	try {
+		// Load existing config or create new one
+		let config: EdgeConfig = { repositories: [] };
+
+		if (existsSync(configPath)) {
+			config = JSON.parse(readFileSync(configPath, "utf-8"));
+		}
+
+		// Update customer ID
+		config.stripeCustomerId = customerId;
+
+		// Save config
+		app.saveEdgeConfig(config);
+
+		console.log("\n✅ Customer ID saved successfully!");
+		console.log("─".repeat(50));
+		console.log(`Customer ID: ${customerId}`);
+		console.log("\nYou now have access to Cyrus Pro features.");
+		console.log('Run "cyrus" to start the edge worker.');
+	} catch (error) {
+		console.error("Failed to save customer ID:", (error as Error).message);
+		process.exit(1);
+	}
+}
+
+// Command: billing
+async function billingCommand() {
+	const app = new EdgeApp();
+	const configPath = app.getEdgeConfigPath();
+
+	if (!existsSync(configPath)) {
+		console.error(
+			'No configuration found. Please run "cyrus" to set up first.',
+		);
+		process.exit(1);
+	}
+
+	const config = JSON.parse(readFileSync(configPath, "utf-8")) as EdgeConfig;
+
+	if (!config.stripeCustomerId) {
+		console.log("\n🎯 No Pro Plan Active");
+		console.log("─".repeat(50));
+		console.log("You don't have an active subscription.");
+		console.log("Please start a free trial at:");
+		console.log("\n  https://www.atcyrus.com/pricing\n");
+		console.log(
+			"After signing up, your customer ID will be saved automatically.",
+		);
+		process.exit(0);
+	}
+
+	console.log("\n🌐 Opening Billing Portal...");
+	console.log("─".repeat(50));
+
+	try {
+		// Open atcyrus.com with the customer ID to handle Stripe redirect
+		const billingUrl = `https://www.atcyrus.com/billing/${config.stripeCustomerId}`;
+
+		console.log("✅ Opening billing portal in browser...");
+		console.log(`\n👉 URL: ${billingUrl}\n`);
+
+		// Open the billing portal URL in the default browser
+		await open(billingUrl);
+
+		console.log("The billing portal should now be open in your browser.");
+		console.log(
+			"You can manage your subscription, update payment methods, and download invoices.",
+		);
+	} catch (error) {
+		console.error(
+			"❌ Failed to open billing portal:",
+			(error as Error).message,
+		);
+		console.log("\nPlease visit: https://www.atcyrus.com/billing");
+		console.log("Customer ID:", config.stripeCustomerId);
+		process.exit(1);
+	}
+}
+
 // Parse command
 const command = args[0] || "start";
 
@@ -1483,8 +1713,21 @@ switch (command) {
       process.exit(1)
     })
     break;
-    
-  case "start":
+
+	case "billing":
+		billingCommand().catch((error) => {
+			console.error("Error:", error);
+			process.exit(1);
+		});
+		break;
+
+	case "set-customer-id":
+		setCustomerIdCommand().catch((error) => {
+			console.error("Error:", error);
+			process.exit(1);
+		});
+		break;
+
 	default: {
 		// Create and start the app
 		const app = new EdgeApp();
