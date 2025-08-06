@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.1.39] - 2025-08-06
+## [0.1.38] - 2025-08-06
 
 ### Added
 - Native Linear attachments (like Sentry error links) are now included in the issue context sent to Claude
