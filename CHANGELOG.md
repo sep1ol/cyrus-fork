@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Simplified initial setup by removing configuration prompts for MCP, labels, Linear teams, and allowed tools
+  - MCP configuration is now optional with no default prompt
+  - Allowed tools default to all standard tools plus Bash(git:*) and Bash(gh:*) for immediate productivity
+  - Team-based routing and label-based system prompts can be configured later if needed
+  - Streamlined first-time user experience with sensible defaults
+
 ## [0.1.38] - 2025-08-06
 
 ### Added

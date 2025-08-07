@@ -249,103 +249,22 @@ class EdgeApp {
 
 			// Note: Prompt template is now hardcoded - no longer configurable
 
-			// Ask for MCP configuration
-			console.log("\n🔧 MCP (Model Context Protocol) Configuration");
-			console.log(
-				"MCP allows Claude to access external tools and data sources.",
-			);
-			console.log(
-				"Examples: filesystem access, database connections, API integrations",
-			);
-			console.log("See: https://docs.anthropic.com/en/docs/claude-code/mcp");
-			console.log("");
-			const mcpConfigInput = await question(
-				'MCP config file path (optional, format: {"mcpServers": {...}}, e.g., ./mcp-config.json): ',
-			);
-			const mcpConfigPath = mcpConfigInput.trim() || undefined;
-
-			// Ask for allowed tools configuration
-			console.log("\n🔧 Tool Configuration");
-			console.log(
-				"Available tools: Read(**),Edit(**),Bash,Task,WebFetch,WebSearch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch",
-			);
-			console.log("");
-			console.log(
-				"⚠️  SECURITY NOTE: Bash tool requires special configuration for safety:",
-			);
-			console.log(
-				'   • Use "Bash" for full access (not recommended in production)',
-			);
-			console.log('   • Use "Bash(npm:*)" to restrict to npm commands only');
-			console.log('   • Use "Bash(git:*)" to restrict to git commands only');
-			console.log(
-				"   • See: https://docs.anthropic.com/en/docs/claude-code/settings#permissions",
-			);
-			console.log("");
-			console.log(
-				"Default: All tools except Bash (leave blank for all non-Bash tools)",
-			);
-			const allowedToolsInput = await question(
-				"Allowed tools (comma-separated, default: all except Bash): ",
-			);
-			const allowedTools = allowedToolsInput
-				? allowedToolsInput.split(",").map((t) => t.trim())
-				: undefined;
-
-			// Ask for team keys configuration
-			console.log("\n🏷️ Team-Based Routing (Optional)");
-			console.log(
-				"Configure specific Linear team keys to route issues to this repository.",
-			);
-			console.log("Example: CEE,FRONT,BACK for teams with those prefixes");
-			console.log("Leave blank to receive all issues from the workspace.");
-			const teamKeysInput = await question(
-				"Team keys (comma-separated, optional): ",
-			);
-			const teamKeys = teamKeysInput
-				? teamKeysInput.split(",").map((t) => t.trim().toUpperCase())
-				: undefined;
-
-			// Ask for label-based system prompt configuration
-			console.log("\n🎯 Label-Based System Prompts (Optional)");
-			console.log(
-				"Cyrus can use different strategies based on Linear issue labels.",
-			);
-			console.log("Configure which labels trigger each specialized mode:");
-			console.log(
-				"• Debugger mode: Focuses on systematic problem investigation",
-			);
-			console.log(
-				"• Builder mode: Emphasizes feature implementation and code quality",
-			);
-			console.log(
-				"• Scoper mode: Helps analyze requirements and create technical plans",
-			);
-
-			const debuggerLabelsInput = await question(
-				'Labels for debugger mode (comma-separated, e.g., "Bug"): ',
-			);
-			const builderLabelsInput = await question(
-				'Labels for builder mode (comma-separated, e.g., "Feature,Improvement"): ',
-			);
-			const scoperLabelsInput = await question(
-				'Labels for scoper mode (comma-separated, e.g., "PRD"): ',
-			);
-
-			const labelPrompts =
-				debuggerLabelsInput || builderLabelsInput || scoperLabelsInput
-					? {
-							...(debuggerLabelsInput && {
-								debugger: debuggerLabelsInput.split(",").map((l) => l.trim()),
-							}),
-							...(builderLabelsInput && {
-								builder: builderLabelsInput.split(",").map((l) => l.trim()),
-							}),
-							...(scoperLabelsInput && {
-								scoper: scoperLabelsInput.split(",").map((l) => l.trim()),
-							}),
-						}
-					: undefined;
+			// Set reasonable defaults for configuration
+			// Allowed tools - default to all tools except Bash, plus Bash(git:*) and Bash(gh:*)
+			const allowedTools = [
+				"Read(**)",
+				"Edit(**)",
+				"Bash(git:*)",
+				"Bash(gh:*)",
+				"Task",
+				"WebFetch",
+				"WebSearch",
+				"TodoRead",
+				"TodoWrite",
+				"NotebookRead",
+				"NotebookEdit",
+				"Batch"
+			];
 
 			rl.close();
 
@@ -359,10 +278,7 @@ class EdgeApp {
 				linearToken: linearCredentials.linearToken,
 				workspaceBaseDir: resolve(workspaceBaseDir),
 				isActive: true,
-				...(allowedTools && { allowedTools }),
-				...(mcpConfigPath && { mcpConfigPath: resolve(mcpConfigPath) }),
-				...(teamKeys && { teamKeys }),
-				...(labelPrompts && { labelPrompts }),
+				allowedTools,
 			};
 
 			return repository;
