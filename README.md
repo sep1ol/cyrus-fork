@@ -57,6 +57,8 @@ Controls which tools Claude can use when processing issues. Default: all standar
 Examples:
 - `["Read(**)", "Edit(**)", "Bash(git:*)", "Task"]` - Allow reading, editing, git commands, and task management
 - `["Read(**)", "Edit(**)", "Bash(npm:*)", "WebSearch"]` - Allow reading, editing, npm commands, and web search
+- `["Read(**)", "Edit(**)", "mcp__github"]` - Allow all tools from the GitHub MCP server
+- `["Read(**)", "Edit(**)", "mcp__github__search_repositories"]` - Allow only the search_repositories tool from GitHub MCP
 
 For security configuration details, see: https://docs.anthropic.com/en/docs/claude-code/settings#permissions
 
