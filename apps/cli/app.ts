@@ -236,16 +236,12 @@ class EdgeApp {
 			const repoNameSafe = repositoryName
 				.replace(/[^a-zA-Z0-9-_]/g, "-")
 				.toLowerCase();
-			const defaultWorkspaceDir = resolve(
+			const workspaceBaseDir = resolve(
 				homedir(),
 				".cyrus",
 				"workspaces",
 				repoNameSafe,
 			);
-			const workspaceBaseDir =
-				(await question(
-					`Workspace directory (default: ${defaultWorkspaceDir}): `,
-				)) || defaultWorkspaceDir;
 
 			// Note: Prompt template is now hardcoded - no longer configurable
 
