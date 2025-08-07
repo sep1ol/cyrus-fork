@@ -259,14 +259,14 @@ class EdgeApp {
 				"TodoWrite",
 				"NotebookRead",
 				"NotebookEdit",
-				"Batch"
+				"Batch",
 			];
 
 			// Label prompts - default to common label mappings
 			const labelPrompts = {
 				debugger: ["Bug"],
 				builder: ["Feature", "Improvement"],
-				scoper: ["PRD"]
+				scoper: ["PRD"],
 			};
 
 			rl.close();
