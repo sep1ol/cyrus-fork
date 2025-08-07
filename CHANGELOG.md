@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
   - Streamlined first-time user experience with sensible defaults
 
 ### Fixed
-- Fixed duplicate OAuth authorization messages during Linear login flow
+- Fixed duplicate OAuth authorization messages during Linear login flow while ensuring browser still opens automatically
 
 ## [0.1.38] - 2025-08-06
 

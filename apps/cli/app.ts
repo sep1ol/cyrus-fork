@@ -302,7 +302,20 @@ class EdgeApp {
 	async startOAuthFlow(proxyUrl: string): Promise<LinearCredentials> {
 		if (this.edgeWorker) {
 			// Use existing EdgeWorker's OAuth flow
-			return this.edgeWorker.startOAuthFlow(proxyUrl);
+			const port = this.edgeWorker.getServerPort();
+			const callbackBaseUrl =
+				process.env.CYRUS_BASE_URL || `http://localhost:${port}`;
+			const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
+
+			// Let SharedApplicationServer print the messages, but we handle browser opening
+			const resultPromise = this.edgeWorker.startOAuthFlow(proxyUrl);
+
+			// Open browser after SharedApplicationServer prints its messages
+			open(authUrl).catch(() => {
+				// Error is already communicated by SharedApplicationServer
+			});
+
+			return resultPromise;
 		} else {
 			// Create temporary SharedApplicationServer for OAuth flow during initial setup
 			const serverPort = process.env.CYRUS_SERVER_PORT
@@ -314,8 +327,21 @@ class EdgeApp {
 				// Start the server
 				await tempServer.start();
 
-				// Use temporary server's OAuth flow
-				const result = await tempServer.startOAuthFlow(proxyUrl);
+				const port = tempServer.getPort();
+				const callbackBaseUrl =
+					process.env.CYRUS_BASE_URL || `http://localhost:${port}`;
+				const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
+
+				// Start OAuth flow (this prints the messages)
+				const resultPromise = tempServer.startOAuthFlow(proxyUrl);
+
+				// Open browser after SharedApplicationServer prints its messages
+				open(authUrl).catch(() => {
+					// Error is already communicated by SharedApplicationServer
+				});
+
+				// Wait for OAuth flow to complete
+				const result = await resultPromise;
 
 				return {
 					linearToken: result.linearToken,
