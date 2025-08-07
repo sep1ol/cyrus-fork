@@ -64,8 +64,8 @@ For security configuration details, see: https://docs.anthropic.com/en/docs/clau
 Path(s) to MCP (Model Context Protocol) configuration files. MCP allows Claude to access external tools and data sources like databases or APIs.
 
 Can be specified as:
-- A single string: `"mcpConfigPath": "./mcp-config.json"`
-- An array of strings: `"mcpConfigPath": ["./mcp-base.json", "./mcp-local.json"]`
+- A single string: `"mcpConfigPath": "/home/user/myapp/mcp-config.json"`
+- An array of strings: `"mcpConfigPath": ["/home/user/myapp/mcp-base.json", "/home/user/myapp/mcp-local.json"]`
 
 When multiple files are provided, configurations are composed together. Later files override earlier ones for the same server names.
 
