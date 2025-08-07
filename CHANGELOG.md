@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
   - Workspace directory automatically uses `~/.cyrus/workspaces/<repo-name>`
   - Streamlined first-time user experience with sensible defaults
 
+### Added
+- Configuration documentation in README explaining all customizable settings
+- Link to configuration docs in CLI output after setup completion
+
 ### Fixed
 - Fixed duplicate OAuth authorization messages during Linear login flow while ensuring browser still opens automatically
 

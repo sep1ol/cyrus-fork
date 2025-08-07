@@ -500,6 +500,9 @@ class EdgeApp {
 							console.log(
 								"💡 You can edit this file and restart Cyrus at any time to modify settings.",
 							);
+							console.log(
+								"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
+							);
 
 							// Restart edge worker with new config
 							await this.edgeWorker!.stop();
@@ -796,6 +799,9 @@ class EdgeApp {
 					);
 					console.log(
 						"💡 You can edit this file and restart Cyrus at any time to modify settings.",
+					);
+					console.log(
+						"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
 					);
 
 					// Ask if they want to add another
