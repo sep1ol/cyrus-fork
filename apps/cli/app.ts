@@ -266,6 +266,13 @@ class EdgeApp {
 				"Batch"
 			];
 
+			// Label prompts - default to common label mappings
+			const labelPrompts = {
+				debugger: ["Bug"],
+				builder: ["Feature", "Improvement"],
+				scoper: ["PRD"]
+			};
+
 			rl.close();
 
 			// Create repository configuration
@@ -279,6 +286,7 @@ class EdgeApp {
 				workspaceBaseDir: resolve(workspaceBaseDir),
 				isActive: true,
 				allowedTools,
+				labelPrompts,
 			};
 
 			return repository;

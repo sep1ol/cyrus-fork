@@ -8,7 +8,8 @@ All notable changes to this project will be documented in this file.
 - Simplified initial setup by removing configuration prompts for MCP, labels, Linear teams, and allowed tools
   - MCP configuration is now optional with no default prompt
   - Allowed tools default to all standard tools plus Bash(git:*) and Bash(gh:*) for immediate productivity
-  - Team-based routing and label-based system prompts can be configured later if needed
+  - Label-based system prompts now have defaults: "Bug" for debugger mode, "Feature,Improvement" for builder mode, and "PRD" for scoper mode
+  - Team-based routing defaults to all workspace issues (no team filtering)
   - Streamlined first-time user experience with sensible defaults
 
 ## [0.1.38] - 2025-08-06
