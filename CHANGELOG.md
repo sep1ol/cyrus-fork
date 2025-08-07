@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
   - Team-based routing defaults to all workspace issues (no team filtering)
   - Streamlined first-time user experience with sensible defaults
 
+### Fixed
+- Fixed duplicate OAuth authorization messages during Linear login flow
+
 ## [0.1.38] - 2025-08-06
 
 ### Added
