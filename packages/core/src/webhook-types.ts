@@ -234,6 +234,7 @@ export interface LinearWebhookAgentActivity {
 	agentSessionId: string;
 	sourceCommentId: string;
 	content: LinearWebhookAgentActivityContent;
+	signal?: "stop"; // Optional signal modifier for user intent
 }
 
 /**

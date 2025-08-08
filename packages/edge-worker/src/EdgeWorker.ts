@@ -808,6 +808,36 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		const promptBody = webhook.agentActivity.content.body;
+		const stopSignal = webhook.agentActivity.signal === "stop";
+
+		// Handle stop signal
+		if (stopSignal) {
+			console.log(
+				`[EdgeWorker] Received stop signal for agent activity session ${linearAgentActivitySessionId}`,
+			);
+
+			// Stop the existing runner if it's active
+			if (existingRunner) {
+				existingRunner.stop();
+				console.log(
+					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
+				);
+			}
+
+			// Send confirmation response to Linear
+			const wasStreaming = existingRunner?.isStreaming() || false;
+			const sessionStatus = wasStreaming ? "active session" : "idle session";
+			const issueTitle = issue.title || "this issue";
+			
+			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Session Status:** ${sessionStatus} terminated\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
+			
+			await agentSessionManager.createResponseActivity(
+				linearAgentActivitySessionId,
+				stopConfirmation,
+			);
+
+			return; // Exit early - stop signal handled
+		}
 
 		// Check if there's an existing runner for this comment thread
 		if (existingRunner?.isStreaming()) {
