@@ -670,7 +670,7 @@ class EdgeApp {
 					try {
 						const subscriptionStatus = await this.checkSubscriptionStatus(customerId);
 						
-						if (!subscriptionStatus.hasActiveSubscription) {
+						if (!subscriptionStatus.requiresPayment) {
 							console.error("\n❌ Subscription Invalid");
 							console.log("─".repeat(50));
 							
