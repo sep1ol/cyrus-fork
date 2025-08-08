@@ -552,6 +552,47 @@ class EdgeApp {
 	}
 
 	/**
+	 * Check subscription status with the Cyrus API
+	 */
+	async checkSubscriptionStatus(customerId: string): Promise<{
+		hasActiveSubscription: boolean;
+		status: string;
+		requiresPayment: boolean;
+		isReturningCustomer?: boolean;
+	}> {
+		try {
+			const response = await fetch(
+				`https://www.atcyrus.com/api/subscription-status?customerId=${encodeURIComponent(customerId)}`,
+				{
+					method: "GET",
+					headers: {
+						"Content-Type": "application/json",
+					},
+				}
+			);
+
+			if (!response.ok) {
+				if (response.status === 400) {
+					const data = await response.json() as { error?: string };
+					throw new Error(data.error || "Invalid customer ID format");
+				}
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+
+			const data = await response.json() as {
+				hasActiveSubscription: boolean;
+				status: string;
+				requiresPayment: boolean;
+				isReturningCustomer?: boolean;
+			};
+			return data;
+		} catch (error) {
+			console.error("Failed to check subscription status:", error);
+			throw error;
+		}
+	}
+
+	/**
 	 * Start the edge application
 	 */
 	async start(): Promise<void> {
@@ -624,15 +665,44 @@ class EdgeApp {
 						process.exit(1);
 					}
 
-					// Save the customer ID
-					edgeConfig.stripeCustomerId = customerId;
-					this.saveEdgeConfig(edgeConfig);
+					// Validate subscription before saving
+					console.log("\n🔐 Validating subscription...");
+					try {
+						const subscriptionStatus = await this.checkSubscriptionStatus(customerId);
+						
+						if (!subscriptionStatus.hasActiveSubscription) {
+							console.error("\n❌ Subscription Invalid");
+							console.log("─".repeat(50));
+							
+							if (subscriptionStatus.isReturningCustomer) {
+								console.log("Your subscription has expired or been cancelled.");
+								console.log(`Status: ${subscriptionStatus.status}`);
+								console.log("\nPlease visit https://www.atcyrus.com/pricing to reactivate your subscription.");
+							} else {
+								console.log("No active subscription found for this customer ID.");
+								console.log("\nPlease visit https://www.atcyrus.com/pricing to start a subscription.");
+							}
+							
+							rl.close();
+							process.exit(1);
+						}
+						
+						// Subscription is valid, save the customer ID
+						edgeConfig.stripeCustomerId = customerId;
+						this.saveEdgeConfig(edgeConfig);
 
-					console.log("\n✅ Customer ID saved successfully!");
-					console.log("Continuing with startup...\n");
+						console.log(`✅ Subscription active (${subscriptionStatus.status})`);
+						console.log("✅ Customer ID saved successfully!");
+						console.log("Continuing with startup...\n");
 
-					// Reload config to include the new customer ID
-					edgeConfig = this.loadEdgeConfig();
+						// Reload config to include the new customer ID
+						edgeConfig = this.loadEdgeConfig();
+					} catch (error) {
+						console.error("\n❌ Failed to validate subscription");
+						console.log(`Error: ${(error as Error).message}`);
+						rl.close();
+						process.exit(1);
+					}
 				} else if (choice === "3") {
 					console.log("\n🔧 Self-Hosted Proxy Setup");
 					console.log("─".repeat(50));
@@ -656,6 +726,44 @@ class EdgeApp {
 					rl.close();
 					console.log("\nExiting...");
 					process.exit(0);
+				}
+			}
+
+			// If using default proxy and has customer ID, validate subscription
+			if (isUsingDefaultProxy && hasCustomerId && edgeConfig.stripeCustomerId) {
+				console.log("\n🔐 Validating subscription...");
+				try {
+					const subscriptionStatus = await this.checkSubscriptionStatus(edgeConfig.stripeCustomerId);
+					
+					if (!subscriptionStatus.hasActiveSubscription) {
+						console.error("\n❌ Subscription Invalid");
+						console.log("─".repeat(50));
+						
+						if (subscriptionStatus.isReturningCustomer) {
+							console.log("Your subscription has expired or been cancelled.");
+							console.log(`Status: ${subscriptionStatus.status}`);
+							console.log("\nTo continue using Cyrus, please:");
+							console.log("1. Visit https://www.atcyrus.com/pricing to reactivate your subscription");
+							console.log("2. Or set up your own proxy (run 'cyrus' and select option 3)");
+						} else {
+							console.log("No active subscription found for this customer ID.");
+							console.log("\nTo use Cyrus, please:");
+							console.log("1. Visit https://www.atcyrus.com/pricing to start a subscription");
+							console.log("2. Or set up your own proxy (run 'cyrus' and select option 3)");
+						}
+						
+						process.exit(1);
+					}
+					
+					// Show subscription status
+					console.log(`✅ Subscription active (${subscriptionStatus.status})`);
+				} catch (error) {
+					console.error("\n⚠️ Warning: Could not validate subscription");
+					console.log("─".repeat(50));
+					console.log("Unable to connect to subscription service.");
+					console.log("Continuing with startup, but subscription may be required.");
+					console.log(`Error: ${(error as Error).message}`);
+					// Continue execution but warn user
 				}
 			}
 
@@ -1530,6 +1638,41 @@ async function setCustomerIdCommand() {
 	}
 
 	try {
+		// Check if using default proxy
+		const proxyUrl = process.env.PROXY_URL || "https://cyrus-proxy.ceedar.workers.dev";
+		const defaultProxyUrl = "https://cyrus-proxy.ceedar.workers.dev";
+		const isUsingDefaultProxy = proxyUrl === defaultProxyUrl;
+
+		// Validate subscription for default proxy users
+		if (isUsingDefaultProxy) {
+			console.log("\n🔐 Validating subscription...");
+			try {
+				const subscriptionStatus = await app.checkSubscriptionStatus(customerId);
+				
+				if (!subscriptionStatus.hasActiveSubscription) {
+					console.error("\n❌ Subscription Invalid");
+					console.log("─".repeat(50));
+					
+					if (subscriptionStatus.isReturningCustomer) {
+						console.log("Your subscription has expired or been cancelled.");
+						console.log(`Status: ${subscriptionStatus.status}`);
+						console.log("\nPlease visit https://www.atcyrus.com/pricing to reactivate your subscription.");
+					} else {
+						console.log("No active subscription found for this customer ID.");
+						console.log("\nPlease visit https://www.atcyrus.com/pricing to start a subscription.");
+					}
+					
+					process.exit(1);
+				}
+				
+				console.log(`✅ Subscription active (${subscriptionStatus.status})`);
+			} catch (error) {
+				console.error("\n❌ Failed to validate subscription");
+				console.log(`Error: ${(error as Error).message}`);
+				process.exit(1);
+			}
+		}
+
 		// Load existing config or create new one
 		let config: EdgeConfig = { repositories: [] };
 
@@ -1546,7 +1689,9 @@ async function setCustomerIdCommand() {
 		console.log("\n✅ Customer ID saved successfully!");
 		console.log("─".repeat(50));
 		console.log(`Customer ID: ${customerId}`);
-		console.log("\nYou now have access to Cyrus Pro features.");
+		if (isUsingDefaultProxy) {
+			console.log("\nYou now have access to Cyrus Pro features.");
+		}
 		console.log('Run "cyrus" to start the edge worker.');
 	} catch (error) {
 		console.error("Failed to save customer ID:", (error as Error).message);

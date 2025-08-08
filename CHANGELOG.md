@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Customer subscription validation for Cyrus Pro users
+  - Automatically checks subscription status when using the default proxy with a customer ID
+  - Blocks access if subscription is expired, cancelled, or invalid
+  - Shows appropriate messages for returning customers vs new customers
+  - Validates subscription when setting customer ID via `cyrus set-customer-id` command
+
 ## [0.1.39] - 2025-08-08
 
 ### Changed
