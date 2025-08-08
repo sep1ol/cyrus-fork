@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.39] - 2025-08-08
+
 ### Changed
 - Simplified initial setup by removing configuration prompts for MCP, labels, Linear teams, allowed tools, and workspace directory
   - MCP configuration is now optional with no default prompt
@@ -19,6 +21,23 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed duplicate OAuth authorization messages during Linear login flow while ensuring browser still opens automatically
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.8
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.17
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.22
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.39
 
 ## [0.1.38] - 2025-08-06
 
