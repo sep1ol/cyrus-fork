@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { EdgeWorker } from "../src/EdgeWorker";
-import type { EdgeWorkerConfig } from "../src/types";
-import type { LinearAgentSessionPromptedWebhook } from "cyrus-core/webhook-types";
-import { AgentSessionManager } from "../src/AgentSessionManager";
-import { SharedApplicationServer } from "../src/SharedApplicationServer";
-import { ClaudeRunner } from "cyrus-claude-runner";
 import { LinearClient } from "@linear/sdk";
+import { ClaudeRunner } from "cyrus-claude-runner";
+import type { LinearAgentSessionPromptedWebhook } from "cyrus-core/webhook-types";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentSessionManager } from "../src/AgentSessionManager";
+import { EdgeWorker } from "../src/EdgeWorker";
+import { SharedApplicationServer } from "../src/SharedApplicationServer";
+import type { EdgeWorkerConfig } from "../src/types";
 
 // Mock external dependencies
 vi.mock("cyrus-claude-runner");
@@ -89,14 +89,19 @@ describe("EdgeWorker - Stop Signal Handling", () => {
 				linearTeamId: "test-team",
 			}),
 		};
-		vi.mocked(SharedApplicationServer).mockImplementation(() => mockSharedServer);
+		vi.mocked(SharedApplicationServer).mockImplementation(
+			() => mockSharedServer,
+		);
 
 		// Create EdgeWorker instance
 		edgeWorker = new EdgeWorker(mockConfig);
-		
+
 		// Setup agentSessionManagers map
 		(edgeWorker as any).agentSessionManagers = new Map();
-		(edgeWorker as any).agentSessionManagers.set("test-repo", mockSessionManager);
+		(edgeWorker as any).agentSessionManagers.set(
+			"test-repo",
+			mockSessionManager,
+		);
 
 		// Setup linearClients map
 		(edgeWorker as any).linearClients = new Map();
@@ -108,7 +113,9 @@ describe("EdgeWorker - Stop Signal Handling", () => {
 		}));
 
 		// Mock postInstantPromptedAcknowledgment
-		(edgeWorker as any).postInstantPromptedAcknowledgment = vi.fn().mockResolvedValue(undefined);
+		(edgeWorker as any).postInstantPromptedAcknowledgment = vi
+			.fn()
+			.mockResolvedValue(undefined);
 	});
 
 	afterEach(() => {
@@ -197,7 +204,10 @@ describe("EdgeWorker - Stop Signal Handling", () => {
 			};
 
 			// Call the method
-			await (edgeWorker as any).handleUserPostedAgentActivity(webhook, repository);
+			await (edgeWorker as any).handleUserPostedAgentActivity(
+				webhook,
+				repository,
+			);
 
 			// Verify Claude runner was stopped
 			expect(mockClaudeRunner.stop).toHaveBeenCalledTimes(1);
@@ -205,15 +215,24 @@ describe("EdgeWorker - Stop Signal Handling", () => {
 			// Verify response was sent to Linear
 			expect(mockSessionManager.createResponseActivity).toHaveBeenCalledWith(
 				"session-id",
-				expect.stringContaining("I've stopped working on Test Issue as requested"),
+				expect.stringContaining(
+					"I've stopped working on Test Issue as requested",
+				),
 			);
 
 			// Verify the response contains the expected elements
-			const responseCall = mockSessionManager.createResponseActivity.mock.calls[0];
+			const responseCall =
+				mockSessionManager.createResponseActivity.mock.calls[0];
 			const responseMessage = responseCall[1];
-			expect(responseMessage).toContain("Session Status:** active session terminated");
-			expect(responseMessage).toContain("Stop Signal:** Received from Test User");
-			expect(responseMessage).toContain("Action Taken:** All ongoing work has been halted");
+			expect(responseMessage).toContain(
+				"Session Status:** active session terminated",
+			);
+			expect(responseMessage).toContain(
+				"Stop Signal:** Received from Test User",
+			);
+			expect(responseMessage).toContain(
+				"Action Taken:** All ongoing work has been halted",
+			);
 		});
 
 		it("should handle stop signal when no active session exists", async () => {
@@ -296,7 +315,10 @@ describe("EdgeWorker - Stop Signal Handling", () => {
 			};
 
 			// Call the method
-			await (edgeWorker as any).handleUserPostedAgentActivity(webhook, repository);
+			await (edgeWorker as any).handleUserPostedAgentActivity(
+				webhook,
+				repository,
+			);
 
 			// Verify Claude runner was NOT called (no runner exists)
 			expect(mockClaudeRunner.stop).not.toHaveBeenCalled();
@@ -304,13 +326,18 @@ describe("EdgeWorker - Stop Signal Handling", () => {
 			// Verify response was still sent to Linear
 			expect(mockSessionManager.createResponseActivity).toHaveBeenCalledWith(
 				"session-id",
-				expect.stringContaining("I've stopped working on Test Issue as requested"),
+				expect.stringContaining(
+					"I've stopped working on Test Issue as requested",
+				),
 			);
 
 			// Verify the response indicates idle session
-			const responseCall = mockSessionManager.createResponseActivity.mock.calls[0];
+			const responseCall =
+				mockSessionManager.createResponseActivity.mock.calls[0];
 			const responseMessage = responseCall[1];
-			expect(responseMessage).toContain("Session Status:** idle session terminated");
+			expect(responseMessage).toContain(
+				"Session Status:** idle session terminated",
+			);
 		});
 
 		it("should continue normal processing when no stop signal is present", async () => {
@@ -410,10 +437,15 @@ describe("EdgeWorker - Stop Signal Handling", () => {
 			});
 
 			// Call the method
-			await (edgeWorker as any).handleUserPostedAgentActivity(webhook, repository);
+			await (edgeWorker as any).handleUserPostedAgentActivity(
+				webhook,
+				repository,
+			);
 
 			// Verify stop response was NOT sent
-			expect(mockSessionManager.createResponseActivity).not.toHaveBeenCalledWith(
+			expect(
+				mockSessionManager.createResponseActivity,
+			).not.toHaveBeenCalledWith(
 				expect.any(String),
 				expect.stringContaining("I've stopped working"),
 			);
@@ -512,10 +544,15 @@ describe("EdgeWorker - Stop Signal Handling", () => {
 			});
 
 			// Call the method
-			await (edgeWorker as any).handleUserPostedAgentActivity(webhook, repository);
+			await (edgeWorker as any).handleUserPostedAgentActivity(
+				webhook,
+				repository,
+			);
 
 			// Verify stop response was NOT sent (no signal, just text)
-			expect(mockSessionManager.createResponseActivity).not.toHaveBeenCalledWith(
+			expect(
+				mockSessionManager.createResponseActivity,
+			).not.toHaveBeenCalledWith(
 				expect.any(String),
 				expect.stringContaining("I've stopped working"),
 			);

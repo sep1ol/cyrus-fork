@@ -823,14 +823,9 @@ export class EdgeWorker extends EventEmitter {
 					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
 				);
 			}
-
-			// Send confirmation response to Linear
-			const wasStreaming = existingRunner?.isStreaming() || false;
-			const sessionStatus = wasStreaming ? "active session" : "idle session";
 			const issueTitle = issue.title || "this issue";
-			
-			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Session Status:** ${sessionStatus} terminated\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
-			
+			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
+
 			await agentSessionManager.createResponseActivity(
 				linearAgentActivitySessionId,
 				stopConfirmation,
