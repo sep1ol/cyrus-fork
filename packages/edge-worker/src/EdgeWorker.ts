@@ -458,39 +458,36 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// If we have repos with routing labels and an issue ID, check labels
-		if (reposWithRoutingLabels.length > 0 && issueId) {
+		if (reposWithRoutingLabels.length > 0 && issueId && workspaceRepos[0]) {
 			// We need a Linear client to fetch labels
 			// Use the first workspace repo's client temporarily
-			const tempRepo = workspaceRepos[0];
-			if (tempRepo) {
-				const linearClient = this.linearClients.get(tempRepo.id);
+			const linearClient = this.linearClients.get(workspaceRepos[0].id);
 
-				if (linearClient) {
-					try {
-						// Fetch the issue to get labels
-						const issue = await linearClient.issue(issueId);
-						const labels = await this.fetchIssueLabels(issue);
+			if (linearClient) {
+				try {
+					// Fetch the issue to get labels
+					const issue = await linearClient.issue(issueId);
+					const labels = await this.fetchIssueLabels(issue);
 
-						// Check each repo with routing labels
-						for (const repo of reposWithRoutingLabels) {
-							if (
-								repo.routingLabels?.some((routingLabel) =>
-									labels.includes(routingLabel),
-								)
-							) {
-								console.log(
-									`[EdgeWorker] Matched repository ${repo.name} by label routing`,
-								);
-								return repo;
-							}
+					// Check each repo with routing labels
+					for (const repo of reposWithRoutingLabels) {
+						if (
+							repo.routingLabels?.some((routingLabel) =>
+								labels.includes(routingLabel),
+							)
+						) {
+							console.log(
+								`[EdgeWorker] Matched repository ${repo.name} by label routing`,
+							);
+							return repo;
 						}
-					} catch (error) {
-						console.error(
-							`[EdgeWorker] Failed to fetch labels for routing:`,
-							error,
-						);
-						// Fall back to team-based routing
 					}
+				} catch (error) {
+					console.error(
+						`[EdgeWorker] Failed to fetch labels for routing:`,
+						error,
+					);
+					// Fall back to team-based routing
 				}
 			}
 		}
