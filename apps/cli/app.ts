@@ -25,6 +25,9 @@ import open from "open";
 const args = process.argv.slice(2);
 const envFileArg = args.find((arg) => arg.startsWith("--env-file="));
 
+// Constants
+const DEFAULT_PROXY_URL = "https://cyrus-proxy.ceedar.workers.dev";
+
 // Note: __dirname removed since version is now hardcoded
 
 // Handle --version argument
@@ -595,7 +598,7 @@ class EdgeApp {
 	/**
 	 * Validate customer ID format
 	 */
-	private validateCustomerId(customerId: string): void {
+	public validateCustomerId(customerId: string): void {
 		if (!customerId.startsWith("cus_")) {
 			console.error("\n❌ Invalid customer ID format");
 			console.log('Customer IDs should start with "cus_"');
@@ -626,7 +629,7 @@ class EdgeApp {
 			console.log(
 				"\nPlease visit https://www.atcyrus.com/pricing to start a subscription.",
 			);
-			console.log("Once you obtain a valid cutsomer ID,");
+			console.log("Once you obtain a valid customer ID,");
 			console.log("Run: cyrus set-customer-id cus_XXXXX");
 		}
 
@@ -636,7 +639,7 @@ class EdgeApp {
 	/**
 	 * Validate subscription and handle failures
 	 */
-	private async validateAndHandleSubscription(
+	public async validateAndHandleSubscription(
 		customerId: string,
 	): Promise<void> {
 		console.log("\n🔐 Validating subscription...");
@@ -658,7 +661,7 @@ class EdgeApp {
 	/**
 	 * Create readline interface and ask question
 	 */
-	private async askQuestion(prompt: string): Promise<string> {
+	public async askQuestion(prompt: string): Promise<string> {
 		const rl = readline.createInterface({
 			input: process.stdin,
 			output: process.stdout,
@@ -678,8 +681,7 @@ class EdgeApp {
 	async start(): Promise<void> {
 		try {
 			// Set proxy URL with default
-			const proxyUrl =
-				process.env.PROXY_URL || "https://cyrus-proxy.ceedar.workers.dev";
+			const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
 
 			// No need to validate Claude CLI - using Claude TypeScript SDK now
 
@@ -688,8 +690,7 @@ class EdgeApp {
 			let repositories = edgeConfig.repositories || [];
 
 			// Check if using default proxy URL without a customer ID
-			const defaultProxyUrl = "https://cyrus-proxy.ceedar.workers.dev";
-			const isUsingDefaultProxy = proxyUrl === defaultProxyUrl;
+			const isUsingDefaultProxy = proxyUrl === DEFAULT_PROXY_URL;
 			const hasCustomerId = !!edgeConfig.stripeCustomerId;
 
 			if (isUsingDefaultProxy && !hasCustomerId) {
@@ -946,9 +947,7 @@ class EdgeApp {
 			await this.startEdgeWorker({ proxyUrl, repositories });
 
 			// Display plan status
-			const defaultProxyUrlForStatus = "https://cyrus-proxy.ceedar.workers.dev";
-			const isUsingDefaultProxyForStatus =
-				proxyUrl === defaultProxyUrlForStatus;
+			const isUsingDefaultProxyForStatus = proxyUrl === DEFAULT_PROXY_URL;
 			const hasCustomerIdForStatus = !!edgeConfig.stripeCustomerId;
 
 			console.log(`\n${"─".repeat(70)}`);
@@ -1443,7 +1442,7 @@ async function refreshTokenCommand() {
 			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 			: 3456;
 		const callbackUrl = `http://localhost:${serverPort}/callback`;
-		const oauthUrl = `https://cyrus-proxy.ceedar.workers.dev/oauth/authorize?callback=${encodeURIComponent(
+		const oauthUrl = `${DEFAULT_PROXY_URL}/oauth/authorize?callback=${encodeURIComponent(
 			callbackUrl,
 		)}`;
 
@@ -1620,10 +1619,8 @@ async function setCustomerIdCommand() {
 
 	try {
 		// Check if using default proxy
-		const proxyUrl =
-			process.env.PROXY_URL || "https://cyrus-proxy.ceedar.workers.dev";
-		const defaultProxyUrl = "https://cyrus-proxy.ceedar.workers.dev";
-		const isUsingDefaultProxy = proxyUrl === defaultProxyUrl;
+		const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
+		const isUsingDefaultProxy = proxyUrl === DEFAULT_PROXY_URL;
 
 		// Validate subscription for default proxy users
 		if (isUsingDefaultProxy) {
