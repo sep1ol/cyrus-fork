@@ -11,6 +11,12 @@ All notable changes to this project will be documented in this file.
   - Shows appropriate messages for returning customers vs new customers
   - Validates subscription when setting customer ID via `cyrus set-customer-id` command
 
+### Changed
+- Updated Linear SDK from v54 to v55.1.0 to support Agent Activity Signals
+  - Stop button in Linear UI now sends a deterministic `stop` signal that Cyrus responds to immediately
+  - When you click the stop button while Cyrus is working, it will cleanly halt all operations and confirm the stop action
+  - The stop signal implementation ensures no work continues after the stop is requested
+
 ## [0.1.39] - 2025-08-08
 
 ### Changed
