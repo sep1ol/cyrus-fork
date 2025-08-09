@@ -605,6 +605,11 @@ export class EdgeWorker extends EventEmitter {
 		// Build allowed tools list with Linear MCP tools (now with prompt type context)
 		const allowedTools = this.buildAllowedTools(repository, promptType);
 
+		console.log(
+			`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
+			allowedTools,
+		);
+
 		// Create Claude runner with attachment directory access and optional system prompt
 		// Always append the last message marker to prevent duplication
 		const lastMessageMarker =
@@ -891,6 +896,11 @@ export class EdgeWorker extends EventEmitter {
 
 			// Build allowed tools list with Linear MCP tools (now with prompt type context)
 			const allowedTools = this.buildAllowedTools(repository, promptType);
+
+			console.log(
+				`[EdgeWorker] Configured allowed tools for ${issue.identifier} (continued session):`,
+				allowedTools,
+			);
 
 			const allowedDirectories = [attachmentsDir];
 
@@ -2384,6 +2394,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		promptType?: "debugger" | "builder" | "scoper",
 	): string[] {
 		let baseTools: string[] = [];
+		let toolSource = "";
 
 		// Priority order:
 		// 1. Repository-specific prompt type configuration
@@ -2391,6 +2402,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			baseTools = this.resolveToolPreset(
 				repository.labelPrompts[promptType].allowedTools,
 			);
+			toolSource = `repository label prompt (${promptType})`;
 		}
 		// 2. Global prompt type defaults
 		else if (
@@ -2400,18 +2412,22 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			baseTools = this.resolveToolPreset(
 				this.config.promptDefaults[promptType].allowedTools,
 			);
+			toolSource = `global prompt defaults (${promptType})`;
 		}
 		// 3. Repository-level allowed tools
 		else if (repository.allowedTools) {
 			baseTools = repository.allowedTools;
+			toolSource = "repository configuration";
 		}
 		// 4. Global default allowed tools
 		else if (this.config.defaultAllowedTools) {
 			baseTools = this.config.defaultAllowedTools;
+			toolSource = "global defaults";
 		}
 		// 5. Fall back to safe tools
 		else {
 			baseTools = getSafeTools();
+			toolSource = "safe tools fallback";
 		}
 
 		// Linear MCP tools that should always be available
@@ -2420,6 +2436,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Combine and deduplicate
 		const allTools = [...new Set([...baseTools, ...linearMcpTools])];
+
+		console.log(
+			`[EdgeWorker] Tool selection for ${repository.name}: ${allTools.length} tools from ${toolSource}`,
+		);
 
 		return allTools;
 	}
