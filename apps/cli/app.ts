@@ -785,47 +785,52 @@ class EdgeApp {
 				console.log("\n📋 Step 2: Configure Repository");
 				console.log("─".repeat(50));
 
-				try {
-					const newRepo = await this.setupRepositoryWizard(linearCredentials);
+				// Loop to allow adding multiple repositories
+				let continueAdding = true;
+				while (continueAdding) {
+					try {
+						const newRepo = await this.setupRepositoryWizard(linearCredentials);
 
-					// Add to repositories
-					repositories = [...(edgeConfig.repositories || []), newRepo];
-					edgeConfig.repositories = repositories;
-					this.saveEdgeConfig(edgeConfig);
+						// Add to repositories
+						repositories = [...(edgeConfig.repositories || []), newRepo];
+						edgeConfig.repositories = repositories;
+						this.saveEdgeConfig(edgeConfig);
 
-					console.log("\n✅ Repository configured successfully!");
-					console.log(
-						"📝 ~/.cyrus/config.json file has been updated with your repository configuration.",
-					);
-					console.log(
-						"💡 You can edit this file and restart Cyrus at any time to modify settings.",
-					);
-					console.log(
-						"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
-					);
+						console.log("\n✅ Repository configured successfully!");
+						console.log(
+							"📝 ~/.cyrus/config.json file has been updated with your repository configuration.",
+						);
+						console.log(
+							"💡 You can edit this file and restart Cyrus at any time to modify settings.",
+						);
+						console.log(
+							"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
+						);
 
-					// Ask if they want to add another
-					const rl = readline.createInterface({
-						input: process.stdin,
-						output: process.stdout,
-					});
-					const addAnother = await new Promise<boolean>((resolve) => {
-						rl.question("\nAdd another repository? (y/N): ", (answer) => {
-							rl.close();
-							resolve(answer.toLowerCase() === "y");
+						// Ask if they want to add another
+						const rl = readline.createInterface({
+							input: process.stdin,
+							output: process.stdout,
 						});
-					});
+						const addAnother = await new Promise<boolean>((resolve) => {
+							rl.question("\nAdd another repository? (y/N): ", (answer) => {
+								rl.close();
+								resolve(answer.toLowerCase() === "y");
+							});
+						});
 
-					if (addAnother) {
-						// Restart setup flow
-						return this.start();
+						continueAdding = addAnother;
+						if (continueAdding) {
+							console.log("\n📋 Configure Additional Repository");
+							console.log("─".repeat(50));
+						}
+					} catch (error) {
+						console.error(
+							"\n❌ Repository setup failed:",
+							(error as Error).message,
+						);
+						process.exit(1);
 					}
-				} catch (error) {
-					console.error(
-						"\n❌ Repository setup failed:",
-						(error as Error).message,
-					);
-					process.exit(1);
 				}
 			}
 
