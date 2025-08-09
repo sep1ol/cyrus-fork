@@ -649,6 +649,7 @@ class EdgeApp {
 		} catch (error) {
 			console.error("\n❌ Failed to validate subscription");
 			console.log(`Error: ${(error as Error).message}`);
+			console.log("Run \"cyrus set-customer-id cus_XXXXX\" with a valid customer ID");
 			process.exit(1);
 		}
 	}
@@ -722,11 +723,6 @@ class EdgeApp {
 					);
 
 					this.validateCustomerId(customerId);
-
-					// Validate subscription before saving
-					await this.validateAndHandleSubscription(customerId);
-
-					// Subscription is valid, save the customer ID
 					edgeConfig.stripeCustomerId = customerId;
 					this.saveEdgeConfig(edgeConfig);
 
