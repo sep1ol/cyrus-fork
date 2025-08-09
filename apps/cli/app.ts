@@ -563,36 +563,31 @@ class EdgeApp {
 		requiresPayment: boolean;
 		isReturningCustomer?: boolean;
 	}> {
-		try {
-			const response = await fetch(
-				`https://www.atcyrus.com/api/subscription-status?customerId=${encodeURIComponent(customerId)}`,
-				{
-					method: "GET",
-					headers: {
-						"Content-Type": "application/json",
-					},
+		const response = await fetch(
+			`https://www.atcyrus.com/api/subscription-status?customerId=${encodeURIComponent(customerId)}`,
+			{
+				method: "GET",
+				headers: {
+					"Content-Type": "application/json",
 				},
-			);
+			},
+		);
 
-			if (!response.ok) {
-				if (response.status === 400) {
-					const data = (await response.json()) as { error?: string };
-					throw new Error(data.error || "Invalid customer ID format");
-				}
-				throw new Error(`HTTP error! status: ${response.status}`);
+		if (!response.ok) {
+			if (response.status === 400) {
+				const data = (await response.json()) as { error?: string };
+				throw new Error(data.error || "Invalid customer ID format");
 			}
-
-			const data = (await response.json()) as {
-				hasActiveSubscription: boolean;
-				status: string;
-				requiresPayment: boolean;
-				isReturningCustomer?: boolean;
-			};
-			return data;
-		} catch (error) {
-			console.error("Failed to check subscription status:", error);
-			throw error;
+			throw new Error(`HTTP error! status: ${response.status}`);
 		}
+
+		const data = (await response.json()) as {
+			hasActiveSubscription: boolean;
+			status: string;
+			requiresPayment: boolean;
+			isReturningCustomer?: boolean;
+		};
+		return data;
 	}
 
 	/**
