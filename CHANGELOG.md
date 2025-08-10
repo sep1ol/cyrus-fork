@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.40] - 2025-08-10
+
 ### Added
 - Customer subscription validation for Cyrus Pro users
   - Automatically checks subscription status when using the default proxy with a customer ID
@@ -21,6 +23,23 @@ All notable changes to this project will be documented in this file.
   - When you click the stop button while Cyrus is working, it will cleanly halt all operations and confirm the stop action
   - The stop signal implementation ensures no work continues after the stop is requested
 - Updated Anthropic AI SDK from v0.57.0 to v0.59.0 and Claude Code from v1.0.61 to v1.0.72 for improved Claude integration
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.9
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.18
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.23
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.40
 
 ## [0.1.39] - 2025-08-08
 
