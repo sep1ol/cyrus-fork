@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
   - Blocks access if subscription is expired, cancelled, or invalid
   - Shows appropriate messages for returning customers vs new customers
   - Validates subscription when setting customer ID via `cyrus set-customer-id` command
+- Label-based repository routing - Route Linear issues to different git repositories based on their labels
+  - New `routingLabels` configuration option allows specifying which labels should route to a specific repository
+  - Useful when multiple repositories handle issues from the same Linear team (e.g., backend vs frontend repos)
+  - Label routing takes precedence over team-based routing for more granular control
 
 ### Changed
 - Updated Linear SDK from v54 to v55.1.0 to support Agent Activity Signals
