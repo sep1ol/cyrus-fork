@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.
   - Stop button in Linear UI now sends a deterministic `stop` signal that Cyrus responds to immediately
   - When you click the stop button while Cyrus is working, it will cleanly halt all operations and confirm the stop action
   - The stop signal implementation ensures no work continues after the stop is requested
-- Updated Anthropic AI SDK from v0.57.0 to v0.59.0 for improved Claude integration
+- Updated Anthropic AI SDK from v0.57.0 to v0.59.0 and Claude Code from v1.0.61 to v1.0.72 for improved Claude integration
 
 ## [0.1.39] - 2025-08-08
 
