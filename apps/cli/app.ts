@@ -804,7 +804,10 @@ class EdgeApp {
 					let continueAdding = true;
 					while (continueAdding) {
 						try {
-							const newRepo = await this.setupRepositoryWizard(linearCredentials, rl);
+							const newRepo = await this.setupRepositoryWizard(
+								linearCredentials,
+								rl,
+							);
 
 							// Add to repositories
 							repositories = [...(edgeConfig.repositories || []), newRepo];
