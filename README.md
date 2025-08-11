@@ -43,6 +43,96 @@ cyrus
 
 Keep `cyrus` running, and the agent will start monitoring issues assigned to you in Linear and process them automatically, on your very own device.
 
+## Configuration
+
+After initial setup, Cyrus stores your configuration in `~/.cyrus/config.json`. You can edit this file to customize the following settings:
+
+### Repository Configuration
+
+Each repository in the `repositories` array can have these optional properties:
+
+#### `allowedTools` (array of strings)
+Controls which tools Claude can use when processing issues. Default: all standard tools plus `Bash(git:*)` and `Bash(gh:*)`.
+
+Examples:
+- `["Read(**)", "Edit(**)", "Bash(git:*)", "Task"]` - Allow reading, editing, git commands, and task management
+- `["Read(**)", "Edit(**)", "Bash(npm:*)", "WebSearch"]` - Allow reading, editing, npm commands, and web search
+- `["Read(**)", "Edit(**)", "mcp__github"]` - Allow all tools from the GitHub MCP server
+- `["Read(**)", "Edit(**)", "mcp__github__search_repositories"]` - Allow only the search_repositories tool from GitHub MCP
+
+For security configuration details, see: https://docs.anthropic.com/en/docs/claude-code/settings#permissions
+
+#### `mcpConfigPath` (string or array of strings)
+Path(s) to MCP (Model Context Protocol) configuration files. MCP allows Claude to access external tools and data sources like databases or APIs.
+
+Can be specified as:
+- A single string: `"mcpConfigPath": "/home/user/myapp/mcp-config.json"`
+- An array of strings: `"mcpConfigPath": ["/home/user/myapp/mcp-base.json", "/home/user/myapp/mcp-local.json"]`
+
+When multiple files are provided, configurations are composed together. Later files override earlier ones for the same server names.
+
+Expected file format:
+```json
+{
+  "mcpServers": {
+    "server-name": {
+      "type": "stdio",
+      "command": "command-to-run",
+      "args": ["arg1", "arg2"]
+    }
+  }
+}
+```
+
+Learn more about MCP: https://docs.anthropic.com/en/docs/claude-code/mcp
+
+#### `teamKeys` (array of strings)
+Routes Linear issues from specific teams to this repository. When specified, only issues from matching teams trigger Cyrus.
+
+Example: `["CEE", "FRONT", "BACK"]` - Only process issues from teams CEE, FRONT, and BACK
+
+#### `routingLabels` (array of strings)
+Routes Linear issues with specific labels to this repository. This is useful when you have multiple repositories handling issues from the same Linear team but want to route based on labels (e.g., "backend" vs "frontend" labels).
+
+Example: `["backend", "api"]` - Only process issues that have the "backend" or "api" label
+
+Note: Label-based routing takes precedence over team-based routing. If an issue matches both a `routingLabels` and `teamKeys` configuration, the label match will be used.
+
+#### `labelPrompts` (object)
+Routes issues to different AI modes based on Linear labels. Default:
+```json
+{
+  "debugger": ["Bug"],
+  "builder": ["Feature", "Improvement"],
+  "scoper": ["PRD"]
+}
+```
+
+- **debugger**: Systematic problem investigation mode
+- **builder**: Feature implementation mode
+- **scoper**: Requirements analysis mode
+
+### Example Configuration
+
+```json
+{
+  "repositories": [{
+    "id": "workspace-123456",
+    "name": "my-app",
+    "repositoryPath": "/path/to/repo",
+    "allowedTools": ["Read(**)", "Edit(**)", "Bash(git:*)", "Bash(gh:*)", "Task"],
+    "mcpConfigPath": "./mcp-config.json",
+    "teamKeys": ["BACKEND"],
+    "routingLabels": ["backend", "api", "infrastructure"],
+    "labelPrompts": {
+      "debugger": ["Bug", "Hotfix"],
+      "builder": ["Feature"],
+      "scoper": ["RFC", "Design"]
+    }
+  }]
+}
+```
+
 ## Setup on Remote Host
 
 If you want to host Cyrus on a remote machine for 24/7 availability, follow these steps on a newly created virtual machine to get started.

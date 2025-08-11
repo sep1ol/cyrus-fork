@@ -25,6 +25,9 @@ import open from "open";
 const args = process.argv.slice(2);
 const envFileArg = args.find((arg) => arg.startsWith("--env-file="));
 
+// Constants
+const DEFAULT_PROXY_URL = "https://cyrus-proxy.ceedar.workers.dev";
+
 // Note: __dirname removed since version is now hardcoded
 
 // Handle --version argument
@@ -207,11 +210,15 @@ class EdgeApp {
 	 */
 	async setupRepositoryWizard(
 		linearCredentials: LinearCredentials,
+		rl?: readline.Interface,
 	): Promise<RepositoryConfig> {
-		const rl = readline.createInterface({
-			input: process.stdin,
-			output: process.stdout,
-		});
+		const shouldCloseRl = !rl;
+		if (!rl) {
+			rl = readline.createInterface({
+				input: process.stdin,
+				output: process.stdout,
+			});
+		}
 
 		const question = (prompt: string): Promise<string> =>
 			new Promise((resolve) => {
@@ -236,64 +243,75 @@ class EdgeApp {
 			const repoNameSafe = repositoryName
 				.replace(/[^a-zA-Z0-9-_]/g, "-")
 				.toLowerCase();
-			const defaultWorkspaceDir = resolve(
+			const workspaceBaseDir = resolve(
 				homedir(),
 				".cyrus",
 				"workspaces",
 				repoNameSafe,
 			);
-			const workspaceBaseDir =
-				(await question(
-					`Workspace directory (default: ${defaultWorkspaceDir}): `,
-				)) || defaultWorkspaceDir;
 
 			// Note: Prompt template is now hardcoded - no longer configurable
 
-			// Ask for MCP configuration
-			console.log("\n🔧 MCP (Model Context Protocol) Configuration");
-			console.log(
-				"MCP allows Claude to access external tools and data sources.",
-			);
-			console.log(
-				"Examples: filesystem access, database connections, API integrations",
-			);
-			console.log("See: https://docs.anthropic.com/en/docs/claude-code/mcp");
-			console.log("");
-			const mcpConfigInput = await question(
-				'MCP config file path (optional, format: {"mcpServers": {...}}, e.g., ./mcp-config.json): ',
-			);
-			const mcpConfigPath = mcpConfigInput.trim() || undefined;
+			// Set reasonable defaults for configuration
+			// Allowed tools - default to all tools except Bash, plus Bash(git:*) and Bash(gh:*)
+			const allowedTools = [
+				"Read(**)",
+				"Edit(**)",
+				"Bash(git:*)",
+				"Bash(gh:*)",
+				"Task",
+				"WebFetch",
+				"WebSearch",
+				"TodoRead",
+				"TodoWrite",
+				"NotebookRead",
+				"NotebookEdit",
+				"Batch",
+			];
 
-			// Ask for allowed tools configuration
-			console.log("\n🔧 Tool Configuration");
+			// Label prompts - default to common label mappings
+			const labelPrompts = {
+				debugger: ["Bug"],
+				builder: ["Feature", "Improvement"],
+				scoper: ["PRD"],
+			};
+
+			// Ask for routing labels configuration (Priority 1)
+			console.log("\n🏷️ Label-Based Routing (Optional - Highest Priority)");
 			console.log(
-				"Available tools: Read(**),Edit(**),Bash,Task,WebFetch,WebSearch,TodoRead,TodoWrite,NotebookRead,NotebookEdit,Batch",
+				"Configure specific Linear labels to route issues to this repository.",
 			);
-			console.log("");
-			console.log(
-				"⚠️  SECURITY NOTE: Bash tool requires special configuration for safety:",
+			console.log("Example: backend,api,infrastructure");
+			console.log("Leave blank to skip label-based routing.");
+			const routingLabelsInput = await question(
+				"Routing labels (comma-separated, optional): ",
 			);
-			console.log(
-				'   • Use "Bash" for full access (not recommended in production)',
-			);
-			console.log('   • Use "Bash(npm:*)" to restrict to npm commands only');
-			console.log('   • Use "Bash(git:*)" to restrict to git commands only');
-			console.log(
-				"   • See: https://docs.anthropic.com/en/docs/claude-code/settings#permissions",
-			);
-			console.log("");
-			console.log(
-				"Default: All tools except Bash (leave blank for all non-Bash tools)",
-			);
-			const allowedToolsInput = await question(
-				"Allowed tools (comma-separated, default: all except Bash): ",
-			);
-			const allowedTools = allowedToolsInput
-				? allowedToolsInput.split(",").map((t) => t.trim())
+			const routingLabels = routingLabelsInput
+				? routingLabelsInput
+						.split(",")
+						.map((l) => l.trim())
+						.filter((l) => l.length > 0)
 				: undefined;
 
-			// Ask for team keys configuration
-			console.log("\n🏷️ Team-Based Routing (Optional)");
+			// Ask for project keys configuration (Priority 2)
+			console.log("\n📁 Project-Based Routing (Optional - Medium Priority)");
+			console.log(
+				"Configure specific Linear project names to route issues to this repository.",
+			);
+			console.log("Example: Mobile App,Web Platform,API Service");
+			console.log("Leave blank to skip project-based routing.");
+			const projectKeysInput = await question(
+				"Project names (comma-separated, optional): ",
+			);
+			const projectKeys = projectKeysInput
+				? projectKeysInput
+						.split(",")
+						.map((p) => p.trim())
+						.filter((p) => p.length > 0)
+				: undefined;
+
+			// Ask for team keys configuration (Priority 3)
+			console.log("\n🏢 Team-Based Routing (Optional - Lower Priority)");
 			console.log(
 				"Configure specific Linear team keys to route issues to this repository.",
 			);
@@ -306,67 +324,9 @@ class EdgeApp {
 				? teamKeysInput.split(",").map((t) => t.trim().toUpperCase())
 				: undefined;
 
-			// Ask for label-based system prompt configuration
-			console.log("\n🎯 Label-Based System Prompts (Optional)");
-			console.log(
-				"Cyrus can use different strategies based on Linear issue labels.",
-			);
-			console.log("Configure which labels trigger each specialized mode:");
-			console.log(
-				"• Debugger mode: Focuses on systematic problem investigation",
-			);
-			console.log(
-				"• Builder mode: Emphasizes feature implementation and code quality",
-			);
-			console.log(
-				"• Scoper mode: Helps analyze requirements and create technical plans",
-			);
-
-			const debuggerLabelsInput = await question(
-				'Labels for debugger mode (comma-separated, e.g., "Bug"): ',
-			);
-			const builderLabelsInput = await question(
-				'Labels for builder mode (comma-separated, e.g., "Feature,Improvement"): ',
-			);
-			const scoperLabelsInput = await question(
-				'Labels for scoper mode (comma-separated, e.g., "PRD"): ',
-			);
-
-			const labelPrompts =
-				debuggerLabelsInput || builderLabelsInput || scoperLabelsInput
-					? {
-							...(debuggerLabelsInput && {
-								debugger: debuggerLabelsInput.split(",").map((l) => l.trim()),
-							}),
-							...(builderLabelsInput && {
-								builder: builderLabelsInput.split(",").map((l) => l.trim()),
-							}),
-							...(scoperLabelsInput && {
-								scoper: scoperLabelsInput.split(",").map((l) => l.trim()),
-							}),
-						}
-					: undefined;
-
-			// Ask for project keys configuration
-			console.log("\n📁 Project-Based Routing (Optional)");
-			console.log(
-				"Configure specific Linear project names to route issues to this repository.",
-			);
-			console.log("Example: Mobile App,Web Platform,API Service");
-			console.log(
-				"Leave blank to use team-based or workspace fallback routing.",
-			);
-			const projectKeysInput = await question(
-				"Project names (comma-separated, optional): ",
-			);
-			const projectKeys = projectKeysInput
-				? projectKeysInput
-						.split(",")
-						.map((p) => p.trim())
-						.filter((p) => p.length > 0)
-				: undefined;
-
-			rl.close();
+			if (shouldCloseRl) {
+				rl.close();
+			}
 
 			// Create repository configuration
 			const repository: RepositoryConfig = {
@@ -378,16 +338,18 @@ class EdgeApp {
 				linearToken: linearCredentials.linearToken,
 				workspaceBaseDir: resolve(workspaceBaseDir),
 				isActive: true,
-				...(allowedTools && { allowedTools }),
-				...(mcpConfigPath && { mcpConfigPath: resolve(mcpConfigPath) }),
-				...(teamKeys && { teamKeys }),
-				...(labelPrompts && { labelPrompts }),
+				allowedTools,
+				labelPrompts,
+				...(routingLabels && { routingLabels }),
 				...(projectKeys && { projectKeys }),
+				...(teamKeys && { teamKeys }),
 			};
 
 			return repository;
 		} catch (error) {
-			rl.close();
+			if (shouldCloseRl) {
+				rl.close();
+			}
 			throw error;
 		}
 	}
@@ -399,23 +361,19 @@ class EdgeApp {
 		if (this.edgeWorker) {
 			// Use existing EdgeWorker's OAuth flow
 			const port = this.edgeWorker.getServerPort();
-
-			// Construct OAuth URL with callback
 			const callbackBaseUrl =
 				process.env.CYRUS_BASE_URL || `http://localhost:${port}`;
 			const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
 
-			console.log(`\n👉 Opening your browser to authorize with Linear...`);
-			console.log(`If the browser doesn't open, visit: ${authUrl}`);
+			// Let SharedApplicationServer print the messages, but we handle browser opening
+			const resultPromise = this.edgeWorker.startOAuthFlow(proxyUrl);
 
+			// Open browser after SharedApplicationServer prints its messages
 			open(authUrl).catch(() => {
-				console.log(`\n⚠️  Could not open browser automatically`);
-				console.log(`Please visit: ${authUrl}`);
+				// Error is already communicated by SharedApplicationServer
 			});
 
-			console.log(`\n⏳ Waiting for authorization...`);
-
-			return this.edgeWorker.startOAuthFlow(proxyUrl);
+			return resultPromise;
 		} else {
 			// Create temporary SharedApplicationServer for OAuth flow during initial setup
 			const serverPort = process.env.CYRUS_SERVER_PORT
@@ -426,25 +384,22 @@ class EdgeApp {
 			try {
 				// Start the server
 				await tempServer.start();
-				const port = tempServer.getPort();
 
-				// Construct OAuth URL with callback
+				const port = tempServer.getPort();
 				const callbackBaseUrl =
 					process.env.CYRUS_BASE_URL || `http://localhost:${port}`;
 				const authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
 
-				console.log(`\n👉 Opening your browser to authorize with Linear...`);
-				console.log(`If the browser doesn't open, visit: ${authUrl}`);
+				// Start OAuth flow (this prints the messages)
+				const resultPromise = tempServer.startOAuthFlow(proxyUrl);
 
+				// Open browser after SharedApplicationServer prints its messages
 				open(authUrl).catch(() => {
-					console.log(`\n⚠️  Could not open browser automatically`);
-					console.log(`Please visit: ${authUrl}`);
+					// Error is already communicated by SharedApplicationServer
 				});
 
-				console.log(`\n⏳ Waiting for authorization...`);
-
-				// Use temporary server's OAuth flow
-				const result = await tempServer.startOAuthFlow(proxyUrl);
+				// Wait for OAuth flow to complete
+				const result = await resultPromise;
 
 				return {
 					linearToken: result.linearToken,
@@ -607,6 +562,9 @@ class EdgeApp {
 							console.log(
 								"💡 You can edit this file and restart Cyrus at any time to modify settings.",
 							);
+							console.log(
+								"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
+							);
 
 							// Restart edge worker with new config
 							await this.edgeWorker!.stop();
@@ -656,13 +614,131 @@ class EdgeApp {
 	}
 
 	/**
+	 * Check subscription status with the Cyrus API
+	 */
+	async checkSubscriptionStatus(customerId: string): Promise<{
+		hasActiveSubscription: boolean;
+		status: string;
+		requiresPayment: boolean;
+		isReturningCustomer?: boolean;
+	}> {
+		const response = await fetch(
+			`https://www.atcyrus.com/api/subscription-status?customerId=${encodeURIComponent(customerId)}`,
+			{
+				method: "GET",
+				headers: {
+					"Content-Type": "application/json",
+				},
+			},
+		);
+
+		if (!response.ok) {
+			if (response.status === 400) {
+				const data = (await response.json()) as { error?: string };
+				throw new Error(data.error || "Invalid customer ID format");
+			}
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+
+		const data = (await response.json()) as {
+			hasActiveSubscription: boolean;
+			status: string;
+			requiresPayment: boolean;
+			isReturningCustomer?: boolean;
+		};
+		return data;
+	}
+
+	/**
+	 * Validate customer ID format
+	 */
+	public validateCustomerId(customerId: string): void {
+		if (!customerId.startsWith("cus_")) {
+			console.error("\n❌ Invalid customer ID format");
+			console.log('Customer IDs should start with "cus_"');
+			process.exit(1);
+		}
+	}
+
+	/**
+	 * Handle subscription validation failure
+	 */
+	private handleSubscriptionFailure(subscriptionStatus: {
+		hasActiveSubscription: boolean;
+		status: string;
+		requiresPayment: boolean;
+		isReturningCustomer?: boolean;
+	}): void {
+		console.error("\n❌ Subscription Invalid");
+		console.log("─".repeat(50));
+
+		if (subscriptionStatus.isReturningCustomer) {
+			console.log("Your subscription has expired or been cancelled.");
+			console.log(`Status: ${subscriptionStatus.status}`);
+			console.log(
+				"\nPlease visit https://www.atcyrus.com/pricing to reactivate your subscription.",
+			);
+		} else {
+			console.log("No active subscription found for this customer ID.");
+			console.log(
+				"\nPlease visit https://www.atcyrus.com/pricing to start a subscription.",
+			);
+			console.log("Once you obtain a valid customer ID,");
+			console.log("Run: cyrus set-customer-id cus_XXXXX");
+		}
+
+		process.exit(1);
+	}
+
+	/**
+	 * Validate subscription and handle failures
+	 */
+	public async validateAndHandleSubscription(
+		customerId: string,
+	): Promise<void> {
+		console.log("\n🔐 Validating subscription...");
+		try {
+			const subscriptionStatus = await this.checkSubscriptionStatus(customerId);
+
+			if (subscriptionStatus.requiresPayment) {
+				this.handleSubscriptionFailure(subscriptionStatus);
+			}
+
+			console.log(`✅ Subscription active (${subscriptionStatus.status})`);
+		} catch (error) {
+			console.error("\n❌ Failed to validate subscription");
+			console.log(`Error: ${(error as Error).message}`);
+			console.log(
+				'Run "cyrus set-customer-id cus_XXXXX" with a valid customer ID',
+			);
+			process.exit(1);
+		}
+	}
+
+	/**
+	 * Create readline interface and ask question
+	 */
+	public async askQuestion(prompt: string): Promise<string> {
+		const rl = readline.createInterface({
+			input: process.stdin,
+			output: process.stdout,
+		});
+
+		return new Promise((resolve) => {
+			rl.question(prompt, (answer) => {
+				rl.close();
+				resolve(answer.trim());
+			});
+		});
+	}
+
+	/**
 	 * Start the edge application
 	 */
 	async start(): Promise<void> {
 		try {
 			// Set proxy URL with default
-			const proxyUrl =
-				process.env.PROXY_URL || "https://cyrus-proxy.ceedar.workers.dev";
+			const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
 
 			// No need to validate Claude CLI - using Claude TypeScript SDK now
 
@@ -671,8 +747,7 @@ class EdgeApp {
 			let repositories = edgeConfig.repositories || [];
 
 			// Check if using default proxy URL without a customer ID
-			const defaultProxyUrl = "https://cyrus-proxy.ceedar.workers.dev";
-			const isUsingDefaultProxy = proxyUrl === defaultProxyUrl;
+			const isUsingDefaultProxy = proxyUrl === DEFAULT_PROXY_URL;
 			const hasCustomerId = !!edgeConfig.stripeCustomerId;
 
 			if (isUsingDefaultProxy && !hasCustomerId) {
@@ -689,22 +764,12 @@ class EdgeApp {
 				console.log("3. Setup your own proxy (advanced)");
 				console.log("4. Exit");
 
-				const rl = readline.createInterface({
-					input: process.stdin,
-					output: process.stdout,
-				});
-
-				const choice = await new Promise<string>((resolve) => {
-					rl.question("\nYour choice (1-4): ", (answer) => {
-						resolve(answer.trim());
-					});
-				});
+				const choice = await this.askQuestion("\nYour choice (1-4): ");
 
 				if (choice === "1") {
 					console.log("\n👉 Opening your browser to start a free trial...");
 					console.log("Visit: https://www.atcyrus.com/pricing");
 					await open("https://www.atcyrus.com/pricing");
-					rl.close();
 					process.exit(0);
 				} else if (choice === "2") {
 					console.log(
@@ -714,25 +779,15 @@ class EdgeApp {
 						'It starts with "cus_" and can be copied from the website.',
 					);
 
-					const customerId = await new Promise<string>((resolve) => {
-						rl.question("\nPaste your customer ID here: ", (answer) => {
-							resolve(answer.trim());
-						});
-					});
+					const customerId = await this.askQuestion(
+						"\nPaste your customer ID here: ",
+					);
 
-					rl.close();
-
-					if (!customerId.startsWith("cus_")) {
-						console.error("\n❌ Invalid customer ID format");
-						console.log('Customer IDs should start with "cus_"');
-						process.exit(1);
-					}
-
-					// Save the customer ID
+					this.validateCustomerId(customerId);
 					edgeConfig.stripeCustomerId = customerId;
 					this.saveEdgeConfig(edgeConfig);
 
-					console.log("\n✅ Customer ID saved successfully!");
+					console.log("✅ Customer ID saved successfully!");
 					console.log("Continuing with startup...\n");
 
 					// Reload config to include the new customer ID
@@ -754,12 +809,25 @@ class EdgeApp {
 						"\nOnce deployed, set the PROXY_URL environment variable:",
 					);
 					console.log("export PROXY_URL=https://your-proxy-url.com");
-					rl.close();
 					process.exit(0);
 				} else {
-					rl.close();
 					console.log("\nExiting...");
 					process.exit(0);
+				}
+			}
+
+			// If using default proxy and has customer ID, validate subscription
+			if (isUsingDefaultProxy && edgeConfig.stripeCustomerId) {
+				try {
+					await this.validateAndHandleSubscription(edgeConfig.stripeCustomerId);
+				} catch (error) {
+					console.error("\n⚠️ Warning: Could not validate subscription");
+					console.log("─".repeat(50));
+					console.error(
+						"Unable to connect to subscription service:",
+						(error as Error).message,
+					);
+					process.exit(1);
 				}
 			}
 
@@ -812,18 +880,9 @@ class EdgeApp {
 							console.log(`${i + 1}. ${ws.name}`);
 						});
 
-						const rl = readline.createInterface({
-							input: process.stdin,
-							output: process.stdout,
-						});
-
-						const choice = await new Promise<string>((resolve) => {
-							rl.question(
-								"\nSelect workspace (number) or press Enter for new: ",
-								resolve,
-							);
-						});
-						rl.close();
+						const choice = await this.askQuestion(
+							"\nSelect workspace (number) or press Enter for new: ",
+						);
 
 						const index = parseInt(choice) - 1;
 						if (index >= 0 && index < workspaceList.length) {
@@ -889,44 +948,61 @@ class EdgeApp {
 				console.log("\n📋 Step 2: Configure Repository");
 				console.log("─".repeat(50));
 
+				// Create a single readline interface for the entire repository setup process
+				const rl = readline.createInterface({
+					input: process.stdin,
+					output: process.stdout,
+				});
+
 				try {
-					const newRepo = await this.setupRepositoryWizard(linearCredentials);
+					// Loop to allow adding multiple repositories
+					let continueAdding = true;
+					while (continueAdding) {
+						try {
+							const newRepo = await this.setupRepositoryWizard(
+								linearCredentials,
+								rl,
+							);
 
-					// Add to repositories
-					repositories = [...(edgeConfig.repositories || []), newRepo];
-					edgeConfig.repositories = repositories;
-					this.saveEdgeConfig(edgeConfig);
+							// Add to repositories
+							repositories = [...(edgeConfig.repositories || []), newRepo];
+							edgeConfig.repositories = repositories;
+							this.saveEdgeConfig(edgeConfig);
 
-					console.log("\n✅ Repository configured successfully!");
-					console.log(
-						"📝 ~/.cyrus/config.json file has been updated with your repository configuration.",
-					);
-					console.log(
-						"💡 You can edit this file and restart Cyrus at any time to modify settings.",
-					);
+							console.log("\n✅ Repository configured successfully!");
+							console.log(
+								"📝 ~/.cyrus/config.json file has been updated with your repository configuration.",
+							);
+							console.log(
+								"💡 You can edit this file and restart Cyrus at any time to modify settings.",
+							);
+							console.log(
+								"📖 Configuration docs: https://github.com/ceedaragents/cyrus#configuration",
+							);
 
-					// Ask if they want to add another
-					const rl = readline.createInterface({
-						input: process.stdin,
-						output: process.stdout,
-					});
-					const addAnother = await new Promise<boolean>((resolve) => {
-						rl.question("\nAdd another repository? (y/N): ", (answer) => {
-							rl.close();
-							resolve(answer.toLowerCase() === "y");
-						});
-					});
+							// Ask if they want to add another
+							const addAnother = await new Promise<boolean>((resolve) => {
+								rl.question("\nAdd another repository? (y/N): ", (answer) => {
+									resolve(answer.toLowerCase() === "y");
+								});
+							});
 
-					if (addAnother) {
-						// Restart setup flow
-						return this.start();
+							continueAdding = addAnother;
+							if (continueAdding) {
+								console.log("\n📋 Configure Additional Repository");
+								console.log("─".repeat(50));
+							}
+						} catch (error) {
+							console.error(
+								"\n❌ Repository setup failed:",
+								(error as Error).message,
+							);
+							throw error;
+						}
 					}
-				} catch (error) {
-					console.error(
-						"\n❌ Repository setup failed:",
-						(error as Error).message,
-					);
-					process.exit(1);
+				} finally {
+					// Always close the readline interface when done
+					rl.close();
 				}
 			}
 
@@ -943,9 +1019,7 @@ class EdgeApp {
 			await this.startEdgeWorker({ proxyUrl, repositories });
 
 			// Display plan status
-			const defaultProxyUrlForStatus = "https://cyrus-proxy.ceedar.workers.dev";
-			const isUsingDefaultProxyForStatus =
-				proxyUrl === defaultProxyUrlForStatus;
+			const isUsingDefaultProxyForStatus = proxyUrl === DEFAULT_PROXY_URL;
 			const hasCustomerIdForStatus = !!edgeConfig.stripeCustomerId;
 
 			console.log(`\n${"─".repeat(70)}`);
@@ -1403,17 +1477,9 @@ async function refreshTokenCommand() {
 	}
 
 	// Ask which token to refresh
-	const rl = readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
-
-	const answer = await new Promise<string>((resolve) => {
-		rl.question(
-			'\nWhich repository token would you like to refresh? (Enter number or "all"): ',
-			resolve,
-		);
-	});
+	const answer = await app.askQuestion(
+		'\nWhich repository token would you like to refresh? (Enter number or "all"): ',
+	);
 
 	const indicesToRefresh: number[] = [];
 
@@ -1425,7 +1491,6 @@ async function refreshTokenCommand() {
 		const index = parseInt(answer) - 1;
 		if (Number.isNaN(index) || index < 0 || index >= tokenStatuses.length) {
 			console.error("Invalid selection");
-			rl.close();
 			process.exit(1);
 		}
 		indicesToRefresh.push(index);
@@ -1449,7 +1514,7 @@ async function refreshTokenCommand() {
 			? parseInt(process.env.CYRUS_SERVER_PORT, 10)
 			: 3456;
 		const callbackUrl = `http://localhost:${serverPort}/callback`;
-		const oauthUrl = `https://cyrus-proxy.ceedar.workers.dev/oauth/authorize?callback=${encodeURIComponent(
+		const oauthUrl = `${DEFAULT_PROXY_URL}/oauth/authorize?callback=${encodeURIComponent(
 			callbackUrl,
 		)}`;
 
@@ -1538,8 +1603,6 @@ async function refreshTokenCommand() {
 	// Save the updated config
 	writeFileSync(configPath, JSON.stringify(config, null, 2));
 	console.log("\n✅ Configuration saved");
-
-	rl.close();
 }
 
 // Command: add-repository
@@ -1624,13 +1687,18 @@ async function setCustomerIdCommand() {
 		process.exit(1);
 	}
 
-	if (!customerId.startsWith("cus_")) {
-		console.error("Invalid customer ID format");
-		console.log('Customer IDs should start with "cus_"');
-		process.exit(1);
-	}
+	app.validateCustomerId(customerId);
 
 	try {
+		// Check if using default proxy
+		const proxyUrl = process.env.PROXY_URL || DEFAULT_PROXY_URL;
+		const isUsingDefaultProxy = proxyUrl === DEFAULT_PROXY_URL;
+
+		// Validate subscription for default proxy users
+		if (isUsingDefaultProxy) {
+			await app.validateAndHandleSubscription(customerId);
+		}
+
 		// Load existing config or create new one
 		let config: EdgeConfig = { repositories: [] };
 
@@ -1647,7 +1715,9 @@ async function setCustomerIdCommand() {
 		console.log("\n✅ Customer ID saved successfully!");
 		console.log("─".repeat(50));
 		console.log(`Customer ID: ${customerId}`);
-		console.log("\nYou now have access to Cyrus Pro features.");
+		if (isUsingDefaultProxy) {
+			console.log("\nYou now have access to Cyrus Pro features.");
+		}
 		console.log('Run "cyrus" to start the edge worker.');
 	} catch (error) {
 		console.error("Failed to save customer ID:", (error as Error).message);

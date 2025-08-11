@@ -4,22 +4,125 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.40] - 2025-08-10
+
+### Added
+- Customer subscription validation for Cyrus Pro users
+  - Automatically checks subscription status when using the default proxy with a customer ID
+  - Blocks access if subscription is expired, cancelled, or invalid
+  - Shows appropriate messages for returning customers vs new customers
+  - Validates subscription when setting customer ID via `cyrus set-customer-id` command
+- Label-based repository routing - Route Linear issues to different git repositories based on their labels
+  - New `routingLabels` configuration option allows specifying which labels should route to a specific repository
+  - Useful when multiple repositories handle issues from the same Linear team (e.g., backend vs frontend repos)
+  - Label routing takes precedence over team-based routing for more granular control
+
+### Changed
+- Updated Linear SDK from v54 to v55.1.0 to support Agent Activity Signals
+  - Stop button in Linear UI now sends a deterministic `stop` signal that Cyrus responds to immediately
+  - When you click the stop button while Cyrus is working, it will cleanly halt all operations and confirm the stop action
+  - The stop signal implementation ensures no work continues after the stop is requested
+- Updated Anthropic AI SDK from v0.57.0 to v0.59.0 and Claude Code from v1.0.61 to v1.0.72 for improved Claude integration
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.9
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.18
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.23
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.40
+
+## [0.1.39] - 2025-08-08
+
+### Changed
+- Simplified initial setup by removing configuration prompts for MCP, labels, Linear teams, allowed tools, and workspace directory
+  - MCP configuration is now optional with no default prompt
+  - Allowed tools default to all standard tools plus Bash(git:*) and Bash(gh:*) for immediate productivity
+  - Label-based system prompts now have defaults: "Bug" for debugger mode, "Feature,Improvement" for builder mode, and "PRD" for scoper mode
+  - Team-based routing defaults to all workspace issues (no team filtering)
+  - Workspace directory automatically uses `~/.cyrus/workspaces/<repo-name>`
+  - Streamlined first-time user experience with sensible defaults
+
+### Added
+- Configuration documentation in README explaining all customizable settings
+- Link to configuration docs in CLI output after setup completion
+
+### Fixed
+- Fixed duplicate OAuth authorization messages during Linear login flow while ensuring browser still opens automatically
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.8
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.17
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.22
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.39
+
+## [0.1.38] - 2025-08-06
+
 ### Added
 - Native Linear attachments (like Sentry error links) are now included in the issue context sent to Claude
   - Cyrus now fetches attachments using Linear's native attachment API
   - Attachments appear in a dedicated "Linear Issue Links" section in the prompt
   - Particularly useful for Sentry error tracking links and other external integrations
-- New command **`cyrus add-repository`** - Add a new repository configuration, thanks new contributor @Maxim Filimonov!
-
-## [0.1.38] - 2025-08-03
-
-### Added
+- New command **`cyrus add-repository`** - Add a new repository configuration, thanks new contributor @Maxim-Filimonov !
+- Attachment support for comments - Cyrus now downloads and provides access to attachments added in Linear comments
+  - Attachments are automatically downloaded when users post comments with URLs or files
+  - Downloaded to `~/.cyrus/<workspace>/attachments` directory
+  - Attachment manifest is generated and included in Claude's prompt
+  - Attachments directory is always available to Claude during sessions
+- Differentiation between issue delegation and @ mentions for more focused responses
+  - @ mentions now trigger focused responses without system prompts
+  - Delegations continue to use full system prompts for comprehensive task handling
+  - Aligns with Linear's expected agent activity behavior
 - Subscription management built right into the CLI (because who wants another dashboard?)
   - `cyrus billing` - Opens your Stripe portal to manage subscription, payment methods, and download invoices
   - `cyrus set-customer-id` - Saves your customer ID after signup (copy-paste friendly)
   - Interactive prompt on startup if you're using our proxy without a subscription
   - Self-hosting option for the DIY crowd who prefer their own Linear app and infrastructure
   - existed in v0.1.34 but was missing since then
+
+### Fixed
+- Fixed attachments not being accessible to Claude during active streaming sessions
+  - Pre-create attachments directory for every session to ensure future attachments are accessible
+  - Always include attachments directory in allowedDirectories configuration
+- Fixed issue where messages from @ Cyrus mention comments weren't being added to context
+- Fixed issue where sub-issue base branches weren't being added to the user-prompt template, causing Cyrus to create PRs against the default branch instead
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.8
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.16
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.21
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.38
 
 ## [0.1.37] - 2025-08-03
 

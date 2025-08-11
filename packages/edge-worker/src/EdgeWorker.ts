@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -348,6 +348,7 @@ export class EdgeWorker extends EventEmitter {
 						name: r.name,
 						workspaceId: r.linearWorkspaceId,
 						teamKeys: r.teamKeys,
+						routingLabels: r.routingLabels,
 					})),
 				);
 			}
@@ -417,51 +418,139 @@ export class EdgeWorker extends EventEmitter {
 
 	/**
 	 * Find the repository configuration for a webhook
+	 * Now supports async operations for label-based and project-based routing
+	 * Priority: routingLabels > projectKeys > teamKeys
 	 */
-	public async findRepositoryForWebhook(
+	private async findRepositoryForWebhook(
 		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
 	): Promise<RepositoryConfig | null> {
 		const workspaceId = webhook.organizationId;
+		if (!workspaceId) return repos[0] || null; // Fallback to first repo if no workspace ID
 
-		if (!workspaceId) {
-			const fallbackRepo = repos[0] || null;
-			if (fallbackRepo) {
-				console.log(
-					`[EdgeWorker] Repository selected: ${fallbackRepo.name} (no workspace ID - first repo fallback)`,
-				);
-			}
-			return fallbackRepo;
-		}
+		// Get issue information from webhook
+		let issueId: string | undefined;
+		let teamKey: string | undefined;
+		let issueIdentifier: string | undefined;
 
-		// Try project-based routing first
-		const projectBasedRepo = await this.tryProjectBasedRouting(webhook, repos);
-		if (projectBasedRepo) {
-			console.log(
-				`[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`,
-			);
-			return projectBasedRepo;
-		}
-
-		// Try team-based routing
-		const teamBasedRepo = this.tryTeamBasedRouting(webhook, repos);
-		if (teamBasedRepo) {
-			console.log(
-				`[EdgeWorker] Repository selected: ${teamBasedRepo.name} (team-based routing)`,
-			);
-			return teamBasedRepo;
-		}
-
-		// Fallback to workspace matching
-		const workspaceRepo = this.tryWorkspaceBasedRouting(workspaceId, repos);
-		if (workspaceRepo) {
-			console.log(
-				`[EdgeWorker] Repository selected: ${workspaceRepo.name} (workspace-based routing)`,
-			);
+		// Handle agent session webhooks which have different structure
+		if (
+			isAgentSessionCreatedWebhook(webhook) ||
+			isAgentSessionPromptedWebhook(webhook)
+		) {
+			issueId = webhook.agentSession?.issue?.id;
+			teamKey = webhook.agentSession?.issue?.team?.key;
+			issueIdentifier = webhook.agentSession?.issue?.identifier;
 		} else {
-			console.log("[EdgeWorker] No repository found for webhook");
+			issueId = webhook.notification?.issue?.id;
+			teamKey = webhook.notification?.issue?.team?.key;
+			issueIdentifier = webhook.notification?.issue?.identifier;
 		}
-		return workspaceRepo;
+
+		// Filter repos by workspace first
+		const workspaceRepos = repos.filter(
+			(repo) => repo.linearWorkspaceId === workspaceId,
+		);
+		if (workspaceRepos.length === 0) return null;
+
+		// Priority 1: Check routing labels (highest priority)
+		const reposWithRoutingLabels = workspaceRepos.filter(
+			(repo) => repo.routingLabels && repo.routingLabels.length > 0,
+		);
+
+		if (reposWithRoutingLabels.length > 0 && issueId && workspaceRepos[0]) {
+			// We need a Linear client to fetch labels
+			// Use the first workspace repo's client temporarily
+			const linearClient = this.linearClients.get(workspaceRepos[0].id);
+
+			if (linearClient) {
+				try {
+					// Fetch the issue to get labels
+					const issue = await linearClient.issue(issueId);
+					const labels = await this.fetchIssueLabels(issue);
+
+					// Check each repo with routing labels
+					for (const repo of reposWithRoutingLabels) {
+						if (
+							repo.routingLabels?.some((routingLabel) =>
+								labels.includes(routingLabel),
+							)
+						) {
+							console.log(
+								`[EdgeWorker] Repository selected: ${repo.name} (label-based routing)`,
+							);
+							return repo;
+						}
+					}
+				} catch (error) {
+					console.error(
+						`[EdgeWorker] Failed to fetch labels for routing:`,
+						error,
+					);
+					// Continue to project-based routing
+				}
+			}
+		}
+
+		// Priority 2: Check project-based routing
+		if (issueId) {
+			const projectBasedRepo = await this.tryProjectBasedRouting(issueId, workspaceRepos);
+			if (projectBasedRepo) {
+				console.log(
+					`[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`,
+				);
+				return projectBasedRepo;
+			}
+		}
+
+		// Priority 3: Check team-based routing
+		if (teamKey) {
+			const repo = workspaceRepos.find((r) => r.teamKeys?.includes(teamKey));
+			if (repo) {
+				console.log(
+					`[EdgeWorker] Repository selected: ${repo.name} (team-based routing)`,
+				);
+				return repo;
+			}
+		}
+
+		// Try parsing issue identifier as fallback for team routing
+		if (issueIdentifier?.includes("-")) {
+			const prefix = issueIdentifier.split("-")[0];
+			if (prefix) {
+				const repo = workspaceRepos.find((r) => r.teamKeys?.includes(prefix));
+				if (repo) {
+					console.log(
+						`[EdgeWorker] Repository selected: ${repo.name} (team prefix routing)`,
+					);
+					return repo;
+				}
+			}
+		}
+
+		// Workspace fallback - find first repo without routing configuration
+		const catchAllRepo = workspaceRepos.find(
+			(repo) =>
+				(!repo.teamKeys || repo.teamKeys.length === 0) &&
+				(!repo.routingLabels || repo.routingLabels.length === 0) &&
+				(!repo.projectKeys || repo.projectKeys.length === 0),
+		);
+
+		if (catchAllRepo) {
+			console.log(
+				`[EdgeWorker] Repository selected: ${catchAllRepo.name} (workspace catch-all)`,
+			);
+			return catchAllRepo;
+		}
+
+		// Final fallback to first workspace repo
+		const fallbackRepo = workspaceRepos[0] || null;
+		if (fallbackRepo) {
+			console.log(
+				`[EdgeWorker] Repository selected: ${fallbackRepo.name} (workspace fallback)`,
+			);
+		}
+		return fallbackRepo;
 	}
 
 	/**
@@ -489,6 +578,16 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
+	 * Try project-based routing
+	 */
+	private async tryProjectBasedRouting(
+		issueId: string,
+		repos: RepositoryConfig[],
+	): Promise<RepositoryConfig | null> {
+		return this.findRepositoryByProject(issueId, repos);
+	}
+
+	/**
 	 * Helper method to find repository by project name
 	 */
 	private async findRepositoryByProject(
@@ -501,7 +600,6 @@ export class EdgeWorker extends EventEmitter {
 
 			try {
 				const fullIssue = await this.fetchFullIssueDetails(issueId, repo.id);
-				console.debug(JSON.stringify(fullIssue, null, 2));
 				const project = await fullIssue?.project;
 				if (!project || !project.name) {
 					console.warn(
@@ -530,95 +628,6 @@ export class EdgeWorker extends EventEmitter {
 	}
 
 	/**
-	 * Try team-based routing (existing logic)
-	 */
-	private tryTeamBasedRouting(
-		webhook: LinearWebhook,
-		repos: RepositoryConfig[],
-	): RepositoryConfig | null {
-		// Handle agent session webhooks which have different structure
-		if (
-			isAgentSessionCreatedWebhook(webhook) ||
-			isAgentSessionPromptedWebhook(webhook)
-		) {
-			const teamKey = webhook.agentSession?.issue?.team?.key;
-			if (teamKey) {
-				const repo = this.findRepositoryByTeamKey(teamKey, repos);
-				if (repo) return repo;
-			}
-
-			// Try parsing issue identifier as fallback
-			const issueId = webhook.agentSession?.issue?.identifier;
-			if (issueId) {
-				return this.findRepositoryByIssueIdentifier(issueId, repos);
-			}
-		} else {
-			// Original logic for other webhook types
-			const teamKey = webhook.notification?.issue?.team?.key;
-			if (teamKey) {
-				const repo = this.findRepositoryByTeamKey(teamKey, repos);
-				if (repo) return repo;
-			}
-
-			// Try parsing issue identifier as fallback
-			const issueId = webhook.notification?.issue?.identifier;
-			if (issueId) {
-				return this.findRepositoryByIssueIdentifier(issueId, repos);
-			}
-		}
-
-		return null;
-	}
-
-	/**
-	 * Try project-based routing (new functionality)
-	 */
-	private async tryProjectBasedRouting(
-		webhook: LinearWebhook,
-		repos: RepositoryConfig[],
-	): Promise<RepositoryConfig | null> {
-		// Extract issue ID from webhook
-		let issueId: string | null = null;
-
-		if (
-			isAgentSessionCreatedWebhook(webhook) ||
-			isAgentSessionPromptedWebhook(webhook)
-		) {
-			issueId = webhook.agentSession?.issue?.id || null;
-		} else {
-			issueId = webhook.notification?.issue?.id || null;
-		}
-
-		if (!issueId) {
-			console.warn("[EdgeWorker] No issue ID found in webhook");
-			return null;
-		}
-
-		return this.findRepositoryByProject(issueId, repos);
-	}
-
-	/**
-	 * Try workspace-based routing (fallback)
-	 */
-	private tryWorkspaceBasedRouting(
-		workspaceId: string,
-		repos: RepositoryConfig[],
-	): RepositoryConfig | null {
-		// Find first repo without teamKeys or projectKeys (catch-all) in the workspace
-		const catchAllRepo = repos.find(
-			(repo) =>
-				repo.linearWorkspaceId === workspaceId &&
-				(!repo.teamKeys || repo.teamKeys.length === 0) &&
-				(!repo.projectKeys || repo.projectKeys.length === 0),
-		);
-
-		if (catchAllRepo) return catchAllRepo;
-
-		// Find any repo in the workspace as final fallback
-		return repos.find((repo) => repo.linearWorkspaceId === workspaceId) || null;
-	}
-
-	/**
 	 * Handle agent session created webhook
 	 * . Can happen due to being 'delegated' or @ mentioned in a new thread
 	 * @param webhook
@@ -635,8 +644,11 @@ export class EdgeWorker extends EventEmitter {
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
 
-		// Determine if this is a mention or delegation
-		const isMentionTriggered = agentSession.comment?.body;
+		const commentBody = agentSession.comment?.body;
+		// HACK: This is required since the comment body is always populated, thus there is no other way to differentiate between the two trigger events
+		const AGENT_SESSION_MARKER = "This thread is for an agent session";
+		const isMentionTriggered =
+			commentBody && !commentBody.includes(AGENT_SESSION_MARKER);
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -688,11 +700,23 @@ export class EdgeWorker extends EventEmitter {
 			workspace.path,
 		);
 
-		// Build allowed directories list
-		const allowedDirectories: string[] = [];
-		if (attachmentResult.attachmentsDir) {
-			allowedDirectories.push(attachmentResult.attachmentsDir);
-		}
+		// Pre-create attachments directory even if no attachments exist yet
+		const workspaceFolderName = basename(workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		await mkdir(attachmentsDir, { recursive: true });
+
+		// Build allowed directories list - always include attachments directory
+		const allowedDirectories: string[] = [attachmentsDir];
+
+		console.log(
+			`[EdgeWorker] Configured allowed directories for ${fullIssue.identifier}:`,
+			allowedDirectories,
+		);
 
 		// Build allowed tools list with Linear MCP tools
 		const allowedTools = this.buildAllowedTools(repository);
@@ -832,7 +856,7 @@ export class EdgeWorker extends EventEmitter {
 		const linearAgentActivitySessionId = agentSession.id;
 		const { issue } = agentSession;
 
-		const promptBody = webhook.agentActivity.content.body;
+		const commentId = webhook.agentActivity.sourceCommentId;
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -854,7 +878,7 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		// Check if there's an existing runner for this comment thread
+		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
 		const existingRunner = session.claudeRunner;
 		if (existingRunner?.isStreaming()) {
 			// Post instant acknowledgment for streaming case
@@ -863,21 +887,120 @@ export class EdgeWorker extends EventEmitter {
 				repository.id,
 				true,
 			);
+		} else {
+			// Post instant acknowledgment for non-streaming case
+			await this.postInstantPromptedAcknowledgment(
+				linearAgentActivitySessionId,
+				repository.id,
+				false,
+			);
+		}
 
-			// Add comment to existing stream instead of restarting
+		// Get Linear client for this repository
+		const linearClient = this.linearClients.get(repository.id);
+		if (!linearClient) {
+			console.error(
+				"Unexpected: There was no LinearClient for the repository with id",
+				repository.id,
+			);
+			return;
+		}
+
+		// Always set up attachments directory, even if no attachments in current comment
+		const workspaceFolderName = basename(session.workspace.path);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+		// Ensure directory exists
+		await mkdir(attachmentsDir, { recursive: true });
+
+		let attachmentManifest = "";
+		try {
+			const result = await linearClient.client.rawRequest(
+				`
+          query GetComment($id: String!) {
+            comment(id: $id) {
+              id
+              body
+              createdAt
+              updatedAt
+              user {
+                name
+                id
+              }
+            }
+          }
+        `,
+				{ id: commentId },
+			);
+
+			// Count existing attachments
+			const existingFiles = await readdir(attachmentsDir).catch(() => []);
+			const existingAttachmentCount = existingFiles.filter(
+				(file) => file.startsWith("attachment_") || file.startsWith("image_"),
+			).length;
+
+			// Download new attachments from the comment
+			const downloadResult = await this.downloadCommentAttachments(
+				(result.data as any).comment.body,
+				attachmentsDir,
+				repository.linearToken,
+				existingAttachmentCount,
+			);
+
+			if (downloadResult.totalNewAttachments > 0) {
+				attachmentManifest = this.generateNewAttachmentManifest(downloadResult);
+			}
+		} catch (error) {
+			console.error("Failed to fetch comments for attachments:", error);
+		}
+
+		const promptBody = webhook.agentActivity.content.body;
+		const stopSignal = webhook.agentActivity.signal === "stop";
+
+		// Handle stop signal
+		if (stopSignal) {
+			console.log(
+				`[EdgeWorker] Received stop signal for agent activity session ${linearAgentActivitySessionId}`,
+			);
+
+			// Stop the existing runner if it's active
+			if (existingRunner) {
+				existingRunner.stop();
+				console.log(
+					`[EdgeWorker] Stopped Claude session for agent activity session ${linearAgentActivitySessionId}`,
+				);
+			}
+			const issueTitle = issue.title || "this issue";
+			const stopConfirmation = `I've stopped working on ${issueTitle} as requested.\n\n**Stop Signal:** Received from ${webhook.agentSession.creator?.name || "user"}\n**Action Taken:** All ongoing work has been halted`;
+
+			await agentSessionManager.createResponseActivity(
+				linearAgentActivitySessionId,
+				stopConfirmation,
+			);
+
+			return; // Exit early - stop signal handled
+		}
+
+		// Check if there's an existing runner for this comment thread
+		if (existingRunner?.isStreaming()) {
+			// Add comment with attachment manifest to existing stream
 			console.log(
 				`[EdgeWorker] Adding comment to existing stream for agent activity session ${linearAgentActivitySessionId}`,
 			);
-			existingRunner.addStreamMessage(promptBody);
+
+			// Append attachment manifest to the prompt if we have one
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
+			existingRunner.addStreamMessage(fullPrompt);
 			return; // Exit early - comment has been added to stream
 		}
-
-		// Post instant acknowledgment for non-streaming case
-		await this.postInstantPromptedAcknowledgment(
-			linearAgentActivitySessionId,
-			repository.id,
-			false,
-		);
 
 		// Stop existing runner if it's not streaming or stream addition failed
 		if (existingRunner) {
@@ -886,7 +1009,7 @@ export class EdgeWorker extends EventEmitter {
 
 		if (!session.claudeSessionId) {
 			console.error(
-				`Unexpected: Handling a 'prompted' webhook but did not find an existing claudeSessionId for the linearAgentActivitySessionId ${linearAgentActivitySessionId}. Not continuing.`,
+				`Unexpected: Handling a ("prompted") webhook but did not find an existing claudeSessionId for the linearAgentActivitySessionId ${linearAgentActivitySessionId}. Not continuing.`,
 			);
 			return;
 		}
@@ -911,6 +1034,7 @@ export class EdgeWorker extends EventEmitter {
 				repository,
 			);
 			const systemPrompt = systemPromptResult?.prompt;
+			const allowedDirectories = [attachmentsDir];
 
 			// Create new runner with resume mode if we have a Claude session ID
 			// Always append the last message marker to prevent duplication
@@ -919,6 +1043,7 @@ export class EdgeWorker extends EventEmitter {
 			const runner = new ClaudeRunner({
 				workingDirectory: session.workspace.path,
 				allowedTools,
+				allowedDirectories,
 				resumeSessionId: session.claudeSessionId,
 				workspaceName: issue.identifier,
 				mcpConfigPath: repository.mcpConfigPath,
@@ -942,11 +1067,17 @@ export class EdgeWorker extends EventEmitter {
 			// Save state after mapping changes
 			await this.savePersistedState();
 
+			// Prepare the prompt with attachment manifest
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+
 			// Start streaming session with the comment as initial prompt
 			console.log(
 				`[EdgeWorker] Starting new streaming session for issue ${issue.identifier}`,
 			);
-			await runner.startStreaming(promptBody);
+			await runner.startStreaming(fullPrompt);
 		} catch (error) {
 			console.error("Failed to continue conversation:", error);
 			// Remove any partially created session
@@ -1835,6 +1966,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repository: RepositoryConfig,
 		workspacePath: string,
 	): Promise<{ manifest: string; attachmentsDir: string | null }> {
+		// Create attachments directory in home directory
+		const workspaceFolderName = basename(workspacePath);
+		const attachmentsDir = join(
+			homedir(),
+			".cyrus",
+			workspaceFolderName,
+			"attachments",
+		);
+
 		try {
 			const attachmentMap: Record<string, string> = {};
 			const imageMap: Record<string, string> = {};
@@ -1843,15 +1983,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			let skippedCount = 0;
 			let failedCount = 0;
 			const maxAttachments = 10;
-
-			// Create attachments directory in home directory
-			const workspaceFolderName = basename(workspacePath);
-			const attachmentsDir = join(
-				homedir(),
-				".cyrus",
-				workspaceFolderName,
-				"attachments",
-			);
 
 			// Ensure directory exists
 			await mkdir(attachmentsDir, { recursive: true });
@@ -1973,14 +2104,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				nativeAttachments,
 			});
 
-			// Return manifest and directory path if any attachments were downloaded
+			// Always return the attachments directory path (it's pre-created)
 			return {
 				manifest,
-				attachmentsDir: attachmentCount > 0 ? attachmentsDir : null,
+				attachmentsDir: attachmentsDir,
 			};
 		} catch (error) {
 			console.error("Error downloading attachments:", error);
-			return { manifest: "", attachmentsDir: null }; // Return empty manifest on error
+			// Still return the attachments directory even on error
+			return { manifest: "", attachmentsDir: attachmentsDir };
 		}
 	}
 
@@ -2043,6 +2175,162 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
+	 * Download attachments from a specific comment
+	 * @param commentBody The body text of the comment
+	 * @param attachmentsDir Directory where attachments should be saved
+	 * @param linearToken Linear API token
+	 * @param existingAttachmentCount Current number of attachments already downloaded
+	 */
+	private async downloadCommentAttachments(
+		commentBody: string,
+		attachmentsDir: string,
+		linearToken: string,
+		existingAttachmentCount: number,
+	): Promise<{
+		newAttachmentMap: Record<string, string>;
+		newImageMap: Record<string, string>;
+		totalNewAttachments: number;
+		failedCount: number;
+	}> {
+		const newAttachmentMap: Record<string, string> = {};
+		const newImageMap: Record<string, string> = {};
+		let newAttachmentCount = 0;
+		let newImageCount = 0;
+		let failedCount = 0;
+		const maxAttachments = 10;
+
+		// Extract URLs from the comment
+		const urls = this.extractAttachmentUrls(commentBody);
+
+		if (urls.length === 0) {
+			return {
+				newAttachmentMap,
+				newImageMap,
+				totalNewAttachments: 0,
+				failedCount: 0,
+			};
+		}
+
+		console.log(`Found ${urls.length} attachment URLs in new comment`);
+
+		// Download new attachments
+		for (const url of urls) {
+			// Skip if we've already reached the total attachment limit
+			if (existingAttachmentCount + newAttachmentCount >= maxAttachments) {
+				console.warn(
+					`Skipping attachment due to ${maxAttachments} total attachment limit`,
+				);
+				break;
+			}
+
+			// Generate filename based on total attachment count
+			const attachmentNumber = existingAttachmentCount + newAttachmentCount + 1;
+			const tempFilename = `attachment_${attachmentNumber}.tmp`;
+			const tempPath = join(attachmentsDir, tempFilename);
+
+			const result = await this.downloadAttachment(url, tempPath, linearToken);
+
+			if (result.success) {
+				// Determine the final filename based on type
+				let finalFilename: string;
+				if (result.isImage) {
+					newImageCount++;
+					// Count existing images to get correct numbering
+					const existingImageCount =
+						await this.countExistingImages(attachmentsDir);
+					finalFilename = `image_${existingImageCount + newImageCount}${result.fileType || ".png"}`;
+				} else {
+					finalFilename = `attachment_${attachmentNumber}${result.fileType || ""}`;
+				}
+
+				const finalPath = join(attachmentsDir, finalFilename);
+
+				// Rename the file to include the correct extension
+				await rename(tempPath, finalPath);
+
+				// Store in appropriate map
+				if (result.isImage) {
+					newImageMap[url] = finalPath;
+				} else {
+					newAttachmentMap[url] = finalPath;
+				}
+				newAttachmentCount++;
+			} else {
+				failedCount++;
+				console.warn(`Failed to download attachment: ${url}`);
+			}
+		}
+
+		return {
+			newAttachmentMap,
+			newImageMap,
+			totalNewAttachments: newAttachmentCount,
+			failedCount,
+		};
+	}
+
+	/**
+	 * Count existing images in the attachments directory
+	 */
+	private async countExistingImages(attachmentsDir: string): Promise<number> {
+		try {
+			const files = await readdir(attachmentsDir);
+			return files.filter((file) => file.startsWith("image_")).length;
+		} catch {
+			return 0;
+		}
+	}
+
+	/**
+	 * Generate attachment manifest for new comment attachments
+	 */
+	private generateNewAttachmentManifest(result: {
+		newAttachmentMap: Record<string, string>;
+		newImageMap: Record<string, string>;
+		totalNewAttachments: number;
+		failedCount: number;
+	}): string {
+		const { newAttachmentMap, newImageMap, totalNewAttachments, failedCount } =
+			result;
+
+		if (totalNewAttachments === 0) {
+			return "";
+		}
+
+		let manifest = "\n## New Attachments from Comment\n\n";
+
+		manifest += `Downloaded ${totalNewAttachments} new attachment${totalNewAttachments > 1 ? "s" : ""}`;
+		if (failedCount > 0) {
+			manifest += ` (${failedCount} failed)`;
+		}
+		manifest += ".\n\n";
+
+		// List new images
+		if (Object.keys(newImageMap).length > 0) {
+			manifest += "### New Images\n";
+			Object.entries(newImageMap).forEach(([url, localPath], index) => {
+				const filename = basename(localPath);
+				manifest += `${index + 1}. ${filename} - Original URL: ${url}\n`;
+				manifest += `   Local path: ${localPath}\n\n`;
+			});
+			manifest += "You can use the Read tool to view these images.\n\n";
+		}
+
+		// List new other attachments
+		if (Object.keys(newAttachmentMap).length > 0) {
+			manifest += "### New Attachments\n";
+			Object.entries(newAttachmentMap).forEach(([url, localPath], index) => {
+				const filename = basename(localPath);
+				manifest += `${index + 1}. ${filename} - Original URL: ${url}\n`;
+				manifest += `   Local path: ${localPath}\n\n`;
+			});
+			manifest += "You can use the Read tool to view these files.\n\n";
+		}
+
+		return manifest;
+	}
+
+	/**
 	 * Generate a markdown section describing downloaded attachments
 	 */
 	private generateAttachmentManifest(downloadResult: {
@@ -2078,7 +2366,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		if (totalFound === 0 && nativeAttachments.length === 0) {
-			manifest += "No attachments were found in this issue.\n";
+			manifest += "No attachments were found in this issue.\n\n";
+			manifest +=
+				"The attachments directory `~/.cyrus/<workspace>/attachments` has been created and is available for any future attachments that may be added to this issue.\n";
 			return manifest;
 		}
 
