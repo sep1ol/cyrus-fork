@@ -494,7 +494,10 @@ export class EdgeWorker extends EventEmitter {
 
 		// Priority 2: Check project-based routing
 		if (issueId) {
-			const projectBasedRepo = await this.tryProjectBasedRouting(issueId, workspaceRepos);
+			const projectBasedRepo = await this.tryProjectBasedRouting(
+				issueId,
+				workspaceRepos,
+			);
 			if (projectBasedRepo) {
 				console.log(
 					`[EdgeWorker] Repository selected: ${projectBasedRepo.name} (project-based routing)`,
@@ -551,30 +554,6 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 		return fallbackRepo;
-	}
-
-	/**
-	 * Helper method to find repository by team key
-	 */
-	private findRepositoryByTeamKey(
-		teamKey: string,
-		repos: RepositoryConfig[],
-	): RepositoryConfig | null {
-		return repos.find((r) => r.teamKeys?.includes(teamKey)) || null;
-	}
-
-	/**
-	 * Helper method to find repository by issue identifier
-	 */
-	private findRepositoryByIssueIdentifier(
-		issueId: string,
-		repos: RepositoryConfig[],
-	): RepositoryConfig | null {
-		if (!issueId?.includes("-")) return null;
-		const prefix = issueId.split("-")[0];
-		return prefix
-			? repos.find((r) => r.teamKeys?.includes(prefix)) || null
-			: null;
 	}
 
 	/**
