@@ -494,7 +494,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Priority 2: Check project-based routing
 		if (issueId) {
-			const projectBasedRepo = await this.tryProjectBasedRouting(
+			const projectBasedRepo = await this.findRepositoryByProject(
 				issueId,
 				workspaceRepos,
 			);
@@ -554,16 +554,6 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 		return fallbackRepo;
-	}
-
-	/**
-	 * Try project-based routing
-	 */
-	private async tryProjectBasedRouting(
-		issueId: string,
-		repos: RepositoryConfig[],
-	): Promise<RepositoryConfig | null> {
-		return this.findRepositoryByProject(issueId, repos);
 	}
 
 	/**

@@ -276,54 +276,6 @@ class EdgeApp {
 				scoper: ["PRD"],
 			};
 
-			// Ask for routing labels configuration (Priority 1)
-			console.log("\n🏷️ Label-Based Routing (Optional - Highest Priority)");
-			console.log(
-				"Configure specific Linear labels to route issues to this repository.",
-			);
-			console.log("Example: backend,api,infrastructure");
-			console.log("Leave blank to skip label-based routing.");
-			const routingLabelsInput = await question(
-				"Routing labels (comma-separated, optional): ",
-			);
-			const routingLabels = routingLabelsInput
-				? routingLabelsInput
-						.split(",")
-						.map((l) => l.trim())
-						.filter((l) => l.length > 0)
-				: undefined;
-
-			// Ask for project keys configuration (Priority 2)
-			console.log("\n📁 Project-Based Routing (Optional - Medium Priority)");
-			console.log(
-				"Configure specific Linear project names to route issues to this repository.",
-			);
-			console.log("Example: Mobile App,Web Platform,API Service");
-			console.log("Leave blank to skip project-based routing.");
-			const projectKeysInput = await question(
-				"Project names (comma-separated, optional): ",
-			);
-			const projectKeys = projectKeysInput
-				? projectKeysInput
-						.split(",")
-						.map((p) => p.trim())
-						.filter((p) => p.length > 0)
-				: undefined;
-
-			// Ask for team keys configuration (Priority 3)
-			console.log("\n🏢 Team-Based Routing (Optional - Lower Priority)");
-			console.log(
-				"Configure specific Linear team keys to route issues to this repository.",
-			);
-			console.log("Example: CEE,FRONT,BACK for teams with those prefixes");
-			console.log("Leave blank to receive all issues from the workspace.");
-			const teamKeysInput = await question(
-				"Team keys (comma-separated, optional): ",
-			);
-			const teamKeys = teamKeysInput
-				? teamKeysInput.split(",").map((t) => t.trim().toUpperCase())
-				: undefined;
-
 			if (shouldCloseRl) {
 				rl.close();
 			}
@@ -340,9 +292,6 @@ class EdgeApp {
 				isActive: true,
 				allowedTools,
 				labelPrompts,
-				...(routingLabels && { routingLabels }),
-				...(projectKeys && { projectKeys }),
-				...(teamKeys && { teamKeys }),
 			};
 
 			return repository;
