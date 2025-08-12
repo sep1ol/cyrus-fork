@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Resolved issue where Cyrus would fail to respond when it was initially delegated when the receiver was down
+  - Now properly creates new sessions when prompted if none existed
+  - Sessions are correctly initialized even when no prior session history exists
+  - Improved code organization and type safety in session handling logic
+
 ## [0.1.40] - 2025-08-10
 
 ### Added
