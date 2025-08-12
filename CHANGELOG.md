@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.72 to v1.0.73 for latest Claude Code improvements
+
 ### Fixed
 - Resolved issue where Cyrus would fail to respond when it was initially delegated when the receiver was down
   - Now properly creates new sessions when prompted if none existed
