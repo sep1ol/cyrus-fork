@@ -45,6 +45,9 @@ Keep `cyrus` running, and the agent will start monitoring issues assigned to you
 
 ## Configuration
 
+<details>
+<summary>Click to expand configuration details</summary>
+
 After initial setup, Cyrus stores your configuration in `~/.cyrus/config.json`. You can edit this file to customize the following settings:
 
 ### Repository Configuration
@@ -114,7 +117,9 @@ When multiple routing configurations are present, Cyrus evaluates them in the fo
 If an issue matches multiple routing configurations, the highest priority match will be used. For example, if an issue has a label that matches `routingLabels` and also belongs to a project in `projectKeys`, the label-based routing will take precedence.
 
 #### `labelPrompts` (object)
-Routes issues to different AI modes based on Linear labels. Default:
+Routes issues to different AI modes based on Linear labels and optionally configures allowed tools per mode.
+
+**Simple format (labels only):**
 ```json
 {
   "debugger": ["Bug"],
@@ -123,14 +128,75 @@ Routes issues to different AI modes based on Linear labels. Default:
 }
 ```
 
+**Advanced format (with dynamic tool configuration):**
+```json
+{
+  "debugger": {
+    "labels": ["Bug"],
+    "allowedTools": "readOnly"  // or ["Read(**)", "Task"] or "safe" or "all"
+  },
+  "builder": {
+    "labels": ["Feature", "Improvement"],
+    "allowedTools": "safe"
+  },
+  "scoper": {
+    "labels": ["PRD"],
+    "allowedTools": ["Read(**)", "WebFetch", "mcp__linear"]
+  }
+}
+```
+
+**Modes:**
 - **debugger**: Systematic problem investigation mode
 - **builder**: Feature implementation mode
 - **scoper**: Requirements analysis mode
+
+**Tool Presets:**
+- **`"readOnly"`**: Only tools that read/view content (7 tools)
+  - `Read(**)`, `WebFetch`, `WebSearch`, `TodoRead`, `NotebookRead`, `Task`, `Batch`
+- **`"safe"`**: All tools except Bash (10 tools)
+  - All readOnly tools plus: `Edit(**)`, `TodoWrite`, `NotebookEdit`
+- **`"all"`**: All available tools including Bash (11 tools)
+  - All safe tools plus: `Bash`
+- **Custom array**: Specify exact tools needed, e.g., `["Read(**)", "Edit(**)", "Task"]`
+
+Note: Linear MCP tools (`mcp__linear`) are always included automatically.
+
+### Global Configuration
+
+In addition to repository-specific settings, you can configure global defaults:
+
+#### `promptDefaults` (object)
+Sets default allowed tools for each prompt type across all repositories. Repository-specific configurations override these defaults.
+
+```json
+{
+  "promptDefaults": {
+    "debugger": {
+      "allowedTools": "readOnly"
+    },
+    "builder": {
+      "allowedTools": "safe"
+    },
+    "scoper": {
+      "allowedTools": ["Read(**)", "WebFetch", "mcp__linear"]
+    }
+  }
+}
+```
 
 ### Example Configuration
 
 ```json
 {
+  "promptDefaults": {
+    "debugger": {
+      "allowedTools": "readOnly"
+    },
+    "builder": {
+      "allowedTools": "safe"
+    }
+  },
   "repositories": [{
     "id": "workspace-123456",
     "name": "my-app",
@@ -141,13 +207,33 @@ Routes issues to different AI modes based on Linear labels. Default:
     "projectKeys": ["API Service", "Backend Infrastructure"],
     "routingLabels": ["backend", "api", "infrastructure"],
     "labelPrompts": {
-      "debugger": ["Bug", "Hotfix"],
-      "builder": ["Feature"],
-      "scoper": ["RFC", "Design"]
+      "debugger": {
+        "labels": ["Bug", "Hotfix"],
+        "allowedTools": "all"  // Override global default for this repo
+      },
+      "builder": {
+        "labels": ["Feature"]
+        // Uses global promptDefaults.builder.allowedTools ("safe")
+      },
+      "scoper": {
+        "labels": ["RFC", "Design"]
+        // Falls back to repository allowedTools or global defaults
+      }
     }
   }]
 }
 ```
+
+### Tool Configuration Priority
+
+When determining allowed tools, Cyrus follows this priority order:
+1. Repository-specific prompt configuration (`labelPrompts.debugger.allowedTools`)
+2. Global prompt defaults (`promptDefaults.debugger.allowedTools`)
+3. Repository-level allowed tools (`allowedTools`)
+4. Global default allowed tools
+5. Safe tools fallback (all tools except Bash)
+
+</details>
 
 ## Setup on Remote Host
 
