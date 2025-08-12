@@ -741,13 +741,13 @@ export class EdgeWorker extends EventEmitter {
 		);
 
 		// Destructure the session data (excluding allowedTools which we'll build with promptType)
-		const { 
-			session, 
-			fullIssue, 
-			workspace: _workspace, 
-			attachmentResult, 
-			attachmentsDir: _attachmentsDir, 
-			allowedDirectories
+		const {
+			session,
+			fullIssue,
+			workspace: _workspace,
+			attachmentResult,
+			attachmentsDir: _attachmentsDir,
+			allowedDirectories,
 		} = sessionData;
 
 		// Only fetch labels and determine system prompt for delegation (not mentions)
@@ -806,12 +806,7 @@ export class EdgeWorker extends EventEmitter {
 		await this.savePersistedState();
 
 		// Emit events using full Linear issue
-		this.emit(
-			"session:started",
-			fullIssue.id,
-			fullIssue,
-			repository.id,
-		);
+		this.emit("session:started", fullIssue.id, fullIssue, repository.id);
 		this.config.handlers?.onSessionStart?.(
 			fullIssue.id,
 			fullIssue,
@@ -923,7 +918,7 @@ export class EdgeWorker extends EventEmitter {
 				repository,
 				agentSessionManager,
 			);
-			
+
 			// Destructure session data for new session
 			const { fullIssue: newFullIssue } = sessionData;
 			session = sessionData.session;
