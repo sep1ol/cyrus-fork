@@ -1,6 +1,6 @@
 import type { Issue as LinearIssue } from "@linear/sdk";
 import type { SDKMessage } from "cyrus-claude-runner";
-import type { Workspace } from "cyrus-core";
+import type { CyrusAgentSession, Workspace } from "cyrus-core";
 import type { OAuthCallbackHandler } from "./SharedApplicationServer.js";
 
 /**
@@ -20,6 +20,8 @@ export interface RepositoryConfig {
 	linearWorkspaceName?: string; // Linear workspace display name (optional, for UI)
 	linearToken: string; // OAuth token for this Linear workspace
 	teamKeys?: string[]; // Linear team keys for routing (e.g., ["CEE", "BOOK"])
+	routingLabels?: string[]; // Linear labels for routing issues to this repository (e.g., ["backend", "api"])
+	projectKeys?: string[]; // Linear project names for routing (e.g., ["Mobile App", "API"])
 
 	// Workspace configuration
 	workspaceBaseDir: string; // Where to create issue workspaces for this repo
@@ -166,4 +168,17 @@ export interface EdgeWorkerEvents {
 
 	// Error events
 	error: (error: Error, context?: any) => void;
+}
+
+/**
+ * Data returned from createLinearAgentSession
+ */
+export interface LinearAgentSessionData {
+	session: CyrusAgentSession;
+	fullIssue: LinearIssue;
+	workspace: Workspace;
+	attachmentResult: { manifest: string; attachmentsDir: string | null };
+	attachmentsDir: string;
+	allowedDirectories: string[];
+	allowedTools: string[];
 }

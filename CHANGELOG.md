@@ -12,10 +12,50 @@ All notable changes to this project will be documented in this file.
   - Improves security and focus by limiting tools based on task type
 
 ### Changed
+- Updated @anthropic-ai/claude-code from v1.0.72 to v1.0.73 for latest Claude Code improvements
+
+### Fixed
+- Resolved issue where Cyrus would fail to respond when it was initially delegated when the receiver was down
+  - Now properly creates new sessions when prompted if none existed
+  - Sessions are correctly initialized even when no prior session history exists
+  - Improved code organization and type safety in session handling logic
+
+## [0.1.40] - 2025-08-10
+
+### Added
+- Customer subscription validation for Cyrus Pro users
+  - Automatically checks subscription status when using the default proxy with a customer ID
+  - Blocks access if subscription is expired, cancelled, or invalid
+  - Shows appropriate messages for returning customers vs new customers
+  - Validates subscription when setting customer ID via `cyrus set-customer-id` command
+- Label-based repository routing - Route Linear issues to different git repositories based on their labels
+  - New `routingLabels` configuration option allows specifying which labels should route to a specific repository
+  - Useful when multiple repositories handle issues from the same Linear team (e.g., backend vs frontend repos)
+  - Label routing takes precedence over team-based routing for more granular control
+
+### Changed
 - Updated Linear SDK from v54 to v55.1.0 to support Agent Activity Signals
   - Stop button in Linear UI now sends a deterministic `stop` signal that Cyrus responds to immediately
   - When you click the stop button while Cyrus is working, it will cleanly halt all operations and confirm the stop action
   - The stop signal implementation ensures no work continues after the stop is requested
+- Updated Anthropic AI SDK from v0.57.0 to v0.59.0 and Claude Code from v1.0.61 to v1.0.72 for improved Claude integration
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.9
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.18
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.23
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.15
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.40
 
 ## [0.1.39] - 2025-08-08
 
