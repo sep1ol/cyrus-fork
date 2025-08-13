@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
   - See [Configuration docs](https://github.com/ceedaragents/cyrus#configuration) for setup details
 
 ### Changed
-- Updated @anthropic-ai/claude-code from v1.0.72 to v1.0.73 for latest Claude Code improvements
+- Updated @anthropic-ai/claude-code from v1.0.73 to v1.0.77 for latest Claude Code improvements. See [Claude Code v1.0.77 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1077)
 
 ### Fixed
 - Fixed Windows compatibility issues that caused agent failures on Windows systems
