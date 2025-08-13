@@ -6,10 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Dynamic tool configuration based on system prompt labels
-  - Tool access can now be customized per prompt type (debugger, builder, scoper)
-  - Supports preset tool groups: "readOnly", "safe", or "all"
-  - Configuration can be set at repository level or globally
-  - Improves security and focus by limiting tools based on task type
+  - Restrict Claude's tools per task type: give debugger mode only read access, builder mode safe tools, etc.
+  - Use presets (`"readOnly"`, `"safe"`, `"all"`) or custom tool lists in your `labelPrompts` config
+  - Improves security and keeps Claude focused on the right tools for each job
+  - See [Configuration docs](https://github.com/ceedaragents/cyrus#configuration) for setup details
 
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.72 to v1.0.73 for latest Claude Code improvements
