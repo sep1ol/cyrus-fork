@@ -1162,10 +1162,7 @@ class EdgeApp {
 			const workspacePath = join(repository.workspaceBaseDir, issue.identifier);
 
 			// Ensure workspace directory exists
-			execSync(`mkdir -p "${repository.workspaceBaseDir}"`, {
-				cwd: repository.repositoryPath,
-				stdio: "pipe",
-			});
+			mkdirSync(repository.workspaceBaseDir, { recursive: true });
 
 			// Check if worktree already exists
 			try {
@@ -1321,7 +1318,7 @@ class EdgeApp {
 			console.error("Failed to create git worktree:", (error as Error).message);
 			// Fall back to regular directory if git worktree fails
 			const fallbackPath = join(repository.workspaceBaseDir, issue.identifier);
-			execSync(`mkdir -p "${fallbackPath}"`, { stdio: "pipe" });
+			mkdirSync(fallbackPath, { recursive: true });
 			return {
 				path: fallbackPath,
 				isGitWorktree: false,
