@@ -319,9 +319,9 @@ describe("Windows Bash Script Compatibility", () => {
 
 	it("should demonstrate Windows bash command compatibility issue", () => {
 		// Mock Windows environment
-		Object.defineProperty(process, 'platform', {
-			value: 'win32',
-			configurable: true
+		Object.defineProperty(process, "platform", {
+			value: "win32",
+			configurable: true,
 		});
 
 		// Mock existsSync to simulate cyrus-setup.sh exists
@@ -329,8 +329,10 @@ describe("Windows Bash Script Compatibility", () => {
 
 		// Mock Windows Command Prompt behavior where bash is not recognized
 		mockExecSync.mockImplementation((cmd: string) => {
-			if (cmd.includes('bash cyrus-setup.sh')) {
-				const error = new Error("'bash' is not recognized as an internal or external command, operable program or batch file.");
+			if (cmd.includes("bash cyrus-setup.sh")) {
+				const error = new Error(
+					"'bash' is not recognized as an internal or external command, operable program or batch file.",
+				);
 				(error as any).status = 1;
 				throw error;
 			}
@@ -339,48 +341,54 @@ describe("Windows Bash Script Compatibility", () => {
 
 		// The problematic command from app.ts line 1294
 		const bashCommand = "bash cyrus-setup.sh";
-		
+
 		// This should fail on Windows without bash in PATH
-		expect(() => mockExecSync(bashCommand, {
-			cwd: "/workspace/project",
-			stdio: "inherit",
-			env: expect.any(Object)
-		})).toThrow("'bash' is not recognized as an internal or external command");
+		expect(() =>
+			mockExecSync(bashCommand, {
+				cwd: "/workspace/project",
+				stdio: "inherit",
+				env: expect.any(Object),
+			}),
+		).toThrow("'bash' is not recognized as an internal or external command");
 	});
 
 	it("should show different shell availability across platforms", () => {
 		const testScenarios = [
 			{
-				platform: 'win32',
-				command: 'bash cyrus-setup.sh',
-				expectedError: "'bash' is not recognized as an internal or external command"
+				platform: "win32",
+				command: "bash cyrus-setup.sh",
+				expectedError:
+					"'bash' is not recognized as an internal or external command",
 			},
 			{
-				platform: 'win32', 
-				command: 'powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1',
-				expectedError: null // PowerShell is available on Windows
+				platform: "win32",
+				command: "powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1",
+				expectedError: null, // PowerShell is available on Windows
 			},
 			{
-				platform: 'darwin',
-				command: 'bash cyrus-setup.sh', 
-				expectedError: null // bash is available on macOS
+				platform: "darwin",
+				command: "bash cyrus-setup.sh",
+				expectedError: null, // bash is available on macOS
 			},
 			{
-				platform: 'linux',
-				command: 'bash cyrus-setup.sh',
-				expectedError: null // bash is available on Linux
-			}
+				platform: "linux",
+				command: "bash cyrus-setup.sh",
+				expectedError: null, // bash is available on Linux
+			},
 		];
 
 		for (const scenario of testScenarios) {
 			// Mock platform
-			Object.defineProperty(process, 'platform', {
+			Object.defineProperty(process, "platform", {
 				value: scenario.platform,
-				configurable: true
+				configurable: true,
 			});
 
 			mockExecSync.mockImplementation((cmd: string) => {
-				if (scenario.expectedError && cmd.includes(scenario.command.split(' ')[0])) {
+				if (
+					scenario.expectedError &&
+					cmd.includes(scenario.command.split(" ")[0])
+				) {
 					const error = new Error(scenario.expectedError);
 					(error as any).status = 1;
 					throw error;
@@ -389,11 +397,13 @@ describe("Windows Bash Script Compatibility", () => {
 			});
 
 			if (scenario.expectedError) {
-				expect(() => mockExecSync(scenario.command, { cwd: "/test", stdio: "inherit" }))
-					.toThrow(scenario.expectedError);
+				expect(() =>
+					mockExecSync(scenario.command, { cwd: "/test", stdio: "inherit" }),
+				).toThrow(scenario.expectedError);
 			} else {
-				expect(() => mockExecSync(scenario.command, { cwd: "/test", stdio: "inherit" }))
-					.not.toThrow();
+				expect(() =>
+					mockExecSync(scenario.command, { cwd: "/test", stdio: "inherit" }),
+				).not.toThrow();
 			}
 		}
 	});
@@ -401,18 +411,20 @@ describe("Windows Bash Script Compatibility", () => {
 	it("should identify the exact problematic bash execution in app.ts", () => {
 		// This test documents the exact location where bash execution fails on Windows
 		// Line 1294: execSync("bash cyrus-setup.sh", { ... })
-		
+
 		// Mock Windows environment
-		Object.defineProperty(process, 'platform', {
-			value: 'win32',
-			configurable: true
+		Object.defineProperty(process, "platform", {
+			value: "win32",
+			configurable: true,
 		});
 
 		mockExecSync.mockImplementation((cmd: string) => {
 			if (cmd === "bash cyrus-setup.sh") {
 				// Simulate Windows bash not found error
-				const error = new Error("'bash' is not recognized as an internal or external command, operable program or batch file.");
-				(error as any).code = 'ENOENT';
+				const error = new Error(
+					"'bash' is not recognized as an internal or external command, operable program or batch file.",
+				);
+				(error as any).code = "ENOENT";
 				(error as any).status = 1;
 				throw error;
 			}
@@ -427,14 +439,15 @@ describe("Windows Bash Script Compatibility", () => {
 			env: {
 				...process.env,
 				LINEAR_ISSUE_ID: "test-id",
-				LINEAR_ISSUE_IDENTIFIER: "TEST-123", 
-				LINEAR_ISSUE_TITLE: "Test Issue"
-			}
+				LINEAR_ISSUE_IDENTIFIER: "TEST-123",
+				LINEAR_ISSUE_TITLE: "Test Issue",
+			},
 		};
 
 		// This should fail on Windows
-		expect(() => mockExecSync(problematicCommand, execOptions))
-			.toThrow("'bash' is not recognized as an internal or external command");
+		expect(() => mockExecSync(problematicCommand, execOptions)).toThrow(
+			"'bash' is not recognized as an internal or external command",
+		);
 	});
 
 	it("should successfully execute cross-platform setup scripts", () => {
@@ -444,56 +457,57 @@ describe("Windows Bash Script Compatibility", () => {
 		// Test scenarios for different platforms and available scripts
 		const testScenarios = [
 			{
-				platform: 'win32',
-				availableScripts: ['cyrus-setup.ps1'],
-				expectedCommand: 'powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1',
-				description: 'Windows with PowerShell script'
+				platform: "win32",
+				availableScripts: ["cyrus-setup.ps1"],
+				expectedCommand:
+					"powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1",
+				description: "Windows with PowerShell script",
 			},
 			{
-				platform: 'win32',
-				availableScripts: ['cyrus-setup.bat'],
-				expectedCommand: 'cyrus-setup.bat',
-				description: 'Windows with batch script'
+				platform: "win32",
+				availableScripts: ["cyrus-setup.bat"],
+				expectedCommand: "cyrus-setup.bat",
+				description: "Windows with batch script",
 			},
 			{
-				platform: 'win32',
-				availableScripts: ['cyrus-setup.cmd'],
-				expectedCommand: 'cyrus-setup.cmd',
-				description: 'Windows with cmd script'
+				platform: "win32",
+				availableScripts: ["cyrus-setup.cmd"],
+				expectedCommand: "cyrus-setup.cmd",
+				description: "Windows with cmd script",
 			},
 			{
-				platform: 'darwin',
-				availableScripts: ['cyrus-setup.sh'],
-				expectedCommand: 'bash cyrus-setup.sh',
-				description: 'macOS with bash script'
+				platform: "darwin",
+				availableScripts: ["cyrus-setup.sh"],
+				expectedCommand: "bash cyrus-setup.sh",
+				description: "macOS with bash script",
 			},
 			{
-				platform: 'linux',
-				availableScripts: ['cyrus-setup.sh'],
-				expectedCommand: 'bash cyrus-setup.sh',
-				description: 'Linux with bash script'
+				platform: "linux",
+				availableScripts: ["cyrus-setup.sh"],
+				expectedCommand: "bash cyrus-setup.sh",
+				description: "Linux with bash script",
 			},
 			{
-				platform: 'win32',
-				availableScripts: ['cyrus-setup.sh'], // Fallback on Windows
-				expectedCommand: 'bash cyrus-setup.sh',
-				description: 'Windows fallback to bash (Git Bash/WSL)'
-			}
+				platform: "win32",
+				availableScripts: ["cyrus-setup.sh"], // Fallback on Windows
+				expectedCommand: "bash cyrus-setup.sh",
+				description: "Windows fallback to bash (Git Bash/WSL)",
+			},
 		];
 
 		for (const scenario of testScenarios) {
 			// Reset mocks
 			vi.clearAllMocks();
-			
+
 			// Mock platform
-			Object.defineProperty(process, 'platform', {
+			Object.defineProperty(process, "platform", {
 				value: scenario.platform,
-				configurable: true
+				configurable: true,
 			});
 
 			// Mock existsSync to return true only for available scripts
 			mockExistsSync.mockImplementation((path: string) => {
-				const fileName = (path as string).split(/[/\\]/).pop() || '';
+				const fileName = (path as string).split(/[/\\]/).pop() || "";
 				return scenario.availableScripts.includes(fileName);
 			});
 
@@ -506,41 +520,66 @@ describe("Windows Bash Script Compatibility", () => {
 			});
 
 			// Simulate the cross-platform script detection logic
-			const isWindows = scenario.platform === 'win32';
+			const isWindows = scenario.platform === "win32";
 			const setupScripts = [
-				{ file: "cyrus-setup.sh", command: "bash cyrus-setup.sh", platform: "unix" },
-				{ file: "cyrus-setup.ps1", command: "powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1", platform: "windows" },
-				{ file: "cyrus-setup.cmd", command: "cyrus-setup.cmd", platform: "windows" },
-				{ file: "cyrus-setup.bat", command: "cyrus-setup.bat", platform: "windows" }
+				{
+					file: "cyrus-setup.sh",
+					command: "bash cyrus-setup.sh",
+					platform: "unix",
+				},
+				{
+					file: "cyrus-setup.ps1",
+					command: "powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1",
+					platform: "windows",
+				},
+				{
+					file: "cyrus-setup.cmd",
+					command: "cyrus-setup.cmd",
+					platform: "windows",
+				},
+				{
+					file: "cyrus-setup.bat",
+					command: "cyrus-setup.bat",
+					platform: "windows",
+				},
 			];
 
 			// Find the first available setup script for the current platform
-			const availableScript = setupScripts.find(script => {
-				const isCompatible = isWindows ? script.platform === "windows" : script.platform === "unix";
+			const availableScript = setupScripts.find((script) => {
+				const isCompatible = isWindows
+					? script.platform === "windows"
+					: script.platform === "unix";
 				return scenario.availableScripts.includes(script.file) && isCompatible;
 			});
 
 			// Fallback: on Windows, try bash if no Windows scripts found
-			const fallbackScript = !availableScript && isWindows ? 
-				setupScripts.find(script => {
-					return script.platform === "unix" && scenario.availableScripts.includes(script.file);
-				}) : null;
+			const fallbackScript =
+				!availableScript && isWindows
+					? setupScripts.find((script) => {
+							return (
+								script.platform === "unix" &&
+								scenario.availableScripts.includes(script.file)
+							);
+						})
+					: null;
 
 			const scriptToRun = availableScript || fallbackScript;
 
 			if (scriptToRun) {
 				// Execute the command - should not throw
-				expect(() => mockExecSync(scriptToRun.command, {
-					cwd: "/workspace",
-					stdio: "inherit",
-					env: expect.any(Object)
-				})).not.toThrow();
+				expect(() =>
+					mockExecSync(scriptToRun.command, {
+						cwd: "/workspace",
+						stdio: "inherit",
+						env: expect.any(Object),
+					}),
+				).not.toThrow();
 
 				// Verify correct command was executed
 				expect(mockExecSync).toHaveBeenCalledWith(scenario.expectedCommand, {
 					cwd: "/workspace",
 					stdio: "inherit",
-					env: expect.any(Object)
+					env: expect.any(Object),
 				});
 			}
 		}
@@ -549,46 +588,49 @@ describe("Windows Bash Script Compatibility", () => {
 	it("should verify the cross-platform fix replaces hardcoded bash execution", () => {
 		// Test that the fix no longer uses hardcoded "bash cyrus-setup.sh" command
 		// Instead, it uses platform-specific script detection
-		
+
 		// Mock Windows environment
-		Object.defineProperty(process, 'platform', {
-			value: 'win32',
-			configurable: true
+		Object.defineProperty(process, "platform", {
+			value: "win32",
+			configurable: true,
 		});
 
 		// Mock that only PowerShell script exists
 		mockExistsSync.mockImplementation((path: string) => {
-			return (path as string).endsWith('cyrus-setup.ps1');
+			return (path as string).endsWith("cyrus-setup.ps1");
 		});
 
 		mockExecSync.mockImplementation((cmd: string) => {
-			if (cmd === 'powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1') {
+			if (cmd === "powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1") {
 				return "";
 			}
 			throw new Error(`Unexpected command: ${cmd}`);
 		});
 
 		// Simulate the new cross-platform script execution
-		const powershellCommand = 'powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1';
-		
+		const powershellCommand =
+			"powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1";
+
 		// Should execute PowerShell command successfully on Windows
-		expect(() => mockExecSync(powershellCommand, {
-			cwd: "C:\\workspace\\project",
-			stdio: "inherit",
-			env: expect.any(Object)
-		})).not.toThrow();
+		expect(() =>
+			mockExecSync(powershellCommand, {
+				cwd: "C:\\workspace\\project",
+				stdio: "inherit",
+				env: expect.any(Object),
+			}),
+		).not.toThrow();
 
 		// Verify the hardcoded bash command is no longer used
 		expect(mockExecSync).not.toHaveBeenCalledWith(
 			"bash cyrus-setup.sh",
-			expect.any(Object)
+			expect.any(Object),
 		);
 
 		// Verify the correct cross-platform command was used instead
 		expect(mockExecSync).toHaveBeenCalledWith(powershellCommand, {
 			cwd: "C:\\workspace\\project",
 			stdio: "inherit",
-			env: expect.any(Object)
+			env: expect.any(Object),
 		});
 	});
 });

@@ -1287,27 +1287,47 @@ class EdgeApp {
 			});
 
 			// Check for setup scripts in the repository root (cross-platform)
-			const isWindows = process.platform === 'win32';
+			const isWindows = process.platform === "win32";
 			const setupScripts = [
-				{ file: "cyrus-setup.sh", command: "bash cyrus-setup.sh", platform: "unix" },
-				{ file: "cyrus-setup.ps1", command: "powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1", platform: "windows" },
-				{ file: "cyrus-setup.cmd", command: "cyrus-setup.cmd", platform: "windows" },
-				{ file: "cyrus-setup.bat", command: "cyrus-setup.bat", platform: "windows" }
+				{
+					file: "cyrus-setup.sh",
+					command: "bash cyrus-setup.sh",
+					platform: "unix",
+				},
+				{
+					file: "cyrus-setup.ps1",
+					command: "powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1",
+					platform: "windows",
+				},
+				{
+					file: "cyrus-setup.cmd",
+					command: "cyrus-setup.cmd",
+					platform: "windows",
+				},
+				{
+					file: "cyrus-setup.bat",
+					command: "cyrus-setup.bat",
+					platform: "windows",
+				},
 			];
 
 			// Find the first available setup script for the current platform
-			const availableScript = setupScripts.find(script => {
+			const availableScript = setupScripts.find((script) => {
 				const scriptPath = join(repository.repositoryPath, script.file);
-				const isCompatible = isWindows ? script.platform === "windows" : script.platform === "unix";
+				const isCompatible = isWindows
+					? script.platform === "windows"
+					: script.platform === "unix";
 				return existsSync(scriptPath) && isCompatible;
 			});
 
 			// Fallback: on Windows, try bash if no Windows scripts found (for Git Bash/WSL users)
-			const fallbackScript = !availableScript && isWindows ? 
-				setupScripts.find(script => {
-					const scriptPath = join(repository.repositoryPath, script.file);
-					return script.platform === "unix" && existsSync(scriptPath);
-				}) : null;
+			const fallbackScript =
+				!availableScript && isWindows
+					? setupScripts.find((script) => {
+							const scriptPath = join(repository.repositoryPath, script.file);
+							return script.platform === "unix" && existsSync(scriptPath);
+						})
+					: null;
 
 			const scriptToRun = availableScript || fallbackScript;
 
