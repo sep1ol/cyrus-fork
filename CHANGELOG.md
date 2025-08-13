@@ -16,6 +16,11 @@ All notable changes to this project will be documented in this file.
 - Updated @anthropic-ai/claude-code from v1.0.72 to v1.0.73 for latest Claude Code improvements
 
 ### Fixed
+- Fixed Windows compatibility issues that caused agent failures on Windows systems
+  - Replaced Unix-specific `mkdir -p` commands with cross-platform Node.js `mkdirSync` 
+  - Implemented intelligent shell script detection supporting Windows (.ps1, .bat, .cmd) and Unix (.sh) scripts
+  - Added graceful fallback for Windows users with Git Bash/WSL to still use bash scripts
+  - Resolves "A subdirectory or file -p already exists" and "bash command not found" errors
 - Resolved issue where Cyrus would fail to respond when it was initially delegated when the receiver was down
   - Now properly creates new sessions when prompted if none existed
   - Sessions are correctly initialized even when no prior session history exists
