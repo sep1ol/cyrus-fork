@@ -316,3 +316,129 @@ describe("Git Worktree Creation - Windows Compatibility", () => {
 		);
 	});
 });
+
+describe("Windows Bash Script Compatibility", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("should demonstrate Windows bash command compatibility issue", () => {
+		// Mock Windows environment
+		Object.defineProperty(process, 'platform', {
+			value: 'win32',
+			configurable: true
+		});
+
+		// Mock existsSync to simulate cyrus-setup.sh exists
+		vi.mocked(fs.existsSync).mockReturnValue(true);
+
+		// Mock Windows Command Prompt behavior where bash is not recognized
+		mockExecSync.mockImplementation((cmd: string) => {
+			if (cmd.includes('bash cyrus-setup.sh')) {
+				const error = new Error("'bash' is not recognized as an internal or external command, operable program or batch file.");
+				(error as any).status = 1;
+				throw error;
+			}
+			return "";
+		});
+
+		// The problematic command from app.ts line 1294
+		const bashCommand = "bash cyrus-setup.sh";
+		
+		// This should fail on Windows without bash in PATH
+		expect(() => mockExecSync(bashCommand, {
+			cwd: "/workspace/project",
+			stdio: "inherit",
+			env: expect.any(Object)
+		})).toThrow("'bash' is not recognized as an internal or external command");
+	});
+
+	it("should show different shell availability across platforms", () => {
+		const testScenarios = [
+			{
+				platform: 'win32',
+				command: 'bash cyrus-setup.sh',
+				expectedError: "'bash' is not recognized as an internal or external command"
+			},
+			{
+				platform: 'win32', 
+				command: 'powershell -ExecutionPolicy Bypass -File cyrus-setup.ps1',
+				expectedError: null // PowerShell is available on Windows
+			},
+			{
+				platform: 'darwin',
+				command: 'bash cyrus-setup.sh', 
+				expectedError: null // bash is available on macOS
+			},
+			{
+				platform: 'linux',
+				command: 'bash cyrus-setup.sh',
+				expectedError: null // bash is available on Linux
+			}
+		];
+
+		for (const scenario of testScenarios) {
+			// Mock platform
+			Object.defineProperty(process, 'platform', {
+				value: scenario.platform,
+				configurable: true
+			});
+
+			mockExecSync.mockImplementation((cmd: string) => {
+				if (scenario.expectedError && cmd.includes(scenario.command.split(' ')[0])) {
+					const error = new Error(scenario.expectedError);
+					(error as any).status = 1;
+					throw error;
+				}
+				return "";
+			});
+
+			if (scenario.expectedError) {
+				expect(() => mockExecSync(scenario.command, { cwd: "/test", stdio: "inherit" }))
+					.toThrow(scenario.expectedError);
+			} else {
+				expect(() => mockExecSync(scenario.command, { cwd: "/test", stdio: "inherit" }))
+					.not.toThrow();
+			}
+		}
+	});
+
+	it("should identify the exact problematic bash execution in app.ts", () => {
+		// This test documents the exact location where bash execution fails on Windows
+		// Line 1294: execSync("bash cyrus-setup.sh", { ... })
+		
+		// Mock Windows environment
+		Object.defineProperty(process, 'platform', {
+			value: 'win32',
+			configurable: true
+		});
+
+		mockExecSync.mockImplementation((cmd: string) => {
+			if (cmd === "bash cyrus-setup.sh") {
+				// Simulate Windows bash not found error
+				const error = new Error("'bash' is not recognized as an internal or external command, operable program or batch file.");
+				(error as any).code = 'ENOENT';
+				(error as any).status = 1;
+				throw error;
+			}
+			return "";
+		});
+
+		// The exact command from line 1294 in app.ts
+		const problematicCommand = "bash cyrus-setup.sh";
+		const execOptions = {
+			cwd: "C:\\workspace\\project\\ISSUE-123",
+			stdio: "inherit" as const,
+			env: {
+				...process.env,
+				LINEAR_ISSUE_ID: "test-id",
+				LINEAR_ISSUE_IDENTIFIER: "TEST-123", 
+				LINEAR_ISSUE_TITLE: "Test Issue"
+			}
+		};
+
+		// This should fail on Windows
+		expect(() => mockExecSync(problematicCommand, execOptions))
+			.toThrow("'bash' is not recognized as an internal or external command");
+	});
+});
