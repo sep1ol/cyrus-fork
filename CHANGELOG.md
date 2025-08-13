@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.41] - 2025-08-13
+
 ### Added
 - Dynamic tool configuration based on system prompt labels
   - Restrict Claude's tools per task type: give debugger mode only read access, builder mode safe tools, etc.
@@ -25,6 +27,23 @@ All notable changes to this project will be documented in this file.
   - Now properly creates new sessions when prompted if none existed
   - Sessions are correctly initialized even when no prior session history exists
   - Improved code organization and type safety in session handling logic
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.10
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.19
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.24
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.16
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.41
 
 ## [0.1.40] - 2025-08-10
 
