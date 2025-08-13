@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Dynamic tool configuration based on system prompt labels
   - Restrict Claude's tools per task type: give debugger mode only read access, builder mode safe tools, etc.
+  - Use case: scoper can only read files, debugger can't use Bash, builder gets full access
   - Use presets (`"readOnly"`, `"safe"`, `"all"`) or custom tool lists in your `labelPrompts` config
   - Improves security and keeps Claude focused on the right tools for each job
   - See [Configuration docs](https://github.com/ceedaragents/cyrus#configuration) for setup details
