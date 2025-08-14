@@ -63,6 +63,9 @@ export declare interface EdgeWorker {
 	): boolean;
 }
 
+const LAST_MESSAGE_MARKER =
+	"\n\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
+
 /**
  * Unified edge worker that **orchestrates**
  *   capturing Linear webhooks,
@@ -1374,6 +1377,7 @@ export class EdgeWorker extends EventEmitter {
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
+			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
 			console.log(
 				`[EdgeWorker] Label-based prompt built successfully, length: ${prompt.length} characters`,
 			);
@@ -1426,6 +1430,7 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
+			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
 			return { prompt };
 		} catch (error) {
 			console.error(`[EdgeWorker] Error building mention prompt:`, error);
@@ -1796,6 +1801,8 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				prompt = `${prompt}\n\n<repository-specific-instruction>\n${repository.appendInstruction}\n</repository-specific-instruction>`;
 			}
 
+			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
+
 			console.log(
 				`[EdgeWorker] Final prompt length: ${prompt.length} characters`,
 			);
@@ -1823,7 +1830,7 @@ Branch: ${issue.branchName}
 Working directory: ${repository.repositoryPath}
 Base branch: ${baseBranch}
 
-${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
+${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution. ${LAST_MESSAGE_MARKER}`;
 
 			return { prompt: fallbackPrompt, version: undefined };
 		}
@@ -1921,7 +1928,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				filter: { team: { id: { eq: team.id } } },
 			});
 
-			const states = await teamStates;
+			const states = teamStates;
 
 			// Find all states with type "started" and pick the one with lowest position
 			// This ensures we pick "In Progress" over "In Review" when both have type "started"
@@ -2578,9 +2585,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		allowedDirectories: string[],
 		resumeSessionId?: string,
 	): any {
-		const lastMessageMarker =
-			"\n\n___LAST_MESSAGE_MARKER___\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
-
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -2588,7 +2592,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			workspaceName: session.issue?.identifier || session.issueId,
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository),
-			appendSystemPrompt: (systemPrompt || "") + lastMessageMarker,
+			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
 					linearAgentActivitySessionId,
