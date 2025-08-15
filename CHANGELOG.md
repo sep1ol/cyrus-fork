@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated @anthropic-ai/claude-code from v1.0.77 to v1.0.80 for latest Claude Code improvements. See [Claude Code v1.0.80 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1080)
+- Updated @anthropic-ai/sdk from v0.59.0 to v0.60.0 for latest Anthropic SDK improvements
+
+### Fixed
+- Fixed issue where duplicate messages appeared in Linear when Claude provided final responses
+  - Added consistent LAST_MESSAGE_MARKER to all prompt types to ensure Claude includes the special marker in final responses
+  - Marker is automatically removed before posting to Linear, preventing duplicate content
+
 ## [0.1.41] - 2025-08-13
 
 ### Added
@@ -15,13 +24,9 @@ All notable changes to this project will be documented in this file.
   - See [Configuration docs](https://github.com/ceedaragents/cyrus#configuration) for setup details
 
 ### Changed
-- Updated @anthropic-ai/claude-code from v1.0.77 to v1.0.80 for latest Claude Code improvements. See [Claude Code v1.0.80 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1080)
-- Updated @anthropic-ai/sdk from v0.59.0 to v0.60.0 for latest Anthropic SDK improvements
+- Updated @anthropic-ai/claude-code from v1.0.72 to v1.0.73 for latest Claude Code improvements
 
 ### Fixed
-- Fixed issue where duplicate messages appeared in Linear when Claude provided final responses
-  - Added consistent LAST_MESSAGE_MARKER to all prompt types to ensure Claude includes the special marker in final responses
-  - Marker is automatically removed before posting to Linear, preventing duplicate content
 - Fixed Windows compatibility issues that caused agent failures on Windows systems
   - Replaced Unix-specific `mkdir -p` commands with cross-platform Node.js `mkdirSync` 
   - Implemented intelligent shell script detection supporting Windows (.ps1, .bat, .cmd) and Unix (.sh) scripts
