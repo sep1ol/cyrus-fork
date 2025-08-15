@@ -2567,10 +2567,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			return `${promptResult.prompt}\n\nUser comment: ${promptBody}`;
 		} else {
 			// For existing sessions, just use the comment with attachment manifest
-			if (attachmentManifest) {
-				return `${promptBody}\n\n${attachmentManifest}`;
-			}
-			return promptBody;
+			const manifestSuffix = attachmentManifest
+				? `\n\n${attachmentManifest}`
+				: "";
+			return `${promptBody}${manifestSuffix}${LAST_MESSAGE_MARKER}`;
 		}
 	}
 
