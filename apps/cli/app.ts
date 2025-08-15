@@ -1260,12 +1260,49 @@ class EdgeApp {
 			let worktreeCmd: string;
 			if (createBranch) {
 				if (hasRemote) {
-					// Always prefer remote version if available
-					const remoteBranch = `origin/${baseBranch}`;
-					console.log(
-						`Creating git worktree at ${workspacePath} from ${remoteBranch}`,
-					);
-					worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`;
+					// Check if the base branch exists remotely
+					let useRemoteBranch = false;
+					try {
+						execSync(`git ls-remote --heads origin "${baseBranch}"`, {
+							cwd: repository.repositoryPath,
+							stdio: "pipe",
+						});
+						useRemoteBranch = true;
+					} catch {
+						// Base branch doesn't exist remotely, use local or fall back to default
+						console.log(
+							`Base branch '${baseBranch}' not found on remote, checking locally...`,
+						);
+					}
+
+					if (useRemoteBranch) {
+						// Use remote version of base branch
+						const remoteBranch = `origin/${baseBranch}`;
+						console.log(
+							`Creating git worktree at ${workspacePath} from ${remoteBranch}`,
+						);
+						worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${remoteBranch}"`;
+					} else {
+						// Check if base branch exists locally
+						try {
+							execSync(`git rev-parse --verify "${baseBranch}"`, {
+								cwd: repository.repositoryPath,
+								stdio: "pipe",
+							});
+							// Use local base branch
+							console.log(
+								`Creating git worktree at ${workspacePath} from local ${baseBranch}`,
+							);
+							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${baseBranch}"`;
+						} catch {
+							// Base branch doesn't exist locally either, fall back to remote default
+							console.log(
+								`Base branch '${baseBranch}' not found locally, falling back to remote ${repository.baseBranch}`,
+							);
+							const defaultRemoteBranch = `origin/${repository.baseBranch}`;
+							worktreeCmd = `git worktree add "${workspacePath}" -b "${branchName}" "${defaultRemoteBranch}"`;
+						}
+					}
 				} else {
 					// No remote, use local branch
 					console.log(

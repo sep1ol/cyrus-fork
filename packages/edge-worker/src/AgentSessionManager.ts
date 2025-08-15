@@ -445,10 +445,6 @@ export class AgentSessionManager {
 						};
 						this.activeTasksBySession.delete(linearAgentActivitySessionId);
 					} else {
-						// Task was already completed, skip this duplicate result
-						console.log(
-							`[AgentSessionManager] Skipping duplicate Task result for already completed task ${entry.metadata?.parentToolUseId}`,
-						);
 						return;
 					}
 					break;
