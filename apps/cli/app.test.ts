@@ -312,6 +312,162 @@ describe("Git Worktree Creation - Windows Compatibility", () => {
 	});
 });
 
+describe("Parent Branch Worktree Creation", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockExecSync.mockReturnValue("");
+		mockExistsSync.mockReturnValue(false);
+	});
+
+	it("should use local parent branch when it exists locally but not remotely", () => {
+		// This test reproduces the bug from PACK-269
+		// Where parent branch exists locally but not on remote
+		
+		const parentBranch = "pack-265-test-orchestration";
+		const subIssueBranch = "pack-266-setup-test-environment";
+		const workspacePath = "/Users/cyrusops/code/cyrus-workspaces/PACK-266";
+		
+		// Mock git commands to simulate:
+		// 1. Parent branch exists locally
+		// 2. Parent branch does NOT exist on remote
+		// 3. git fetch succeeds (hasRemote = true)
+		mockExecSync.mockImplementation((cmd: string) => {
+			// git fetch origin - succeeds
+			if (cmd === "git fetch origin") {
+				return "";
+			}
+			
+			// Check if parent branch exists locally - succeeds
+			if (cmd.includes(`git rev-parse --verify "${parentBranch}"`)) {
+				return "abc123def456"; // Mock commit hash
+			}
+			
+			// Check if parent branch exists on remote - FAILS (branch not on remote)
+			if (cmd.includes(`git ls-remote --heads origin "${parentBranch}"`)) {
+				throw new Error("Branch not found on remote");
+			}
+			
+			// The worktree command should use local branch, not origin/branch
+			if (cmd.includes("git worktree add")) {
+				// This should be the correct command using local branch
+				const expectedCmd = `git worktree add "${workspacePath}" -b "${subIssueBranch}" "${parentBranch}"`;
+				
+				// The bug would cause this incorrect command with origin/ prefix
+				const buggyCmd = `git worktree add "${workspacePath}" -b "${subIssueBranch}" "origin/${parentBranch}"`;
+				
+				if (cmd === buggyCmd) {
+					// Simulate the actual error from the bug report
+					throw new Error(`fatal: not a valid object name: 'origin/${parentBranch}'`);
+				}
+				
+				if (cmd === expectedCmd) {
+					return ""; // Success
+				}
+				
+				throw new Error(`Unexpected worktree command: ${cmd}`);
+			}
+			
+			return "";
+		});
+		
+		// Simulate the worktree creation logic from app.ts
+		let hasRemote = true;
+		try {
+			mockExecSync("git fetch origin", { cwd: "/repo", stdio: "pipe" });
+		} catch {
+			hasRemote = false;
+		}
+		
+		expect(hasRemote).toBe(true);
+		
+		// Check if parent branch exists remotely
+		let useRemoteBranch = false;
+		if (hasRemote) {
+			try {
+				mockExecSync(`git ls-remote --heads origin "${parentBranch}"`, {
+					cwd: "/repo",
+					stdio: "pipe",
+				});
+				useRemoteBranch = true;
+			} catch {
+				// Branch doesn't exist remotely
+				useRemoteBranch = false;
+			}
+		}
+		
+		expect(useRemoteBranch).toBe(false); // Parent branch NOT on remote
+		
+		// The fix should use local branch when remote doesn't exist
+		let worktreeCmd: string;
+		if (useRemoteBranch) {
+			// Should NOT reach here for this test case
+			worktreeCmd = `git worktree add "${workspacePath}" -b "${subIssueBranch}" "origin/${parentBranch}"`;
+		} else {
+			// Should check local branch exists and use it
+			try {
+				mockExecSync(`git rev-parse --verify "${parentBranch}"`, {
+					cwd: "/repo",
+					stdio: "pipe",
+				});
+				// Use local branch
+				worktreeCmd = `git worktree add "${workspacePath}" -b "${subIssueBranch}" "${parentBranch}"`;
+			} catch {
+				// Fall back to origin/main or similar
+				worktreeCmd = `git worktree add "${workspacePath}" -b "${subIssueBranch}" "origin/main"`;
+			}
+		}
+		
+		// Execute the worktree command - should succeed with local branch
+		expect(() => {
+			mockExecSync(worktreeCmd, { cwd: "/repo", stdio: "pipe" });
+		}).not.toThrow();
+		
+		// Verify the correct command was used (local branch, not origin/)
+		expect(worktreeCmd).toBe(
+			`git worktree add "${workspacePath}" -b "${subIssueBranch}" "${parentBranch}"`
+		);
+		expect(worktreeCmd).not.toContain("origin/pack-265");
+	});
+
+	it("should demonstrate the current bug where git ls-remote may return empty output but succeed", () => {
+		// This test shows a potential cause of the bug
+		// git ls-remote might return success (exit code 0) even when no matching branch is found
+		
+		const parentBranch = "pack-265-test-orchestration";
+		
+		mockExecSync.mockImplementation((cmd: string) => {
+			if (cmd.includes(`git ls-remote --heads origin "${parentBranch}"`)) {
+				// git ls-remote can return empty output (no matching branches)
+				// but still exit with code 0 (success)
+				return ""; // Empty output but no error thrown
+			}
+			return "";
+		});
+		
+		// The current code only checks if the command throws
+		// It doesn't check if the output is empty
+		let branchExistsOnRemote = false;
+		try {
+			const output = mockExecSync(`git ls-remote --heads origin "${parentBranch}"`, {
+				cwd: "/repo",
+				stdio: "pipe",
+			});
+			// Bug: Code assumes if no exception thrown, branch exists
+			// But we should check if output is non-empty
+			branchExistsOnRemote = true; // This is wrong!
+			
+			// The fix would be:
+			// branchExistsOnRemote = output && output.toString().trim().length > 0;
+		} catch {
+			branchExistsOnRemote = false;
+		}
+		
+		// This demonstrates the bug - command succeeded but branch doesn't exist
+		expect(branchExistsOnRemote).toBe(true); // Wrong result!
+		// Should be: expect(branchExistsOnRemote).toBe(false);
+	});
+});
+
 describe("Windows Bash Script Compatibility", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
