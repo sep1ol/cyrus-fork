@@ -218,7 +218,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.37
 
-## [0.1.36] - 2025-01-31
+## [0.1.36] - 2025-08-01
 
 ### Added
 - Instant response is now sent when receiving follow-up messages in an existing conversation, providing immediate feedback that Cyrus is working on the request
@@ -249,7 +249,7 @@ All notable changes to this project will be documented in this file.
 
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.36
-## [0.1.35-alpha.0] - 2025-01-26
+## [0.1.35-alpha.0] - 2025-07-27
 
 ### Added
 - Instant acknowledgment responses when Cyrus receives a request, providing immediate feedback to users
@@ -276,7 +276,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-ai (CLI)
 - cyrus-ai@0.1.35-alpha.0
 
-## [0.1.33] - 2025-01-11
+## [0.1.33] - 2025-07-11
 
 ### CLI
 - cyrus-ai@0.1.33
@@ -299,7 +299,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-ndjson-client
 - cyrus-ndjson-client@0.0.13
 
-## [0.1.32] - 2025-01-09
+## [0.1.32] - 2025-07-09
 
 ### CLI
 - cyrus-ai@0.1.32
@@ -313,7 +313,7 @@ All notable changes to this project will be documented in this file.
 - cyrus-edge-worker@0.0.17
   - Fixed missing prompt-template-v2.md in package files
 
-## [0.1.31] - 2025-01-09
+## [0.1.31] - 2025-07-09
 
 ### CLI
 - cyrus-ai@0.1.31
@@ -345,7 +345,7 @@ All notable changes to this project will be documented in this file.
 - cyrus-ndjson-client@0.0.12
 - Fixed webhook URL registration to use external server's public URL when available
 
-## [0.1.30] - 2025-01-07
+## [0.1.30] - 2025-07-07
 
 ### CLI
 - cyrus-ai@0.1.30
@@ -361,7 +361,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-edge-worker
 - cyrus-edge-worker@0.0.15
 
-## [0.1.28] - 2025-01-06
+## [0.1.28] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.28
@@ -371,7 +371,7 @@ All notable changes to this project will be documented in this file.
   - Auto-completes streaming prompt when Claude sends result message
   - Prevents infinite wait in for-await loop
 
-## [0.1.27] - 2025-01-06
+## [0.1.27] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.27
@@ -379,7 +379,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Updated to use edge-worker 0.0.12 with fixed claude-runner dependency
 
-## [0.1.26] - 2025-01-06
+## [0.1.26] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.26
@@ -392,7 +392,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Added `appendSystemPrompt` option to ClaudeRunner config for extending default system prompt
 
-## [0.1.25] - 2025-01-06
+## [0.1.25] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.25
@@ -401,15 +401,8 @@ All notable changes to this project will be documented in this file.
 - Fixed streaming session detection to prevent "I've queued up your message..." when sessions have completed
 - Improved isStreaming() method to check both streaming state and session running status
 
-## [0.1.24] - 2025-01-06
 
-### CLI
-- cyrus-ai@0.1.24
-
-### Fixed
-- Fixed version command showing incorrect version number
-
-## [0.1.23] - 2025-01-06
+## [0.1.23] - 2025-07-06
 
 ### CLI
 - cyrus-ai@0.1.23
@@ -436,7 +429,7 @@ All notable changes to this project will be documented in this file.
   - Uses sanitized repository names as namespace folders
   - Existing configurations remain unchanged
 
-## [0.1.22] - 2025-01-06
+## [0.1.22] - 2025-07-05
 
 ### CLI
 - cyrus-ai@0.1.22
@@ -469,7 +462,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-edge-worker
 - cyrus-edge-worker@0.0.10
 
-## [0.1.21] - 2025-01-05
+## [0.1.21] - 2025-07-05
 
 ### CLI
 - cyrus-ai@0.1.21
@@ -491,7 +484,7 @@ All notable changes to this project will be documented in this file.
 #### cyrus-edge-worker
 - cyrus-edge-worker@0.0.9
 
-## [0.1.19] - 2025-01-04
+## [0.1.19] - 2025-07-04
 
 ### CLI
 - cyrus-ai@0.1.19
