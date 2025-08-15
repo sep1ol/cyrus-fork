@@ -19,6 +19,9 @@ All notable changes to this project will be documented in this file.
 - Updated @anthropic-ai/sdk from v0.59.0 to v0.60.0 for latest Anthropic SDK improvements
 
 ### Fixed
+- Fixed issue where duplicate messages appeared in Linear when Claude provided final responses
+  - Added consistent LAST_MESSAGE_MARKER to all prompt types to ensure Claude includes the special marker in final responses
+  - Marker is automatically removed before posting to Linear, preventing duplicate content
 - Fixed Windows compatibility issues that caused agent failures on Windows systems
   - Replaced Unix-specific `mkdir -p` commands with cross-platform Node.js `mkdirSync` 
   - Implemented intelligent shell script detection supporting Windows (.ps1, .bat, .cmd) and Unix (.sh) scripts
