@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Fixed git worktree creation failures for sub-issues when parent branch doesn't exist remotely
+  - Added proper remote branch existence checking before attempting worktree creation
+  - Gracefully falls back to local parent branch or default base branch when remote parent branch is unavailable
+
 ## [0.1.42] - 2025-08-15
 
 ### Changed
@@ -46,9 +51,6 @@ All notable changes to this project will be documented in this file.
 - Updated @anthropic-ai/claude-code from v1.0.72 to v1.0.73 for latest Claude Code improvements
 
 ### Fixed
-- Fixed git worktree creation failures for sub-issues when parent branch doesn't exist remotely
-  - Added proper remote branch existence checking before attempting worktree creation
-  - Gracefully falls back to local parent branch or default base branch when remote parent branch is unavailable
 - Fixed Windows compatibility issues that caused agent failures on Windows systems
   - Replaced Unix-specific `mkdir -p` commands with cross-platform Node.js `mkdirSync` 
   - Implemented intelligent shell script detection supporting Windows (.ps1, .bat, .cmd) and Unix (.sh) scripts
