@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.42] - 2025-08-15
+
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.77 to v1.0.80 for latest Claude Code improvements. See [Claude Code v1.0.80 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1080)
 - Updated @anthropic-ai/sdk from v0.59.0 to v0.60.0 for latest Anthropic SDK improvements
@@ -12,6 +14,23 @@ All notable changes to this project will be documented in this file.
 - Fixed issue where duplicate messages appeared in Linear when Claude provided final responses
   - Added consistent LAST_MESSAGE_MARKER to all prompt types to ensure Claude includes the special marker in final responses
   - Marker is automatically removed before posting to Linear, preventing duplicate content
+
+### Packages
+
+#### cyrus-core
+- cyrus-core@0.0.10
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.20
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.25
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.16
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.42
 
 ## [0.1.41] - 2025-08-13
 
