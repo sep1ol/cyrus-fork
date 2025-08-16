@@ -1067,10 +1067,13 @@ class EdgeApp {
 		} catch {
 			// Branch doesn't exist locally, check remote
 			try {
-				const remoteOutput = execSync(`git ls-remote --heads origin "${branchName}"`, {
-					cwd: repoPath,
-					stdio: "pipe",
-				});
+				const remoteOutput = execSync(
+					`git ls-remote --heads origin "${branchName}"`,
+					{
+						cwd: repoPath,
+						stdio: "pipe",
+					},
+				);
 				// Check if output is non-empty (branch actually exists on remote)
 				return remoteOutput && remoteOutput.toString().trim().length > 0;
 			} catch {
@@ -1264,12 +1267,16 @@ class EdgeApp {
 					// Check if the base branch exists remotely
 					let useRemoteBranch = false;
 					try {
-						const remoteOutput = execSync(`git ls-remote --heads origin "${baseBranch}"`, {
-							cwd: repository.repositoryPath,
-							stdio: "pipe",
-						});
+						const remoteOutput = execSync(
+							`git ls-remote --heads origin "${baseBranch}"`,
+							{
+								cwd: repository.repositoryPath,
+								stdio: "pipe",
+							},
+						);
 						// Check if output is non-empty (branch actually exists on remote)
-						useRemoteBranch = remoteOutput && remoteOutput.toString().trim().length > 0;
+						useRemoteBranch =
+							remoteOutput && remoteOutput.toString().trim().length > 0;
 						if (!useRemoteBranch) {
 							console.log(
 								`Base branch '${baseBranch}' not found on remote, checking locally...`,
