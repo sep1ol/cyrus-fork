@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.43] - 2025-08-18
+
 ### Added
 - Model configuration support for Claude Pro users
   - Configure Claude model selection (priority order: env vars → repository config → global config → defaults)
@@ -20,6 +22,17 @@ All notable changes to this project will be documented in this file.
 - Fixed git worktree creation failures for sub-issues when parent branch doesn't exist remotely
   - Added proper remote branch existence checking before attempting worktree creation
   - Gracefully falls back to local parent branch or default base branch when remote parent branch is unavailable
+
+### Packages
+
+#### cyrus-claude-runner  
+- cyrus-claude-runner@0.0.21
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.26
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.43
 
 ## [0.1.42] - 2025-08-15
 
