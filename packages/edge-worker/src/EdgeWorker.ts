@@ -2594,6 +2594,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository),
 			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
+			// Use repository-specific model or fall back to global default
+			model: repository.model || this.config.defaultModel,
+			fallbackModel:
+				repository.fallbackModel || this.config.defaultFallbackModel,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
 					linearAgentActivitySessionId,

@@ -32,6 +32,8 @@ export interface RepositoryConfig {
 	allowedTools?: string[]; // Override Claude tools for this repository (overrides defaultAllowedTools)
 	mcpConfigPath?: string | string[]; // Path(s) to MCP configuration JSON file(s) (format: {"mcpServers": {...}})
 	appendInstruction?: string; // Additional instruction to append to the prompt in XML-style wrappers
+	model?: string; // Claude model to use for this repository (e.g., "opus", "sonnet", "haiku")
+	fallbackModel?: string; // Fallback model if primary model is unavailable
 
 	// Label-based system prompt configuration
 	labelPrompts?: {
@@ -65,6 +67,8 @@ export interface EdgeWorkerConfig {
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
+	defaultModel?: string; // Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku")
+	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 
 	// Global defaults for prompt types
 	promptDefaults?: {
