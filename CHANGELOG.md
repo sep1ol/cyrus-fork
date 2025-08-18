@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Model configuration support for Claude Pro users
+  - Configure Claude model selection (priority order: env vars → repository config → global config → defaults)
+  - Environment variables: `CYRUS_DEFAULT_MODEL` and `CYRUS_DEFAULT_FALLBACK_MODEL`
+  - Global config: `defaultModel` and `defaultFallbackModel` in `~/.cyrus/config.json`
+  - Repository-specific: `model` and `fallbackModel` fields per repository
+  - Defaults: `"opus"` (primary) and `"sonnet"` (fallback)
+  - Resolves errors for Claude Pro users who lack Opus model access
+
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.81 to v1.0.83 for latest Claude Code improvements. See [Claude Code v1.0.83 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1083)
 

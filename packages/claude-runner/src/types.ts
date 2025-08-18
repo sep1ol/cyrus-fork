@@ -17,6 +17,8 @@ export interface ClaudeRunnerConfig {
 	appendSystemPrompt?: string; // Additional prompt to append to the default system prompt
 	mcpConfigPath?: string | string[]; // Single path or array of paths to compose
 	mcpConfig?: Record<string, McpServerConfig>; // Additional/override MCP servers
+	model?: string; // Claude model to use (e.g., "opus", "sonnet", "haiku")
+	fallbackModel?: string; // Fallback model if primary model is unavailable
 	promptVersions?: {
 		// Optional prompt template version information
 		userPromptVersion?: string;

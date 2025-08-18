@@ -83,6 +83,8 @@ interface EdgeConfig {
 	repositories: RepositoryConfig[];
 	ngrokAuthToken?: string;
 	stripeCustomerId?: string;
+	defaultModel?: string; // Default Claude model to use across all repositories
+	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 }
 
 interface Workspace {
@@ -455,6 +457,12 @@ class EdgeApp {
 			repositories,
 			defaultAllowedTools:
 				process.env.ALLOWED_TOOLS?.split(",").map((t) => t.trim()) || [],
+			// Model configuration: environment variables take precedence over config file
+			defaultModel:
+				process.env.CYRUS_DEFAULT_MODEL || this.loadEdgeConfig().defaultModel,
+			defaultFallbackModel:
+				process.env.CYRUS_DEFAULT_FALLBACK_MODEL ||
+				this.loadEdgeConfig().defaultFallbackModel,
 			webhookBaseUrl: process.env.CYRUS_BASE_URL,
 			serverPort: process.env.CYRUS_SERVER_PORT
 				? parseInt(process.env.CYRUS_SERVER_PORT, 10)
