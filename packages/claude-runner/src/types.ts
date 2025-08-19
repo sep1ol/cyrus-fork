@@ -19,6 +19,7 @@ export interface ClaudeRunnerConfig {
 	mcpConfig?: Record<string, McpServerConfig>; // Additional/override MCP servers
 	model?: string; // Claude model to use (e.g., "opus", "sonnet", "haiku")
 	fallbackModel?: string; // Fallback model if primary model is unavailable
+	cyrusHome: string; // Cyrus home directory
 	promptVersions?: {
 		// Optional prompt template version information
 		userPromptVersion?: string;

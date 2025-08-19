@@ -86,6 +86,9 @@ export interface EdgeWorkerConfig {
 	// Repository configurations
 	repositories: RepositoryConfig[];
 
+	// Cyrus home directory
+	cyrusHome: string;
+
 	// Optional handlers that apps can implement
 	handlers?: {
 		// Called when workspace needs to be created
