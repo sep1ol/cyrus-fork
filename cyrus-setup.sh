@@ -24,3 +24,5 @@ else
     # Add new port
     echo "CYRUS_SERVER_PORT=$CYRUS_SERVER_PORT" >> .env
 fi
+
+cp /Users/cyrusops/code/cyrus/CLAUDE.local.md CLAUDE.local.md
