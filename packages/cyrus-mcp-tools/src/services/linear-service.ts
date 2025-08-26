@@ -687,18 +687,19 @@ export class LinearService {
 			}
 
 			// Get the user to assign
-			const user = assigneeId ? await this.client.user(assigneeId) : null;
+			const _user = assigneeId ? await this.client.user(assigneeId) : null;
 
 			// Update the issue with the new assignee
-			const updatedIssue = await issue.update({
+			const _updatedIssue = await issue.update({
 				assigneeId: assigneeId,
 			});
 
 			// Get the updated assignee data
 			// We need to get the full issue record and its relationships
 			const issueData = await this.client.issue(issue.id);
-			const assigneeData =
-				issueData && issueData.assignee ? await issueData.assignee : null;
+			const assigneeData = issueData?.assignee
+				? await issueData.assignee
+				: null;
 
 			return {
 				success: true,
@@ -767,16 +768,15 @@ export class LinearService {
 			}
 
 			// Convert the issue to a subtask
-			const updatedIssue = await issue.update({
+			const _updatedIssue = await issue.update({
 				parentId: parentIssueId,
 			});
 
 			// Get parent data - we need to fetch the updated issue to get relationships
 			const updatedIssueData = await this.client.issue(issue.id);
-			const parentData =
-				updatedIssueData && updatedIssueData.parent
-					? await updatedIssueData.parent
-					: null;
+			const parentData = updatedIssueData?.parent
+				? await updatedIssueData.parent
+				: null;
 
 			return {
 				success: true,
