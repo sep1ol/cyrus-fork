@@ -1,9 +1,9 @@
-import { MCPToolDefinition } from '../../types.js';
-import { uploadFileToolDefinition } from './upload-tool.js';
+import type { MCPToolDefinition } from "../../types.js";
+import { uploadFileToolDefinition } from "./upload-tool.js";
 
 // All tool definitions
 export const allToolDefinitions: MCPToolDefinition[] = [
-  uploadFileToolDefinition
+	uploadFileToolDefinition,
 ];
 
 // Export all tool definitions individually

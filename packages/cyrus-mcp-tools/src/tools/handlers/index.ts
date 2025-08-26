@@ -1,5 +1,5 @@
-import { LinearService } from '../../services/linear-service.js';
-import { handleUploadFile } from './upload-handler.js';
+import type { LinearService } from "../../services/linear-service.js";
+import { handleUploadFile } from "./upload-handler.js";
 
 // Define the handler function type
 type ToolHandler = (args: unknown) => Promise<unknown>;
@@ -9,10 +9,12 @@ type ToolHandler = (args: unknown) => Promise<unknown>;
  * @param linearService The Linear service instance
  * @returns A map of tool name to handler function
  */
-export function registerToolHandlers(linearService: LinearService): Record<string, ToolHandler> {
-  return {
-    linear_upload_file: handleUploadFile(linearService)
-  };
+export function registerToolHandlers(
+	linearService: LinearService,
+): Record<string, ToolHandler> {
+	return {
+		linear_upload_file: handleUploadFile(linearService),
+	};
 }
 
 // Export all handlers individually

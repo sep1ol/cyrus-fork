@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -9,15 +9,15 @@ dotenv.config();
  * @returns The value of the flag or undefined if not found
  */
 export function getCommandLineArg(flag: string): string | undefined {
-  const args = process.argv.slice(2);
+	const args = process.argv.slice(2);
 
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === flag && i + 1 < args.length) {
-      return args[i + 1];
-    }
-  }
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === flag && i + 1 < args.length) {
+			return args[i + 1];
+		}
+	}
 
-  return undefined;
+	return undefined;
 }
 
 /**
@@ -25,23 +25,26 @@ export function getCommandLineArg(flag: string): string | undefined {
  * @returns The API token or undefined if not found
  */
 export function getLinearApiToken(): string | undefined {
-  // First try to get the token from command-line arguments
-  const tokenFromArgs = getCommandLineArg('--token');
+	// First try to get the token from command-line arguments
+	const tokenFromArgs = getCommandLineArg("--token");
 
-  // If not found, try to get it from environment variables
-  // Check both LINEAR_API_TOKEN and LINEAR_API_KEY for compatibility with Smithery
-  const tokenFromEnv = process.env.LINEAR_API_TOKEN || process.env.LINEAR_API_KEY;
+	// If not found, try to get it from environment variables
+	// Check both LINEAR_API_TOKEN and LINEAR_API_KEY for compatibility with Smithery
+	const tokenFromEnv =
+		process.env.LINEAR_API_TOKEN || process.env.LINEAR_API_KEY;
 
-  // Log for debugging
-  if (!tokenFromArgs && !tokenFromEnv) {
-    console.error('API token not found in command line args or environment variables');
-    console.error(
-      'Environment variables:',
-      Object.keys(process.env).filter((key) => key.includes('LINEAR')),
-    );
-  }
+	// Log for debugging
+	if (!tokenFromArgs && !tokenFromEnv) {
+		console.error(
+			"API token not found in command line args or environment variables",
+		);
+		console.error(
+			"Environment variables:",
+			Object.keys(process.env).filter((key) => key.includes("LINEAR")),
+		);
+	}
 
-  return tokenFromArgs || tokenFromEnv;
+	return tokenFromArgs || tokenFromEnv;
 }
 
 /**
@@ -49,7 +52,7 @@ export function getLinearApiToken(): string | undefined {
  * @param message The message to log
  */
 export function logInfo(message: string): void {
-  console.error(message);
+	console.error(message);
 }
 
 /**
@@ -58,9 +61,9 @@ export function logInfo(message: string): void {
  * @param error The error object (optional)
  */
 export function logError(message: string, error?: unknown): void {
-  if (error) {
-    console.error(message, error);
-  } else {
-    console.error(message);
-  }
+	if (error) {
+		console.error(message, error);
+	} else {
+		console.error(message);
+	}
 }
