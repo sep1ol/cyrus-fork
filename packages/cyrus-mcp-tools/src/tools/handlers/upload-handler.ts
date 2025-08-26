@@ -106,12 +106,18 @@ export function handleUploadFile(linearService: LinearService) {
 
 			// Step 2: Upload the file to the provided URL
 			console.log(`Uploading file to Linear cloud storage...`);
+			console.log(`Headers from Linear:`, headers);
 
-			// Convert headers array to object
+			// Convert headers array to object, being careful with header names
 			const uploadHeaders: Record<string, string> = {};
+			
+			// Only include headers that Linear explicitly provided
 			for (const header of headers) {
+				// Use the exact key provided by Linear
 				uploadHeaders[header.key] = header.value;
 			}
+			
+			console.log(`Headers being sent:`, uploadHeaders);
 
 			const uploadResponse = await fetch(uploadUrl, {
 				method: "PUT",
