@@ -182,15 +182,29 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 
 			// Test debugger prompt with readOnly preset
 			const debuggerTools = buildAllowedTools(repository, "debugger");
-			expect(debuggerTools).toEqual([...getReadOnlyTools(), "mcp__linear"]);
+			expect(debuggerTools).toEqual([
+				...getReadOnlyTools(),
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 
 			// Test builder prompt with custom array
 			const builderTools = buildAllowedTools(repository, "builder");
-			expect(builderTools).toEqual(["Read", "Edit", "Task", "mcp__linear"]);
+			expect(builderTools).toEqual([
+				"Read",
+				"Edit",
+				"Task",
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 
 			// Test scoper prompt with safe preset
 			const scoperTools = buildAllowedTools(repository, "scoper");
-			expect(scoperTools).toEqual([...getSafeTools(), "mcp__linear"]);
+			expect(scoperTools).toEqual([
+				...getSafeTools(),
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 		});
 
 		it("should use global prompt defaults when repository-specific config is not available", () => {
@@ -218,15 +232,28 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 
 			// Test debugger prompt with global all preset
 			const debuggerTools = buildAllowedTools(repository, "debugger");
-			expect(debuggerTools).toEqual([...getAllTools(), "mcp__linear"]);
+			expect(debuggerTools).toEqual([
+				...getAllTools(),
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 
 			// Test builder prompt with global safe preset
 			const builderTools = buildAllowedTools(repository, "builder");
-			expect(builderTools).toEqual([...getSafeTools(), "mcp__linear"]);
+			expect(builderTools).toEqual([
+				...getSafeTools(),
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 
 			// Test scoper prompt with global custom array
 			const scoperTools = buildAllowedTools(repository, "scoper");
-			expect(scoperTools).toEqual(["Read", "WebFetch", "mcp__linear"]);
+			expect(scoperTools).toEqual([
+				"Read",
+				"WebFetch",
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 		});
 
 		it("should fall back to repository-level allowed tools when no prompt type is specified", () => {
@@ -238,7 +265,12 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
 			const tools = buildAllowedTools(repository);
 
-			expect(tools).toEqual(["Read", "Write", "mcp__linear"]);
+			expect(tools).toEqual([
+				"Read",
+				"Write",
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 		});
 
 		it("should fall back to global default allowed tools when no other config is available", () => {
@@ -250,7 +282,13 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const tools = buildAllowedTools(repository);
 
 			// Should use global defaultAllowedTools from mockConfig
-			expect(tools).toEqual(["Read", "Write", "Edit", "mcp__linear"]);
+			expect(tools).toEqual([
+				"Read",
+				"Write",
+				"Edit",
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 		});
 
 		it("should fall back to safe tools when no configuration is provided", () => {
@@ -267,7 +305,11 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			};
 
 			const tools = buildAllowedTools(repository);
-			expect(tools).toEqual([...getSafeTools(), "mcp__linear"]);
+			expect(tools).toEqual([
+				...getSafeTools(),
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 		});
 
 		it("should always include Linear MCP tools", () => {
@@ -280,7 +322,7 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const tools = buildAllowedTools(repository);
 
 			// Should deduplicate Linear MCP tools
-			expect(tools).toEqual(["Read", "mcp__linear"]);
+			expect(tools).toEqual(["Read", "mcp__linear", "mcp__cyrus-mcp-tools"]);
 			expect(tools.filter((t) => t === "mcp__linear")).toHaveLength(1);
 		});
 
@@ -300,11 +342,21 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 
 			// Old format should fall back to repository/global defaults
 			const debuggerTools = buildAllowedTools(repository, "debugger");
-			expect(debuggerTools).toEqual(["Read", "Write", "Edit", "mcp__linear"]);
+			expect(debuggerTools).toEqual([
+				"Read",
+				"Write",
+				"Edit",
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 
 			// New format should work as expected
 			const builderTools = buildAllowedTools(repository, "builder");
-			expect(builderTools).toEqual([...getSafeTools(), "mcp__linear"]);
+			expect(builderTools).toEqual([
+				...getSafeTools(),
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 		});
 
 		it("should handle single tool string in resolveToolPreset", () => {
@@ -321,7 +373,11 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			const buildAllowedTools = getBuildAllowedTools(edgeWorker);
 			const tools = buildAllowedTools(repository, "debugger");
 
-			expect(tools).toEqual(["CustomTool", "mcp__linear"]);
+			expect(tools).toEqual([
+				"CustomTool",
+				"mcp__linear",
+				"mcp__cyrus-mcp-tools",
+			]);
 		});
 	});
 

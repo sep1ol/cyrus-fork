@@ -4,8 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- New `cyrus-mcp-tools` package providing MCP tools for Linear integration
+  - File upload capability: Upload files to Linear and get asset URLs for use in issues and comments
+  - Agent session creation: Create AI/bot tracking sessions on Linear issues
+  - Automatically available in all Cyrus sessions without additional configuration
+
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.88 to v1.0.89 for latest Claude Code improvements. See [Claude Code v1.0.89 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1089)
+- Upgraded @linear/sdk from v38/v55 to v58.0.0 across all packages for latest Linear API features
+
+### Packages
+
+#### cyrus-mcp-tools (new)
+- cyrus-mcp-tools@0.2.0 - Initial release with file upload and agent session creation tools
 
 ## [0.1.44] - 2025-08-19
 
