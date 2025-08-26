@@ -13,11 +13,6 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.88 to v1.0.89 for latest Claude Code improvements. See [Claude Code v1.0.89 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1089)
 - Upgraded @linear/sdk from v38/v55 to v58.0.0 across all packages for latest Linear API features
-- MCP tool prefix changed from `mcp__linear-uploads` to `mcp__cyrus-mcp-tools` to match package name
-
-### Fixed
-- Fixed file upload header handling to properly set Content-Type and Cache-Control per Linear documentation
-- Resolved breaking changes in Linear SDK v58 by updating project state handling
 
 ### Packages
 
