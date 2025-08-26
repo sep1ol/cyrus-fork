@@ -1,6 +1,6 @@
 import type { LinearService } from "../../services/linear-service.js";
-import { handleUploadFile } from "./upload-handler.js";
 import { handleCreateAgentSession } from "./agent-session-handler.js";
+import { handleUploadFile } from "./upload-handler.js";
 
 // Define the handler function type
 type ToolHandler = (args: unknown) => Promise<unknown>;

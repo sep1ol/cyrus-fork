@@ -1,6 +1,6 @@
 import type { MCPToolDefinition } from "../../types.js";
-import { uploadFileToolDefinition } from "./upload-tool.js";
 import { createAgentSessionToolDefinition } from "./agent-session-tool.js";
+import { uploadFileToolDefinition } from "./upload-tool.js";
 
 // All tool definitions
 export const allToolDefinitions: MCPToolDefinition[] = [

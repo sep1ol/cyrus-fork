@@ -42,7 +42,9 @@ export interface CreateAgentSessionArgs {
 	externalLink?: string;
 }
 
-export function isCreateAgentSessionArgs(args: unknown): args is CreateAgentSessionArgs {
+export function isCreateAgentSessionArgs(
+	args: unknown,
+): args is CreateAgentSessionArgs {
 	if (typeof args !== "object" || args === null) {
 		return false;
 	}

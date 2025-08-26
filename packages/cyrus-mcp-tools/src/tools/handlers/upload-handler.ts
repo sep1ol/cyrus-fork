@@ -112,13 +112,13 @@ export function handleUploadFile(linearService: LinearService) {
 				"Content-Type": contentType,
 				"Cache-Control": "public, max-age=31536000",
 			};
-			
+
 			// Then add the headers from Linear's response
 			// These override any defaults we set above
 			for (const header of headers) {
 				uploadHeaders[header.key] = header.value;
 			}
-			
+
 			console.log(`Headers being sent:`, uploadHeaders);
 
 			const uploadResponse = await fetch(uploadUrl, {
