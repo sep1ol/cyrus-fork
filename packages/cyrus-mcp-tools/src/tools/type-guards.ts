@@ -36,3 +36,28 @@ export function isUploadFileArgs(args: unknown): args is UploadFileArgs {
 
 	return true;
 }
+
+export interface CreateAgentSessionArgs {
+	issueId: string;
+	externalLink?: string;
+}
+
+export function isCreateAgentSessionArgs(args: unknown): args is CreateAgentSessionArgs {
+	if (typeof args !== "object" || args === null) {
+		return false;
+	}
+
+	const obj = args as any;
+
+	// Required field
+	if (typeof obj.issueId !== "string") {
+		return false;
+	}
+
+	// Optional field
+	if (obj.externalLink !== undefined && typeof obj.externalLink !== "string") {
+		return false;
+	}
+
+	return true;
+}

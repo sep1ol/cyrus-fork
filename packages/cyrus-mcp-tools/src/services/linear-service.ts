@@ -571,7 +571,7 @@ export class LinearService {
 			description: args.description,
 			content: args.content,
 			teamIds: teamIds,
-			state: args.state,
+			// state: args.state, // TODO: v58 removed state, need to use statusId instead
 			startDate: args.startDate ? new Date(args.startDate) : undefined,
 			targetDate: args.targetDate ? new Date(args.targetDate) : undefined,
 			leadId: args.leadId,
@@ -1125,7 +1125,7 @@ export class LinearService {
 				name: args.name,
 				description: args.description,
 				content: args.content,
-				state: args.state as any,
+				// state: args.state as any, // TODO: v58 removed state, need to use statusId instead
 				startDate: args.startDate ? new Date(args.startDate) : undefined,
 				targetDate: args.targetDate ? new Date(args.targetDate) : undefined,
 				leadId: args.leadId,

@@ -1,5 +1,6 @@
 import type { LinearService } from "../../services/linear-service.js";
 import { handleUploadFile } from "./upload-handler.js";
+import { handleCreateAgentSession } from "./agent-session-handler.js";
 
 // Define the handler function type
 type ToolHandler = (args: unknown) => Promise<unknown>;
@@ -14,8 +15,9 @@ export function registerToolHandlers(
 ): Record<string, ToolHandler> {
 	return {
 		linear_upload_file: handleUploadFile(linearService),
+		linear_agent_session_create: handleCreateAgentSession(linearService),
 	};
 }
 
 // Export all handlers individually
-export { handleUploadFile };
+export { handleUploadFile, handleCreateAgentSession };

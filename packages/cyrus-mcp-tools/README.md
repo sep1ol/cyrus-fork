@@ -9,6 +9,7 @@ MCP tools for Cyrus - including Linear file uploads and other utilities.
 
 This MCP server provides tools for Cyrus, currently including:
 - File uploads to Linear's cloud storage for use in issues, comments, and other content
+- Agent session creation for tracking AI/bot activity on Linear issues
 
 ## Features
 
@@ -67,9 +68,9 @@ Add the following to your MCP settings file:
 
 ## Usage
 
-### Available Tool
+### Available Tools
 
-The server provides a single tool:
+The server provides the following tools:
 
 #### `linear_upload_file`
 
@@ -86,6 +87,19 @@ Upload a file to Linear and get an asset URL.
 - `filename`: Filename used for the upload
 - `size`: File size in bytes
 - `contentType`: MIME type of the uploaded file
+
+#### `linear_agent_session_create`
+
+Create an agent session on a Linear issue to track AI/bot activity.
+
+**Parameters:**
+- `issueId` (required): The ID or identifier of the Linear issue (e.g., "ABC-123" or UUID)
+- `externalLink` (optional): URL of an external agent-hosted page associated with this session
+
+**Returns:**
+- `success`: Whether the operation was successful
+- `agentSessionId`: The ID of the created agent session
+- `lastSyncId`: The identifier of the last sync operation
 
 ### Example Usage
 
