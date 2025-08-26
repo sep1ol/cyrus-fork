@@ -277,6 +277,7 @@ class EdgeApp {
 
 			// Set reasonable defaults for configuration
 			// Allowed tools - default to all tools except Bash, plus Bash(git:*) and Bash(gh:*)
+			// Note: MCP tools (mcp__linear, mcp__linear-uploads) are automatically added by EdgeWorker
 			const allowedTools = [
 				"Read(**)",
 				"Edit(**)",

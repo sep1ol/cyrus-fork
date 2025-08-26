@@ -2509,12 +2509,20 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	private buildMcpConfig(
 		repository: RepositoryConfig,
 	): Record<string, McpServerConfig> {
-		// Always inject the Linear MCP server with the repository's token
+		// Always inject the Linear MCP servers with the repository's token
 		const mcpConfig: Record<string, McpServerConfig> = {
 			linear: {
 				type: "stdio",
 				command: "npx",
 				args: ["-y", "@tacticlaunch/mcp-linear"],
+				env: {
+					LINEAR_API_TOKEN: repository.linearToken,
+				},
+			},
+			"linear-uploads": {
+				type: "stdio",
+				command: "npx",
+				args: ["-y", "cyrus-mcp-tools"],
 				env: {
 					LINEAR_API_TOKEN: repository.linearToken,
 				},
@@ -2662,7 +2670,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Linear MCP tools that should always be available
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const linearMcpTools = ["mcp__linear"];
+		const linearMcpTools = ["mcp__linear", "mcp__linear-uploads"];
 
 		// Combine and deduplicate
 		const allTools = [...new Set([...baseTools, ...linearMcpTools])];
