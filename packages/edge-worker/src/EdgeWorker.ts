@@ -2519,7 +2519,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					LINEAR_API_TOKEN: repository.linearToken,
 				},
 			},
-			"linear-uploads": {
+			"cyrus-mcp-tools": {
 				type: "stdio",
 				command: "npx",
 				args: ["-y", "cyrus-mcp-tools"],
@@ -2670,7 +2670,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Linear MCP tools that should always be available
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const linearMcpTools = ["mcp__linear", "mcp__linear-uploads"];
+		const linearMcpTools = ["mcp__linear", "mcp__cyrus-mcp-tools"];
 
 		// Combine and deduplicate
 		const allTools = [...new Set([...baseTools, ...linearMcpTools])];
