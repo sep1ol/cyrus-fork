@@ -80,6 +80,7 @@ export class EdgeWorker extends EventEmitter {
 	private persistenceManager: PersistenceManager;
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
+	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
 
 	constructor(config: EdgeWorkerConfig) {
 		super();
@@ -87,6 +88,13 @@ export class EdgeWorker extends EventEmitter {
 		this.cyrusHome = config.cyrusHome;
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
+		);
+
+		console.log(
+			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
+		);
+		console.log(
+			`[EdgeWorker Constructor] Parent-child mapping initialized with 0 entries`,
 		);
 
 		// Initialize shared application server
@@ -117,11 +125,82 @@ export class EdgeWorker extends EventEmitter {
 				});
 				this.linearClients.set(repo.id, linearClient);
 
-				// Create AgentSessionManager for this repository
-				this.agentSessionManagers.set(
-					repo.id,
-					new AgentSessionManager(linearClient),
+				// Create AgentSessionManager for this repository with parent session lookup and resume callback
+				//
+				// Note: This pattern works (despite appearing recursive) because:
+				// 1. The agentSessionManager variable is captured by the closure after it's assigned
+				// 2. JavaScript's variable hoisting means 'agentSessionManager' exists (but is undefined) when the arrow function is created
+				// 3. By the time the callback is actually invoked (when a child session completes), agentSessionManager is fully initialized
+				// 4. The callback only executes asynchronously, well after the constructor has completed and agentSessionManager is assigned
+				//
+				// This allows the AgentSessionManager to call back into itself to access its own sessions,
+				// enabling child sessions to trigger parent session resumption using the same manager instance.
+				const agentSessionManager = new AgentSessionManager(
+					linearClient,
+					(childSessionId: string) => {
+						console.log(
+							`[Parent-Child Lookup] Looking up parent session for child ${childSessionId}`,
+						);
+						const parentId = this.childToParentAgentSession.get(childSessionId);
+						console.log(
+							`[Parent-Child Lookup] Child ${childSessionId} -> Parent ${parentId || "not found"}`,
+						);
+						return parentId;
+					},
+					async (parentSessionId: string, prompt: string) => {
+						console.log(
+							`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
+						);
+
+						// Get the parent session and repository
+						// This works because by the time this callback runs, agentSessionManager is fully initialized
+						console.log(
+							`[Parent Session Resume] Retrieving parent session ${parentSessionId} from agent session manager`,
+						);
+						const parentSession =
+							agentSessionManager.getSession(parentSessionId);
+						if (!parentSession) {
+							console.error(
+								`[Parent Session Resume] Parent session ${parentSessionId} not found in agent session manager`,
+							);
+							return;
+						}
+
+						console.log(
+							`[Parent Session Resume] Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
+						);
+
+						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
+
+						// Resume the parent session with the child's result
+						console.log(
+							`[Parent Session Resume] Resuming parent Claude session with child results`,
+						);
+						try {
+							await this.resumeClaudeSession(
+								parentSession,
+								repo,
+								parentSessionId,
+								agentSessionManager,
+								prompt,
+								"", // No attachment manifest for child results
+								false, // Not a new session
+							);
+							console.log(
+								`[Parent Session Resume] Successfully resumed parent session ${parentSessionId} with child results`,
+							);
+						} catch (error) {
+							console.error(
+								`[Parent Session Resume] Failed to resume parent session ${parentSessionId}:`,
+								error,
+							);
+							console.error(
+								`[Parent Session Resume] Error context - Parent issue: ${parentSession.issueId}, Repository: ${repo.name}`,
+							);
+						}
+					},
 				);
+				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
 		}
 
@@ -337,12 +416,10 @@ export class EdgeWorker extends EventEmitter {
 		webhook: LinearWebhook,
 		repos: RepositoryConfig[],
 	): Promise<void> {
-		console.log(`[EdgeWorker] Processing webhook: ${webhook.type}`);
-
 		// Log verbose webhook info if enabled
 		if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 			console.log(
-				`[EdgeWorker] Webhook payload:`,
+				`[handleWebhook] Full webhook payload:`,
 				JSON.stringify(webhook, null, 2),
 			);
 		}
@@ -350,13 +427,12 @@ export class EdgeWorker extends EventEmitter {
 		// Find the appropriate repository for this webhook
 		const repository = await this.findRepositoryForWebhook(webhook, repos);
 		if (!repository) {
-			console.log(
-				"No repository configured for webhook from workspace",
-				webhook.organizationId,
-			);
 			if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
 				console.log(
-					"Available repositories:",
+					`[handleWebhook] No repository configured for webhook from workspace ${webhook.organizationId}`,
+				);
+				console.log(
+					`[handleWebhook] Available repositories:`,
 					repos.map((r) => ({
 						name: r.name,
 						workspaceId: r.linearWorkspaceId,
@@ -368,27 +444,14 @@ export class EdgeWorker extends EventEmitter {
 			return;
 		}
 
-		console.log(
-			`[EdgeWorker] Webhook matched to repository: ${repository.name}`,
-		);
-
 		try {
 			// Handle specific webhook types with proper typing
 			// NOTE: Traditional webhooks (assigned, comment) are disabled in favor of agent session events
 			if (isIssueAssignedWebhook(webhook)) {
-				console.log(
-					`[EdgeWorker] Ignoring traditional issue assigned webhook - using agent session events instead`,
-				);
 				return;
 			} else if (isIssueCommentMentionWebhook(webhook)) {
-				console.log(
-					`[EdgeWorker] Ignoring traditional comment mention webhook - using agent session events instead`,
-				);
 				return;
 			} else if (isIssueNewCommentWebhook(webhook)) {
-				console.log(
-					`[EdgeWorker] Ignoring traditional new comment webhook - using agent session events instead`,
-				);
 				return;
 			} else if (isIssueUnassignedWebhook(webhook)) {
 				// Keep unassigned webhook active
@@ -398,11 +461,15 @@ export class EdgeWorker extends EventEmitter {
 			} else if (isAgentSessionPromptedWebhook(webhook)) {
 				await this.handleUserPostedAgentActivity(webhook, repository);
 			} else {
-				console.log(`Unhandled webhook type: ${(webhook as any).action}`);
+				if (process.env.CYRUS_WEBHOOK_DEBUG === "true") {
+					console.log(
+						`[handleWebhook] Unhandled webhook type: ${(webhook as any).action} for repository ${repository.name}`,
+					);
+				}
 			}
 		} catch (error) {
 			console.error(
-				`[EdgeWorker] Failed to process webhook: ${(webhook as any).action}`,
+				`[handleWebhook] Failed to process webhook: ${(webhook as any).action} for repository ${repository.name}`,
 				error,
 			);
 			// Don't re-throw webhook processing errors to prevent application crashes
@@ -801,6 +868,8 @@ export class EdgeWorker extends EventEmitter {
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
+			undefined, // resumeSessionId
+			linearAgentActivitySessionId, // Pass current session ID as parent context
 		);
 		const runner = new ClaudeRunner(runnerConfig);
 
@@ -1067,84 +1136,17 @@ export class EdgeWorker extends EventEmitter {
 			return; // Exit early - comment has been added to stream
 		}
 
-		// Stop existing runner if it's not streaming or stream addition failed
-		if (existingRunner) {
-			existingRunner.stop();
-		}
-
-		// For newly created sessions or sessions without claudeSessionId, create a fresh Claude session
-		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
-
+		// Use the new resumeClaudeSession function
 		try {
-			// Fetch full issue details to get labels (needed for both new and existing sessions)
-			const fullIssue = await this.fetchFullIssueDetails(
-				issue.id,
-				repository.id,
-			);
-			if (!fullIssue) {
-				throw new Error(`Failed to fetch full issue details for ${issue.id}`);
-			}
-
-			// Fetch issue labels and determine system prompt (same as in handleAgentSessionCreatedWebhook)
-			const labels = await this.fetchIssueLabels(fullIssue);
-			const systemPromptResult = await this.determineSystemPromptFromLabels(
-				labels,
-				repository,
-			);
-			const systemPrompt = systemPromptResult?.prompt;
-			const promptType = systemPromptResult?.type;
-
-			// Build allowed tools list with Linear MCP tools (now with prompt type context)
-			const allowedTools = this.buildAllowedTools(repository, promptType);
-
-			console.log(
-				`[EdgeWorker] Configured allowed tools for ${issue.identifier} (continued session):`,
-				allowedTools,
-			);
-
-			const allowedDirectories = [attachmentsDir];
-
-			// Create runner - resume existing session or start new one
-			const runnerConfig = this.buildClaudeRunnerConfig(
+			await this.resumeClaudeSession(
 				session,
 				repository,
 				linearAgentActivitySessionId,
-				systemPrompt,
-				allowedTools,
-				allowedDirectories,
-				needsNewClaudeSession ? undefined : session.claudeSessionId,
-			);
-
-			const runner = new ClaudeRunner(runnerConfig);
-
-			// Store new runner by comment thread root
-			// Store runner by comment ID
-			agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
-
-			// Save state after mapping changes
-			await this.savePersistedState();
-
-			// Prepare the prompt - different logic for new vs existing sessions
-			const fullPrompt = await this.buildSessionPrompt(
-				isNewSession,
-				fullIssue,
-				repository,
+				agentSessionManager,
 				promptBody,
 				attachmentManifest,
+				isNewSession,
 			);
-
-			if (isNewSession) {
-				console.log(
-					`[EdgeWorker] Building initial prompt for new session for issue ${fullIssue.identifier}`,
-				);
-			}
-
-			// Start streaming session
-			const sessionType = needsNewClaudeSession ? "new" : "resumed";
-			console.log(
-				`[EdgeWorker] Starting ${sessionType} streaming session for issue ${issue.identifier}`,
-			);
-			await runner.startStreaming(fullPrompt);
 		} catch (error) {
 			console.error("Failed to continue conversation:", error);
 			// Remove any partially created session
@@ -2593,7 +2595,69 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		allowedTools: string[],
 		allowedDirectories: string[],
 		resumeSessionId?: string,
+		parentAgentSessionId?: string,
 	): any {
+		// Build hooks configuration
+		const hooks = {
+			PostToolUse: [
+				{
+					matcher: "mcp__cyrus-mcp-tools__linear_agent_session_create",
+					hooks: [
+						async (
+							input: any,
+							_toolUseID: string | undefined,
+							_options: { signal: AbortSignal },
+						) => {
+							// Check if this is the linear_agent_session_create tool
+							if (
+								input.tool_name ===
+								"mcp__cyrus-mcp-tools__linear_agent_session_create"
+							) {
+								const toolResponse = input.tool_response;
+
+								// The response is an array with a single object containing type and text fields
+								// Parse the JSON from the text field to get the agentSessionId
+								if (
+									Array.isArray(toolResponse) &&
+									toolResponse.length > 0 &&
+									toolResponse[0].type === "text" &&
+									toolResponse[0].text
+								) {
+									try {
+										const responseData = JSON.parse(toolResponse[0].text);
+										const childAgentSessionId = responseData.agentSessionId;
+
+										// If there's a parent session, create the mapping
+										if (parentAgentSessionId && childAgentSessionId) {
+											console.log(
+												`[Parent-Child Mapping] Creating: child ${childAgentSessionId} -> parent ${parentAgentSessionId}`,
+											);
+
+											this.childToParentAgentSession.set(
+												childAgentSessionId,
+												parentAgentSessionId,
+											);
+
+											console.log(
+												`[Parent-Child Mapping] Successfully created. Total mappings: ${this.childToParentAgentSession.size}`,
+											);
+										}
+									} catch (error) {
+										console.error(
+											`[Parent-Child Mapping] Failed to parse agentSessionId from tool response:`,
+											error,
+										);
+									}
+								}
+							}
+
+							return { continue: true };
+						},
+					],
+				},
+			],
+		};
+
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
@@ -2607,6 +2671,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			model: repository.model || this.config.defaultModel,
 			fallbackModel:
 				repository.fallbackModel || this.config.defaultFallbackModel,
+			hooks,
 			onMessage: (message: SDKMessage) => {
 				this.handleClaudeMessage(
 					linearAgentActivitySessionId,
@@ -2829,6 +2894,49 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
+	 * Post parent resume acknowledgment thought when parent session is resumed from child
+	 */
+	private async postParentResumeAcknowledgment(
+		linearAgentActivitySessionId: string,
+		repositoryId: string,
+	): Promise<void> {
+		try {
+			const linearClient = this.linearClients.get(repositoryId);
+			if (!linearClient) {
+				console.warn(
+					`[EdgeWorker] No Linear client found for repository ${repositoryId}`,
+				);
+				return;
+			}
+
+			const activityInput = {
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: "Resuming from child session",
+				},
+			};
+
+			const result = await linearClient.createAgentActivity(activityInput);
+			if (result.success) {
+				console.log(
+					`[EdgeWorker] Posted parent resumption acknowledgment thought for session ${linearAgentActivitySessionId}`,
+				);
+			} else {
+				console.error(
+					`[EdgeWorker] Failed to post parent resumption acknowledgment:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[EdgeWorker] Error posting parent resumption acknowledgment:`,
+				error,
+			);
+		}
+	}
+
+	/**
 	 * Post thought about system prompt selection based on labels
 	 */
 	private async postSystemPromptSelectionThought(
@@ -2922,6 +3030,129 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				`[EdgeWorker] Error posting system prompt selection thought:`,
 				error,
 			);
+		}
+	}
+
+	/**
+	 * Resume or create a Claude session with the given prompt
+	 * This is the core logic for handling prompted agent activities
+	 * @param session The Cyrus agent session
+	 * @param repository The repository configuration
+	 * @param linearAgentActivitySessionId The Linear agent session ID
+	 * @param agentSessionManager The agent session manager
+	 * @param promptBody The prompt text to send
+	 * @param attachmentManifest Optional attachment manifest
+	 * @param isNewSession Whether this is a new session
+	 */
+	async resumeClaudeSession(
+		session: CyrusAgentSession,
+		repository: RepositoryConfig,
+		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
+		promptBody: string,
+		attachmentManifest: string = "",
+		isNewSession: boolean = false,
+	): Promise<void> {
+		// Check for existing runner
+		const existingRunner = session.claudeRunner;
+
+		// If there's an existing streaming runner, add to it
+		if (existingRunner?.isStreaming()) {
+			let fullPrompt = promptBody;
+			if (attachmentManifest) {
+				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
+			}
+			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
+
+			existingRunner.addStreamMessage(fullPrompt);
+			return;
+		}
+
+		// Stop existing runner if it's not streaming
+		if (existingRunner) {
+			existingRunner.stop();
+		}
+
+		// Determine if we need a new Claude session
+		const needsNewClaudeSession = isNewSession || !session.claudeSessionId;
+
+		// Fetch full issue details
+		const fullIssue = await this.fetchFullIssueDetails(
+			session.issueId,
+			repository.id,
+		);
+		if (!fullIssue) {
+			console.error(
+				`[resumeClaudeSession] Failed to fetch full issue details for ${session.issueId}`,
+			);
+			throw new Error(
+				`Failed to fetch full issue details for ${session.issueId}`,
+			);
+		}
+
+		// Fetch issue labels and determine system prompt
+		const labels = await this.fetchIssueLabels(fullIssue);
+
+		const systemPromptResult = await this.determineSystemPromptFromLabels(
+			labels,
+			repository,
+		);
+		const systemPrompt = systemPromptResult?.prompt;
+		const promptType = systemPromptResult?.type;
+
+		// Build allowed tools list
+		const allowedTools = this.buildAllowedTools(repository, promptType);
+
+		// Set up attachments directory
+		const workspaceFolderName = basename(session.workspace.path);
+		const attachmentsDir = join(
+			this.cyrusHome,
+			workspaceFolderName,
+			"attachments",
+		);
+		await mkdir(attachmentsDir, { recursive: true });
+
+		const allowedDirectories = [attachmentsDir];
+
+		// Create runner configuration
+		const runnerConfig = this.buildClaudeRunnerConfig(
+			session,
+			repository,
+			linearAgentActivitySessionId,
+			systemPrompt,
+			allowedTools,
+			allowedDirectories,
+			needsNewClaudeSession ? undefined : session.claudeSessionId,
+			linearAgentActivitySessionId,
+		);
+
+		const runner = new ClaudeRunner(runnerConfig);
+
+		// Store runner
+		agentSessionManager.addClaudeRunner(linearAgentActivitySessionId, runner);
+
+		// Save state
+		await this.savePersistedState();
+
+		// Prepare the full prompt
+		const fullPrompt = await this.buildSessionPrompt(
+			isNewSession,
+			fullIssue,
+			repository,
+			promptBody,
+			attachmentManifest,
+		);
+
+		// Start streaming session
+
+		try {
+			await runner.startStreaming(fullPrompt);
+		} catch (error) {
+			console.error(
+				`[resumeClaudeSession] Failed to start streaming session for ${linearAgentActivitySessionId}:`,
+				error,
+			);
+			throw error;
 		}
 	}
 
