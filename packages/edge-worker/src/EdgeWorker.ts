@@ -11,6 +11,7 @@ import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
 	getAllTools,
+	getCoordinatorTools,
 	getReadOnlyTools,
 	getSafeTools,
 } from "cyrus-claude-runner";
@@ -825,7 +826,12 @@ export class EdgeWorker extends EventEmitter {
 		// Only fetch labels and determine system prompt for delegation (not mentions)
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
-		let promptType: "debugger" | "builder" | "scoper" | undefined;
+		let promptType:
+			| "debugger"
+			| "builder"
+			| "scoper"
+			| "orchestrator"
+			| undefined;
 
 		if (!isMentionTriggered) {
 			// Fetch issue labels and determine system prompt (delegation case)
@@ -865,6 +871,7 @@ export class EdgeWorker extends EventEmitter {
 			session,
 			repository,
 			linearAgentActivitySessionId,
+			agentSessionManager,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
@@ -1261,7 +1268,7 @@ export class EdgeWorker extends EventEmitter {
 		| {
 				prompt: string;
 				version?: string;
-				type?: "debugger" | "builder" | "scoper";
+				type?: "debugger" | "builder" | "scoper" | "orchestrator";
 		  }
 		| undefined
 	> {
@@ -1270,7 +1277,12 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// Check each prompt type for matching labels
-		const promptTypes = ["debugger", "builder", "scoper"] as const;
+		const promptTypes = [
+			"debugger",
+			"builder",
+			"scoper",
+			"orchestrator",
+		] as const;
 
 		for (const promptType of promptTypes) {
 			const promptConfig = repository.labelPrompts[promptType];
@@ -1896,6 +1908,29 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * @param issue Full Linear issue object from Linear SDK
 	 * @param repositoryId Repository ID for Linear client lookup
 	 */
+	/**
+	 * Get the repository configuration for a given session
+	 */
+	private getRepositoryForSession(
+		session: CyrusAgentSession,
+	): RepositoryConfig | undefined {
+		// Find the repository that matches the session's workspace path
+		for (const repo of this.config.repositories) {
+			if (session.workspace.path.includes(repo.workspaceBaseDir)) {
+				return repo;
+			}
+		}
+		// Fallback: try to find by issue ID in Linear client
+		for (const [repoId, _] of this.linearClients) {
+			const repo = this.config.repositories.find((r) => r.id === repoId);
+			if (repo) {
+				// Additional checks could be added here if needed
+				return repo;
+			}
+		}
+		return undefined;
+	}
+
 	private async moveIssueToStartedState(
 		issue: LinearIssue,
 		repositoryId: string,
@@ -2549,6 +2584,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				return getSafeTools();
 			case "all":
 				return getAllTools();
+			case "coordinator":
+				return getCoordinatorTools();
 			default:
 				// If it's a string but not a preset, treat it as a single tool
 				return [preset];
@@ -2591,6 +2628,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
 		linearAgentActivitySessionId: string,
+		agentSessionManager: AgentSessionManager,
 		systemPrompt: string | undefined,
 		allowedTools: string[],
 		allowedDirectories: string[],
@@ -2641,10 +2679,92 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 											console.log(
 												`[Parent-Child Mapping] Successfully created. Total mappings: ${this.childToParentAgentSession.size}`,
 											);
+
+											// Save state after adding new mapping
+											this.savePersistedState().catch((error) => {
+												console.error(
+													`[Parent-Child Mapping] Failed to save state after creating mapping:`,
+													error,
+												);
+											});
 										}
 									} catch (error) {
 										console.error(
 											`[Parent-Child Mapping] Failed to parse agentSessionId from tool response:`,
+											error,
+										);
+									}
+								}
+							}
+
+							return { continue: true };
+						},
+					],
+				},
+				{
+					matcher: "mcp__cyrus-mcp-tools__linear_agent_give_feedback",
+					hooks: [
+						async (
+							input: any,
+							_toolUseID: string | undefined,
+							_options: { signal: AbortSignal },
+						) => {
+							// Check if this is the give_feedback tool
+							if (
+								input.tool_name ===
+								"mcp__cyrus-mcp-tools__linear_agent_give_feedback"
+							) {
+								const toolInput = input.tool_input as {
+									agentSessionId?: string;
+									message?: string;
+								};
+								const childAgentSessionId = toolInput?.agentSessionId;
+								const feedbackMessage = toolInput?.message;
+
+								if (childAgentSessionId && feedbackMessage) {
+									console.log(
+										`[Give Feedback] Triggering child session resumption: ${childAgentSessionId}`,
+									);
+
+									// Get the child session
+									const childSession =
+										agentSessionManager.getSession(childAgentSessionId);
+									if (!childSession) {
+										console.error(
+											`[Give Feedback] Child session not found: ${childAgentSessionId}`,
+										);
+										return { continue: true };
+									}
+
+									// Find the repository for this session
+									const repo = this.getRepositoryForSession(childSession);
+									if (!repo) {
+										console.error(
+											`[Give Feedback] Repository not found for child session: ${childAgentSessionId}`,
+										);
+										return { continue: true };
+									}
+
+									// Prepare the prompt with the feedback message and child session ID
+									const prompt = `Feedback from parent session regarding child agent session ${childAgentSessionId}:\n\n${feedbackMessage}`;
+
+									// Resume the child session with the feedback
+									try {
+										await this.resumeClaudeSession(
+											childSession,
+											repo,
+											childAgentSessionId,
+											agentSessionManager,
+											prompt,
+											"", // No attachment manifest for feedback
+											false, // Not a new session
+										);
+										console.log(
+											`[Give Feedback] Successfully resumed child session ${childAgentSessionId} with feedback`,
+										);
+									} catch (error) {
+										console.error(
+											`[Give Feedback] Failed to resume child session ${childAgentSessionId}:`,
 											error,
 										);
 									}
@@ -2694,7 +2814,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildAllowedTools(
 		repository: RepositoryConfig,
-		promptType?: "debugger" | "builder" | "scoper",
+		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
 	): string[] {
 		let baseTools: string[] = [];
 		let toolSource = "";
@@ -2815,9 +2935,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			agentSessions[repositoryId] = serializedState.sessions;
 			agentSessionEntries[repositoryId] = serializedState.entries;
 		}
+		// Serialize child to parent agent session mapping
+		const childToParentAgentSession = Object.fromEntries(
+			this.childToParentAgentSession.entries(),
+		);
+
 		return {
 			agentSessions,
 			agentSessionEntries,
+			childToParentAgentSession,
 		};
 	}
 
@@ -2847,6 +2973,16 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					);
 				}
 			}
+		}
+
+		// Restore child to parent agent session mapping
+		if (state.childToParentAgentSession) {
+			this.childToParentAgentSession = new Map(
+				Object.entries(state.childToParentAgentSession),
+			);
+			console.log(
+				`[EdgeWorker] Restored ${this.childToParentAgentSession.size} child-to-parent agent session mappings`,
+			);
 		}
 	}
 
@@ -2996,6 +3132,19 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						if (scoperLabel) {
 							selectedPromptType = "scoper";
 							triggerLabel = scoperLabel;
+						} else {
+							// Check orchestrator labels
+							const orchestratorConfig = repository.labelPrompts.orchestrator;
+							const orchestratorLabels = Array.isArray(orchestratorConfig)
+								? orchestratorConfig
+								: orchestratorConfig?.labels;
+							const orchestratorLabel = orchestratorLabels?.find((label) =>
+								labels.includes(label),
+							);
+							if (orchestratorLabel) {
+								selectedPromptType = "orchestrator";
+								triggerLabel = orchestratorLabel;
+							}
 						}
 					}
 				}
@@ -3119,6 +3268,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			session,
 			repository,
 			linearAgentActivitySessionId,
+			agentSessionManager,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
