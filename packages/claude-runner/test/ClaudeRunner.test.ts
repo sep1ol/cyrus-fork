@@ -22,7 +22,7 @@ vi.mock("os", () => ({
 }));
 
 import { query } from "@anthropic-ai/claude-code";
-import { ClaudeRunner, AbortError } from "../src/ClaudeRunner";
+import { AbortError, ClaudeRunner } from "../src/ClaudeRunner";
 import type { ClaudeRunnerConfig, SDKMessage } from "../src/types";
 
 describe("ClaudeRunner", () => {
