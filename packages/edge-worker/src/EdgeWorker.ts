@@ -7,7 +7,11 @@ import {
 	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
-import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
+import type {
+	ClaudeRunnerConfig,
+	McpServerConfig,
+	SDKMessage,
+} from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
 	createCyrusToolsServer,
@@ -2537,58 +2541,55 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					LINEAR_API_TOKEN: repository.linearToken,
 				},
 			},
-			"cyrus-tools": {
-				type: "sdk",
-				server: createCyrusToolsServer(repository.linearToken, {
-					parentSessionId,
-					onSessionCreated: (childSessionId, parentId) => {
+			"cyrus-tools": createCyrusToolsServer(repository.linearToken, {
+				parentSessionId,
+				onSessionCreated: (childSessionId, parentId) => {
+					console.log(
+						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
+					);
+					// Map child to parent session
+					this.childToParentAgentSession.set(childSessionId, parentId);
+					console.log(
+						`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+					);
+				},
+				onFeedbackDelivery: async (childSessionId, message) => {
+					console.log(
+						`[EdgeWorker] Processing feedback for child session ${childSessionId}`,
+					);
+
+					// Find the parent session for this child
+					const parentId = this.childToParentAgentSession.get(childSessionId);
+
+					if (parentId && message) {
 						console.log(
-							`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
-						);
-						// Map child to parent session
-						this.childToParentAgentSession.set(childSessionId, parentId);
-						console.log(
-							`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
-						);
-					},
-					onFeedbackDelivery: async (childSessionId, message) => {
-						console.log(
-							`[EdgeWorker] Processing feedback for child session ${childSessionId}`,
+							`[EdgeWorker] Delivering feedback to parent session ${parentId}`,
 						);
 
-						// Find the parent session for this child
-						const parentId = this.childToParentAgentSession.get(childSessionId);
-
-						if (parentId && message) {
-							console.log(
-								`[EdgeWorker] Delivering feedback to parent session ${parentId}`,
+						// Find the repository containing this session
+						const repo = await this.getRepositoryForSession(parentId);
+						if (repo) {
+							const agentSessionManager = this.agentSessionManagers.get(
+								repo.id,
 							);
-
-							// Find the repository containing this session
-							const repo = await this.getRepositoryForSession(parentId);
-							if (repo) {
-								const agentSessionManager = this.agentSessionManagers.get(
-									repo.id,
-								);
-								if (agentSessionManager) {
-									const parentRunner =
-										agentSessionManager.getClaudeRunner(parentId);
-									if (parentRunner) {
-										// Send message directly to parent's streaming session
-										parentRunner.addStreamMessage(message);
-										console.log(
-											`[EdgeWorker] Feedback delivered successfully to parent session`,
-										);
-										return true;
-									}
+							if (agentSessionManager) {
+								const parentRunner =
+									agentSessionManager.getClaudeRunner(parentId);
+								if (parentRunner) {
+									// Send message directly to parent's streaming session
+									parentRunner.addStreamMessage(message);
+									console.log(
+										`[EdgeWorker] Feedback delivered successfully to parent session`,
+									);
+									return true;
 								}
 							}
 						}
+					}
 
-						return false;
-					},
-				}),
-			} as unknown as McpServerConfig,
+					return false;
+				},
+			}),
 		};
 
 		return mcpConfig;
@@ -2658,7 +2659,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		allowedDirectories: string[],
 		resumeSessionId?: string,
 		labels?: string[],
-	): any {
+	): ClaudeRunnerConfig {
 		// No hooks needed - logic is now in the tools themselves
 		const hooks = {};
 

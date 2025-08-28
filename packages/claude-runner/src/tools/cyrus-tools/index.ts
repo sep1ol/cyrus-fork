@@ -131,7 +131,17 @@ export function createCyrusToolsServer(
 				// Read file and get stats
 				const stats = await fs.stat(filePath);
 				if (!stats.isFile()) {
-					throw new Error(`Path ${filePath} is not a file`);
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `Path ${filePath} is not a file`,
+								}),
+							},
+						],
+					};
 				}
 
 				const fileBuffer = await fs.readFile(filePath);
@@ -153,7 +163,17 @@ export function createCyrusToolsServer(
 				);
 
 				if (!uploadPayload.success || !uploadPayload.uploadFile) {
-					throw new Error("Failed to get upload URL from Linear");
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: "Failed to get upload URL from Linear",
+								}),
+							},
+						],
+					};
 				}
 
 				const { uploadUrl, headers, assetUrl } = uploadPayload.uploadFile;
@@ -183,9 +203,17 @@ export function createCyrusToolsServer(
 
 				if (!uploadResponse.ok) {
 					const errorText = await uploadResponse.text();
-					throw new Error(
-						`Failed to upload file: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`,
-					);
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: `Failed to upload file: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`,
+								}),
+							},
+						],
+					};
 				}
 
 				console.log(`File uploaded successfully: ${assetUrl}`);
@@ -196,6 +224,7 @@ export function createCyrusToolsServer(
 						{
 							type: "text" as const,
 							text: JSON.stringify({
+								success: true,
 								assetUrl,
 								filename: finalFilename,
 								size,
@@ -205,10 +234,17 @@ export function createCyrusToolsServer(
 					],
 				};
 			} catch (error) {
-				if (error instanceof Error) {
-					throw new Error(`Failed to upload file: ${error.message}`);
-				}
-				throw error;
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
 			}
 		},
 	);
@@ -261,7 +297,17 @@ export function createCyrusToolsServer(
 				const result = response.data.agentSessionCreateOnIssue;
 
 				if (!result.success) {
-					throw new Error("Failed to create agent session");
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: JSON.stringify({
+									success: false,
+									error: "Failed to create agent session",
+								}),
+							},
+						],
+					};
 				}
 
 				const agentSessionId = result.agentSession.id;
@@ -288,10 +334,17 @@ export function createCyrusToolsServer(
 					],
 				};
 			} catch (error) {
-				if (error instanceof Error) {
-					throw new Error(`Failed to create agent session: ${error.message}`);
-				}
-				throw error;
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: JSON.stringify({
+								success: false,
+								error: error instanceof Error ? error.message : String(error),
+							}),
+						},
+					],
+				};
 			}
 		},
 	);
