@@ -484,6 +484,8 @@ class EdgeApp {
 			cyrusHome: this.cyrusHome,
 			defaultAllowedTools:
 				process.env.ALLOWED_TOOLS?.split(",").map((t) => t.trim()) || [],
+			defaultDisallowedTools:
+				process.env.DISALLOWED_TOOLS?.split(",").map((t) => t.trim()) || undefined,
 			// Model configuration: environment variables take precedence over config file
 			defaultModel:
 				process.env.CYRUS_DEFAULT_MODEL || this.loadEdgeConfig().defaultModel,
