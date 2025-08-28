@@ -2525,6 +2525,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
+		parentSessionId?: string,
 	): Record<string, McpServerConfig> {
 		// Always inject the Linear MCP servers with the repository's token
 		const mcpConfig: Record<string, McpServerConfig> = {
@@ -2538,7 +2539,52 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			},
 			"cyrus-tools": {
 				type: "sdk",
-				server: createCyrusToolsServer(repository.linearToken),
+				server: createCyrusToolsServer(repository.linearToken, {
+					parentSessionId,
+					onSessionCreated: (childSessionId, parentId) => {
+						console.log(
+							`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
+						);
+						// Map child to parent session
+						this.childToParentAgentSession.set(childSessionId, parentId);
+						console.log(
+							`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+						);
+					},
+					onFeedbackDelivery: async (childSessionId, message) => {
+						console.log(
+							`[EdgeWorker] Processing feedback for child session ${childSessionId}`,
+						);
+						
+						// Find the parent session for this child
+						const parentId = this.childToParentAgentSession.get(childSessionId);
+						
+						if (parentId && message) {
+							console.log(
+								`[EdgeWorker] Delivering feedback to parent session ${parentId}`,
+							);
+							
+							// Find the repository containing this session
+							const repo = await this.getRepositoryForSession(parentId);
+							if (repo) {
+								const agentSessionManager = this.agentSessionManagers.get(repo.id);
+								if (agentSessionManager) {
+									const parentRunner = agentSessionManager.getClaudeRunner(parentId);
+									if (parentRunner) {
+										// Send message directly to parent's streaming session
+										parentRunner.addStreamMessage(message);
+										console.log(
+											`[EdgeWorker] Feedback delivered successfully to parent session`,
+										);
+										return true;
+									}
+								}
+							}
+						}
+						
+						return false;
+					},
+				}),
 			} as unknown as McpServerConfig,
 		};
 
@@ -2610,67 +2656,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		resumeSessionId?: string,
 		labels?: string[],
 	): any {
-		// Build hooks configuration
-		const hooks = {
-			PostToolUse: [
-				{
-					matcher: "mcp__cyrus-tools__linear_agent_session_create",
-					callback: (result: any) => {
-						if (result?.agentSessionId) {
-							console.log(
-								`[EdgeWorker Hook] Agent session created: ${result.agentSessionId}, mapping to parent ${linearAgentActivitySessionId}`,
-							);
-							// Map child to parent session
-							this.childToParentAgentSession.set(
-								result.agentSessionId,
-								linearAgentActivitySessionId,
-							);
-							console.log(
-								`[EdgeWorker Hook] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
-							);
-						}
-						return result;
-					},
-				},
-				{
-					matcher: "mcp__cyrus-tools__linear_agent_give_feedback",
-					callback: async (result: any, _toolName: string, args: any) => {
-						console.log(
-							`[EdgeWorker Hook] Processing feedback for child session ${args?.agentSessionId}`,
-						);
-						
-						// Find the parent session for this child
-						const parentSessionId = this.childToParentAgentSession.get(
-							args?.agentSessionId,
-						);
-						
-						if (parentSessionId && args?.message) {
-							console.log(
-								`[EdgeWorker Hook] Delivering feedback to parent session ${parentSessionId}`,
-							);
-							
-							// Find the repository containing this session
-							const repository = await this.getRepositoryForSession(parentSessionId);
-							if (repository) {
-								const agentSessionManager = this.agentSessionManagers.get(repository.id);
-								if (agentSessionManager) {
-									const parentRunner = agentSessionManager.getClaudeRunner(parentSessionId);
-									if (parentRunner) {
-										// Send message directly to parent's streaming session
-										parentRunner.addStreamMessage(args.message);
-										console.log(
-											`[EdgeWorker Hook] Feedback delivered successfully to parent session`,
-										);
-									}
-								}
-							}
-						}
-						
-						return result;
-					},
-				},
-			],
-		};
+		// No hooks needed - logic is now in the tools themselves
+		const hooks = {};
 
 		// Check for model override labels (case-insensitive)
 		let modelOverride: string | undefined;
@@ -2717,7 +2704,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository),
+			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
 			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
 			// Priority order: label override > repository config > global default
 			model: modelOverride || repository.model || this.config.defaultModel,

@@ -68,9 +68,34 @@ function getMimeType(filename: string): string {
 }
 
 /**
+ * Options for creating Cyrus tools with session management capabilities
+ */
+export interface CyrusToolsOptions {
+	/**
+	 * Callback to register a child-to-parent session mapping
+	 * Called when a new agent session is created
+	 */
+	onSessionCreated?: (childSessionId: string, parentSessionId: string) => void;
+	
+	/**
+	 * Callback to deliver feedback to a parent session
+	 * Called when feedback is given to a child session
+	 */
+	onFeedbackDelivery?: (childSessionId: string, message: string) => Promise<boolean>;
+	
+	/**
+	 * The ID of the current parent session (if any)
+	 */
+	parentSessionId?: string;
+}
+
+/**
  * Create an SDK MCP server with the inline Cyrus tools
  */
-export function createCyrusToolsServer(linearApiToken: string) {
+export function createCyrusToolsServer(
+	linearApiToken: string,
+	options: CyrusToolsOptions = {}
+) {
 	const linearClient = new LinearClient({ apiKey: linearApiToken });
 
 	// Create tools with bound linear client
@@ -236,9 +261,18 @@ export function createCyrusToolsServer(linearApiToken: string) {
 					throw new Error("Failed to create agent session");
 				}
 
+				const agentSessionId = result.agentSession.id;
 				console.log(
-					`Agent session created successfully: ${result.agentSession.id}`,
+					`Agent session created successfully: ${agentSessionId}`,
 				);
+
+				// Register the child-to-parent mapping if we have a parent session
+				if (options.parentSessionId && options.onSessionCreated) {
+					console.log(
+						`[CyrusTools] Mapping child session ${agentSessionId} to parent ${options.parentSessionId}`,
+					);
+					options.onSessionCreated(agentSessionId, options.parentSessionId);
+				}
 
 				return {
 					content: [
@@ -246,7 +280,7 @@ export function createCyrusToolsServer(linearApiToken: string) {
 							type: "text" as const,
 							text: JSON.stringify({
 								success: result.success,
-								agentSessionId: result.agentSession.id,
+								agentSessionId,
 								lastSyncId: result.lastSyncId,
 							}),
 						},
@@ -273,7 +307,7 @@ export function createCyrusToolsServer(linearApiToken: string) {
 				.describe("The feedback message to send to the child agent session"),
 		},
 		async ({ agentSessionId, message }) => {
-			// Simple validation - the actual work happens in the PostToolUse hook
+			// Validate parameters
 			if (!agentSessionId) {
 				return {
 					content: [
@@ -302,12 +336,41 @@ export function createCyrusToolsServer(linearApiToken: string) {
 				};
 			}
 
-			// Return success - the PostToolUse hook will handle the actual feedback
+			// Deliver the feedback through the callback if provided
+			let delivered = false;
+			if (options.onFeedbackDelivery) {
+				console.log(
+					`[CyrusTools] Delivering feedback to child session ${agentSessionId}`,
+				);
+				try {
+					delivered = await options.onFeedbackDelivery(agentSessionId, message);
+					if (delivered) {
+						console.log(
+							`[CyrusTools] Feedback delivered successfully to parent session`,
+						);
+					} else {
+						console.log(
+							`[CyrusTools] No parent session found for child ${agentSessionId}`,
+						);
+					}
+				} catch (error) {
+					console.error(
+						`[CyrusTools] Failed to deliver feedback:`,
+						error,
+					);
+				}
+			}
+
+			// Return success even if delivery wasn't possible
+			// (the child session might not have a parent)
 			return {
 				content: [
 					{
 						type: "text" as const,
-						text: JSON.stringify({ success: true }),
+						text: JSON.stringify({ 
+							success: true,
+							delivered 
+						}),
 					},
 				],
 			};
