@@ -2583,15 +2583,42 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 								repo.id,
 							);
 							if (agentSessionManager) {
-								const parentRunner =
-									agentSessionManager.getClaudeRunner(parentId);
-								if (parentRunner) {
-									// Send message directly to parent's streaming session
-									parentRunner.addStreamMessage(message);
+								const parentSession = agentSessionManager.getSession(parentId);
+								if (!parentSession) {
+									console.error(
+										`[EdgeWorker] Parent session ${parentId} not found`,
+									);
+									return false;
+								}
+
+								console.log(
+									`[EdgeWorker] Found parent session - Issue: ${parentSession.issueId}`,
+								);
+
+								// Format the feedback as a prompt for the parent session
+								const feedbackPrompt = `Feedback from child agent session ${childSessionId}:\n\n${message}`;
+
+								// Resume the parent session with the feedback
+								try {
+									await this.resumeClaudeSession(
+										parentSession,
+										repo,
+										parentId,
+										agentSessionManager,
+										feedbackPrompt,
+										"", // No attachment manifest for feedback
+										false, // Not a new session
+									);
 									console.log(
-										`[EdgeWorker] Feedback delivered successfully to parent session`,
+										`[EdgeWorker] Feedback delivered successfully and parent session resumed`,
 									);
 									return true;
+								} catch (error) {
+									console.error(
+										`[EdgeWorker] Failed to resume parent session with feedback:`,
+										error,
+									);
+									return false;
 								}
 							}
 						}
