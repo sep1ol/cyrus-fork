@@ -550,4 +550,172 @@ describe("EdgeWorker - Dynamic Tools Configuration", () => {
 			expect(result?.version).toBe("orchestrator-v1.0.0");
 		});
 	});
+
+	describe("buildDisallowedTools", () => {
+		// Access private method for testing
+		const getBuildDisallowedTools = (ew: EdgeWorker) =>
+			(ew as any).buildDisallowedTools.bind(ew);
+
+		it("should use repository-specific prompt type configuration when available", () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				labelPrompts: {
+					debugger: {
+						labels: ["bug", "error"],
+						allowedTools: "readOnly",
+						disallowedTools: ["Bash", "Write"],
+					},
+				},
+			};
+
+			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
+			const tools = buildDisallowedTools(repository, "debugger");
+
+			expect(tools).toEqual(["Bash", "Write"]);
+		});
+
+		it("should use global prompt defaults when repository-specific config is not available", () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+			};
+
+			// Add global prompt defaults for disallowed tools
+			const configWithPromptDefaults: EdgeWorkerConfig = {
+				...mockConfig,
+				promptDefaults: {
+					debugger: {
+						disallowedTools: ["Bash", "SystemAccess"],
+					},
+				},
+			};
+			const ew = new EdgeWorker(configWithPromptDefaults);
+
+			const buildDisallowedTools = getBuildDisallowedTools(ew);
+			const tools = buildDisallowedTools(repository, "debugger");
+
+			expect(tools).toEqual(["Bash", "SystemAccess"]);
+		});
+
+		it("should fall back to repository-level disallowed tools when no prompt type is specified", () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				disallowedTools: ["WebFetch", "WebSearch"],
+			};
+
+			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
+			const tools = buildDisallowedTools(repository);
+
+			expect(tools).toEqual(["WebFetch", "WebSearch"]);
+		});
+
+		it("should fall back to global default disallowed tools when no other config is available", () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+			};
+
+			// Add global default disallowed tools
+			const configWithDefaults: EdgeWorkerConfig = {
+				...mockConfig,
+				defaultDisallowedTools: ["Bash", "DangerousTool"],
+			};
+			const ew = new EdgeWorker(configWithDefaults);
+
+			const buildDisallowedTools = getBuildDisallowedTools(ew);
+			const tools = buildDisallowedTools(repository);
+
+			expect(tools).toEqual(["Bash", "DangerousTool"]);
+		});
+
+		it("should return empty array when no configuration is provided (no defaults)", () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+			};
+
+			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
+			const tools = buildDisallowedTools(repository);
+
+			// Unlike allowedTools, disallowedTools has no defaults
+			expect(tools).toEqual([]);
+		});
+
+		it("should handle prompt type with repository-level fallback", () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				disallowedTools: ["Bash"],
+				labelPrompts: {
+					builder: {
+						labels: ["feature"],
+						allowedTools: "safe",
+						// No disallowedTools for builder
+					},
+				},
+			};
+
+			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
+			const tools = buildDisallowedTools(repository, "builder");
+
+			// Should fall back to repository-level disallowedTools
+			expect(tools).toEqual(["Bash"]);
+		});
+
+		it("should handle backward compatibility with old array-based labelPrompts", () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				disallowedTools: ["OldDefault"],
+				labelPrompts: {
+					debugger: ["bug", "error"] as any, // Old format
+					builder: {
+						labels: ["feature"],
+						allowedTools: "safe",
+						disallowedTools: ["NewFormat"],
+					},
+				} as any,
+			};
+
+			const buildDisallowedTools = getBuildDisallowedTools(edgeWorker);
+
+			// Old format should fall back to repository defaults
+			const debuggerTools = buildDisallowedTools(repository, "debugger");
+			expect(debuggerTools).toEqual(["OldDefault"]);
+
+			// New format should work as expected
+			const builderTools = buildDisallowedTools(repository, "builder");
+			expect(builderTools).toEqual(["NewFormat"]);
+		});
+
+		it("should respect priority hierarchy", () => {
+			const repository: RepositoryConfig = {
+				...mockConfig.repositories[0],
+				disallowedTools: ["RepoLevel"],
+				labelPrompts: {
+					debugger: {
+						labels: ["bug"],
+						allowedTools: "all",
+						disallowedTools: ["LabelLevel"],
+					},
+				},
+			};
+
+			const configWithAllLevels: EdgeWorkerConfig = {
+				...mockConfig,
+				defaultDisallowedTools: ["GlobalLevel"],
+				promptDefaults: {
+					debugger: {
+						disallowedTools: ["PromptDefault"],
+					},
+				},
+			};
+			const ew = new EdgeWorker(configWithAllLevels);
+
+			const buildDisallowedTools = getBuildDisallowedTools(ew);
+
+			// Should use label-level config (highest priority)
+			const tools = buildDisallowedTools(repository, "debugger");
+			expect(tools).toEqual(["LabelLevel"]);
+
+			// Without prompt type, should use repository level
+			const noPromptTools = buildDisallowedTools(repository);
+			expect(noPromptTools).toEqual(["RepoLevel"]);
+		});
+	});
 });

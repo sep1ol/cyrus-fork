@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Tool restriction configuration**: New `disallowedTools` configuration option to explicitly block specific tools
+  - Can be configured at global, repository, prompt type, and label-specific levels
+  - Follows same hierarchy as `allowedTools` (label > prompt defaults > repository > global)
+  - No default disallowed tools - only explicitly configured tools are blocked
+  - Environment variable support: `DISALLOWED_TOOLS` for global defaults
+  - Passed through to Claude Code via `disallowedTools` option
+
 ## [0.1.45] - 2025-08-28
 
 ### Added
