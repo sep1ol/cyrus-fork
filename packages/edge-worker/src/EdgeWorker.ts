@@ -2565,66 +2565,71 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				},
 				onFeedbackDelivery: async (childSessionId, message) => {
 					console.log(
-						`[EdgeWorker] Processing feedback for child session ${childSessionId}`,
+						`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
 					);
 
-					// Find the parent session for this child
-					const parentId = this.childToParentAgentSession.get(childSessionId);
+					// Find the repository containing the child session
+					// We need to search all repositories for this child session
+					let childRepo: RepositoryConfig | undefined;
+					let childAgentSessionManager: AgentSessionManager | undefined;
 
-					if (parentId && message) {
-						console.log(
-							`[EdgeWorker] Delivering feedback to parent session ${parentId}`,
-						);
-
-						// Find the repository containing this session
-						const repo = await this.getRepositoryForSession(parentId);
-						if (repo) {
-							const agentSessionManager = this.agentSessionManagers.get(
-								repo.id,
-							);
-							if (agentSessionManager) {
-								const parentSession = agentSessionManager.getSession(parentId);
-								if (!parentSession) {
-									console.error(
-										`[EdgeWorker] Parent session ${parentId} not found`,
-									);
-									return false;
-								}
-
-								console.log(
-									`[EdgeWorker] Found parent session - Issue: ${parentSession.issueId}`,
-								);
-
-								// Format the feedback as a prompt for the parent session
-								const feedbackPrompt = `Feedback from child agent session ${childSessionId}:\n\n${message}`;
-
-								// Resume the parent session with the feedback
-								try {
-									await this.resumeClaudeSession(
-										parentSession,
-										repo,
-										parentId,
-										agentSessionManager,
-										feedbackPrompt,
-										"", // No attachment manifest for feedback
-										false, // Not a new session
-									);
-									console.log(
-										`[EdgeWorker] Feedback delivered successfully and parent session resumed`,
-									);
-									return true;
-								} catch (error) {
-									console.error(
-										`[EdgeWorker] Failed to resume parent session with feedback:`,
-										error,
-									);
-									return false;
-								}
-							}
+					for (const [repoId, manager] of this.agentSessionManagers) {
+						if (manager.hasClaudeRunner(childSessionId)) {
+							childRepo = this.repositories.get(repoId);
+							childAgentSessionManager = manager;
+							break;
 						}
 					}
 
-					return false;
+					if (!childRepo || !childAgentSessionManager) {
+						console.error(
+							`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
+						);
+						return false;
+					}
+
+					// Get the child session
+					const childSession =
+						childAgentSessionManager.getSession(childSessionId);
+					if (!childSession) {
+						console.error(
+							`[EdgeWorker] Child session ${childSessionId} not found`,
+						);
+						return false;
+					}
+
+					console.log(
+						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
+					);
+
+					// Find the parent session ID for logging purposes
+					const parentId = this.childToParentAgentSession.get(childSessionId);
+
+					// Format the feedback as a prompt for the child session
+					const feedbackPrompt = `Feedback from parent session${parentId ? ` ${parentId}` : ""} regarding child agent session ${childSessionId}:\n\n${message}`;
+
+					// Resume the CHILD session with the feedback from the parent
+					try {
+						await this.resumeClaudeSession(
+							childSession,
+							childRepo,
+							childSessionId,
+							childAgentSessionManager,
+							feedbackPrompt,
+							"", // No attachment manifest for feedback
+							false, // Not a new session
+						);
+						console.log(
+							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
+						);
+						return true;
+					} catch (error) {
+						console.error(
+							`[EdgeWorker] Failed to resume child session with feedback:`,
+							error,
+						);
+						return false;
+					}
 				},
 			}),
 		};
@@ -2893,20 +2898,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		return agentSessionManager.getSessionsByIssueId(issueId);
-	}
-
-	/**
-	 * Get repository for a given session ID
-	 */
-	private async getRepositoryForSession(
-		sessionId: string,
-	): Promise<RepositoryConfig | undefined> {
-		for (const [repositoryId, manager] of this.agentSessionManagers) {
-			if (manager.hasClaudeRunner(sessionId)) {
-				return this.repositories.get(repositoryId);
-			}
-		}
-		return undefined;
 	}
 
 	/**
