@@ -58,7 +58,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		mockOnSessionCreated = vi.fn();
 
 		// Mock createCyrusToolsServer to return a proper structure
-		vi.mocked(createCyrusToolsServer).mockImplementation((token, options) => {
+		vi.mocked(createCyrusToolsServer).mockImplementation((_token, options) => {
 			// Capture the callbacks
 			if (options?.onFeedbackDelivery) {
 				mockOnFeedbackDelivery = options.onFeedbackDelivery;
@@ -106,11 +106,13 @@ describe("EdgeWorker - Feedback Delivery", () => {
 		};
 
 		// Mock AgentSessionManager constructor
-		vi.mocked(AgentSessionManager).mockImplementation((linearClient, ...args) => {
-			// Return different managers based on some condition
-			// In real usage, these would be created per repository
-			return mockAgentSessionManager;
-		});
+		vi.mocked(AgentSessionManager).mockImplementation(
+			(_linearClient, ..._args) => {
+				// Return different managers based on some condition
+				// In real usage, these would be created per repository
+				return mockAgentSessionManager;
+			},
+		);
 
 		// Mock other dependencies
 		vi.mocked(SharedApplicationServer).mockImplementation(
@@ -190,13 +192,16 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const parentSessionId = "parent-session-123";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				parentSessionId,
 			);
 
 			// Act - Call the captured feedback delivery callback
-			const result = await mockOnFeedbackDelivery(childSessionId, feedbackMessage);
+			const result = await mockOnFeedbackDelivery(
+				childSessionId,
+				feedbackMessage,
+			);
 
 			// Assert
 			expect(result).toBe(true);
@@ -207,7 +212,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				childSession,
 				repo,
 				sessionId,
-				manager,
+				_manager,
 				prompt,
 				attachmentManifest,
 				isNewSession,
@@ -235,21 +240,22 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 		it("should handle feedback delivery when parent session ID is unknown", async () => {
 			// Arrange - Remove parent mapping to test unknown parent scenario
-			(edgeWorker as any).childToParentAgentSession.delete(
-				"child-session-456",
-			);
+			(edgeWorker as any).childToParentAgentSession.delete("child-session-456");
 
 			const childSessionId = "child-session-456";
 			const feedbackMessage = "Test feedback without known parent";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				undefined, // No parent session ID
 			);
 
 			// Act - Call the captured feedback delivery callback
-			const result = await mockOnFeedbackDelivery(childSessionId, feedbackMessage);
+			const result = await mockOnFeedbackDelivery(
+				childSessionId,
+				feedbackMessage,
+			);
 
 			// Assert - Should still work but with generic parent reference
 			expect(result).toBe(true);
@@ -269,13 +275,16 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "This should fail";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				"parent-session-123",
 			);
 
 			// Act - Call the captured feedback delivery callback
-			const result = await mockOnFeedbackDelivery(childSessionId, feedbackMessage);
+			const result = await mockOnFeedbackDelivery(
+				childSessionId,
+				feedbackMessage,
+			);
 
 			// Assert
 			expect(result).toBe(false);
@@ -293,13 +302,16 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "This should also fail";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				"parent-session-123",
 			);
 
 			// Act - Call the captured feedback delivery callback
-			const result = await mockOnFeedbackDelivery(childSessionId, feedbackMessage);
+			const result = await mockOnFeedbackDelivery(
+				childSessionId,
+				feedbackMessage,
+			);
 
 			// Assert
 			expect(result).toBe(false);
@@ -317,13 +329,16 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "This will cause resume to fail";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				"parent-session-123",
 			);
 
 			// Act - Call the captured feedback delivery callback
-			const result = await mockOnFeedbackDelivery(childSessionId, feedbackMessage);
+			const result = await mockOnFeedbackDelivery(
+				childSessionId,
+				feedbackMessage,
+			);
 
 			// Assert
 			expect(result).toBe(false);
@@ -362,20 +377,23 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const feedbackMessage = "Test feedback across repositories";
 
 			// Build MCP config which will trigger createCyrusToolsServer
-			const mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				"parent-session-123",
 			);
 
 			// Act - Call the captured feedback delivery callback
-			const result = await mockOnFeedbackDelivery(childSessionId, feedbackMessage);
+			const result = await mockOnFeedbackDelivery(
+				childSessionId,
+				feedbackMessage,
+			);
 
 			// Assert - Should find the child in the correct repository
 			expect(result).toBe(true);
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
 
 			// Verify the child was found in one of the repositories
-			const hasClaudeRunnerCalls = 
+			const hasClaudeRunnerCalls =
 				mockRepo2Manager.hasClaudeRunner.mock.calls.length +
 				mockChildAgentSessionManager.hasClaudeRunner.mock.calls.length;
 			expect(hasClaudeRunnerCalls).toBeGreaterThan(0);
@@ -388,13 +406,13 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			const parentSessionId = "parent-session-123";
 
 			// Act
-			const mcpConfig = (edgeWorker as any).buildMcpConfig(
+			const _mcpConfig = (edgeWorker as any).buildMcpConfig(
 				mockRepository,
 				parentSessionId,
 			);
 
 			// Assert
-			expect(mcpConfig).toHaveProperty("cyrus-tools");
+			expect(_mcpConfig).toHaveProperty("cyrus-tools");
 
 			// Verify createCyrusToolsServer was called with correct options
 			expect(createCyrusToolsServer).toHaveBeenCalledWith(
