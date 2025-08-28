@@ -1,4 +1,4 @@
-export { ClaudeRunner, StreamingPrompt } from "./ClaudeRunner.js";
+export { ClaudeRunner, StreamingPrompt, AbortError } from "./ClaudeRunner.js";
 export {
 	availableTools,
 	getAllTools,

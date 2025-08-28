@@ -4,9 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock the Claude SDK
 vi.mock("@anthropic-ai/claude-code", () => ({
 	query: vi.fn(),
-	AbortError: class AbortError extends Error {
-		name = "AbortError";
-	},
 }));
 
 // Mock file system operations
@@ -24,8 +21,8 @@ vi.mock("os", () => ({
 	homedir: vi.fn(() => "/mock/home"),
 }));
 
-import { AbortError, query } from "@anthropic-ai/claude-code";
-import { ClaudeRunner } from "../src/ClaudeRunner";
+import { query } from "@anthropic-ai/claude-code";
+import { ClaudeRunner, AbortError } from "../src/ClaudeRunner";
 import type { ClaudeRunnerConfig, SDKMessage } from "../src/types";
 
 describe("ClaudeRunner", () => {
