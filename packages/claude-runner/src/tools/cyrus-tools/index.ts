@@ -3,7 +3,6 @@ import { basename, extname } from "node:path";
 import { LinearClient } from "@linear/sdk";
 import { tool, createSdkMcpServer } from "@anthropic-ai/claude-code";
 import { z } from "zod";
-import { LinearService } from "./linear-service.js";
 
 /**
  * Detect MIME type based on file extension
@@ -68,17 +67,13 @@ function getMimeType(filename: string): string {
 	return mimeTypes[ext] || "application/octet-stream";
 }
 
-
-
-
 /**
  * Create an SDK MCP server with the inline Cyrus tools
  */
 export function createCyrusToolsServer(linearApiToken: string) {
 	const linearClient = new LinearClient({ apiKey: linearApiToken });
-	const linearService = new LinearService(linearClient);
 
-	// Create tools with bound linear service
+	// Create tools with bound linear client
 	const uploadTool = tool(
 		"linear_upload_file",
 		"Upload a file to Linear. Returns an asset URL that can be used in issue descriptions or comments.",
@@ -120,11 +115,13 @@ export function createCyrusToolsServer(linearApiToken: string) {
 				console.log(
 					`Requesting upload URL for ${finalFilename} (${size} bytes, ${finalContentType})`,
 				);
-				const uploadPayload = await linearService.fileUpload(
+				
+				// Use LinearClient's fileUpload method directly
+				const uploadPayload = await linearClient.fileUpload(
 					finalContentType,
 					finalFilename,
 					size,
-					makePublic,
+					{ makePublic },
 				);
 
 				if (!uploadPayload.success || !uploadPayload.uploadFile) {
@@ -208,7 +205,7 @@ export function createCyrusToolsServer(linearApiToken: string) {
 			try {
 				// Use raw GraphQL through the Linear client
 				// Access the underlying GraphQL client
-				const graphQLClient = (linearService as any).client.client;
+				const graphQLClient = (linearClient as any).client;
 
 				const mutation = `
 					mutation AgentSessionCreateOnIssue($input: AgentSessionCreateOnIssue!) {
@@ -323,7 +320,3 @@ export function createCyrusToolsServer(linearApiToken: string) {
 		tools: [uploadTool, agentSessionTool, giveFeedbackTool],
 	});
 }
-
-/**
- * Export individual tools for direct use if needed
- */

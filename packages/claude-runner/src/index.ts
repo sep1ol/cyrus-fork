@@ -23,4 +23,3 @@ export type {
 	SDKUserMessage,
 } from "./types.js";
 export { createCyrusToolsServer } from "./tools/cyrus-tools/index.js";
-export { LinearService } from "./tools/cyrus-tools/linear-service.js";
