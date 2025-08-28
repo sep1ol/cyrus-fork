@@ -272,11 +272,11 @@ export class ClaudeRunner extends EventEmitter {
 
 			// Process disallowed tools - no defaults, just pass through
 			// Only pass if array is non-empty
-			const processedDisallowedTools = 
+			const processedDisallowedTools =
 				this.config.disallowedTools && this.config.disallowedTools.length > 0
 					? this.config.disallowedTools
 					: undefined;
-			
+
 			// Log disallowed tools if configured
 			if (processedDisallowedTools) {
 				console.log(
@@ -347,7 +347,9 @@ export class ClaudeRunner extends EventEmitter {
 						appendSystemPrompt: this.config.appendSystemPrompt,
 					}),
 					...(processedAllowedTools && { allowedTools: processedAllowedTools }),
-					...(processedDisallowedTools && { disallowedTools: processedDisallowedTools }),
+					...(processedDisallowedTools && {
+						disallowedTools: processedDisallowedTools,
+					}),
 					...(this.config.resumeSessionId && {
 						resume: this.config.resumeSessionId,
 					}),
