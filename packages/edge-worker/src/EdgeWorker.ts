@@ -759,6 +759,7 @@ export class EdgeWorker extends EventEmitter {
 
 		// Build allowed tools list with Linear MCP tools
 		const allowedTools = this.buildAllowedTools(repository);
+		const disallowedTools = this.buildDisallowedTools(repository);
 
 		return {
 			session,
@@ -768,6 +769,7 @@ export class EdgeWorker extends EventEmitter {
 			attachmentsDir,
 			allowedDirectories,
 			allowedTools,
+			disallowedTools,
 		};
 	}
 
@@ -867,11 +869,18 @@ export class EdgeWorker extends EventEmitter {
 
 		// Build allowed tools list with Linear MCP tools (now with prompt type context)
 		const allowedTools = this.buildAllowedTools(repository, promptType);
+		const disallowedTools = this.buildDisallowedTools(repository, promptType);
 
 		console.log(
 			`[EdgeWorker] Configured allowed tools for ${fullIssue.identifier}:`,
 			allowedTools,
 		);
+		if (disallowedTools.length > 0) {
+			console.log(
+				`[EdgeWorker] Configured disallowed tools for ${fullIssue.identifier}:`,
+				disallowedTools,
+			);
+		}
 
 		// Create Claude runner with attachment directory access and optional system prompt
 		const runnerConfig = this.buildClaudeRunnerConfig(
@@ -881,6 +890,7 @@ export class EdgeWorker extends EventEmitter {
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
+			disallowedTools,
 			undefined, // resumeSessionId
 			labels, // Pass labels for model override
 		);
@@ -2657,6 +2667,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		systemPrompt: string | undefined,
 		allowedTools: string[],
 		allowedDirectories: string[],
+		disallowedTools: string[],
 		resumeSessionId?: string,
 		labels?: string[],
 	): ClaudeRunnerConfig {
@@ -2704,6 +2715,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		const config = {
 			workingDirectory: session.workspace.path,
 			allowedTools,
+			disallowedTools,
 			allowedDirectories,
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
@@ -2732,6 +2744,55 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		return config;
+	}
+
+	/**
+	 * Build disallowed tools list following the same hierarchy as allowed tools
+	 */
+	private buildDisallowedTools(
+		repository: RepositoryConfig,
+		promptType?: "debugger" | "builder" | "scoper" | "orchestrator",
+	): string[] {
+		let disallowedTools: string[] = [];
+		let toolSource = "";
+
+		// Priority order (same as allowedTools):
+		// 1. Repository-specific prompt type configuration
+		if (promptType && repository.labelPrompts?.[promptType]?.disallowedTools) {
+			disallowedTools = repository.labelPrompts[promptType].disallowedTools;
+			toolSource = `repository label prompt (${promptType})`;
+		}
+		// 2. Global prompt type defaults
+		else if (
+			promptType &&
+			this.config.promptDefaults?.[promptType]?.disallowedTools
+		) {
+			disallowedTools = this.config.promptDefaults[promptType].disallowedTools;
+			toolSource = `global prompt defaults (${promptType})`;
+		}
+		// 3. Repository-level disallowed tools
+		else if (repository.disallowedTools) {
+			disallowedTools = repository.disallowedTools;
+			toolSource = "repository configuration";
+		}
+		// 4. Global default disallowed tools
+		else if (this.config.defaultDisallowedTools) {
+			disallowedTools = this.config.defaultDisallowedTools;
+			toolSource = "global defaults";
+		}
+		// 5. No defaults for disallowedTools (as per requirements)
+		else {
+			disallowedTools = [];
+			toolSource = "none (no defaults)";
+		}
+
+		if (disallowedTools.length > 0) {
+			console.log(
+				`[EdgeWorker] Disallowed tools for ${repository.name}: ${disallowedTools.length} tools from ${toolSource}`,
+			);
+		}
+
+		return disallowedTools;
 	}
 
 	/**
@@ -3190,6 +3251,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Build allowed tools list
 		const allowedTools = this.buildAllowedTools(repository, promptType);
+		const disallowedTools = this.buildDisallowedTools(repository, promptType);
 
 		// Set up attachments directory
 		const workspaceFolderName = basename(session.workspace.path);
@@ -3210,6 +3272,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
+			disallowedTools,
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
 			labels, // Pass labels for model override
 		);

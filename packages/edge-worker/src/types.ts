@@ -30,6 +30,7 @@ export interface RepositoryConfig {
 	isActive?: boolean; // Whether to process webhooks for this repo (default: true)
 	promptTemplatePath?: string; // Custom prompt template for this repo
 	allowedTools?: string[]; // Override Claude tools for this repository (overrides defaultAllowedTools)
+	disallowedTools?: string[]; // Tools to explicitly disallow for this repository (no defaults)
 	mcpConfigPath?: string | string[]; // Path(s) to MCP configuration JSON file(s) (format: {"mcpServers": {...}})
 	appendInstruction?: string; // Additional instruction to append to the prompt in XML-style wrappers
 	model?: string; // Claude model to use for this repository (e.g., "opus", "sonnet", "haiku")
@@ -40,18 +41,22 @@ export interface RepositoryConfig {
 		debugger?: {
 			labels: string[]; // Labels that trigger debugger mode (e.g., ["Bug"])
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for debugger mode
+			disallowedTools?: string[]; // Tools to explicitly disallow in debugger mode
 		};
 		builder?: {
 			labels: string[]; // Labels that trigger builder mode (e.g., ["Feature", "Improvement"])
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for builder mode
+			disallowedTools?: string[]; // Tools to explicitly disallow in builder mode
 		};
 		scoper?: {
 			labels: string[]; // Labels that trigger scoper mode (e.g., ["PRD"])
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for scoper mode
+			disallowedTools?: string[]; // Tools to explicitly disallow in scoper mode
 		};
 		orchestrator?: {
 			labels: string[]; // Labels that trigger orchestrator mode (e.g., ["Orchestrator"])
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator"; // Tool restrictions for orchestrator mode
+			disallowedTools?: string[]; // Tools to explicitly disallow in orchestrator mode
 		};
 	};
 }
@@ -71,6 +76,7 @@ export interface EdgeWorkerConfig {
 
 	// Claude config (shared across all repos)
 	defaultAllowedTools?: string[];
+	defaultDisallowedTools?: string[]; // Tools to explicitly disallow across all repositories (no defaults)
 	defaultModel?: string; // Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku")
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 
@@ -78,15 +84,19 @@ export interface EdgeWorkerConfig {
 	promptDefaults?: {
 		debugger?: {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
 		};
 		builder?: {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
 		};
 		scoper?: {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
 		};
 		orchestrator?: {
 			allowedTools?: string[] | "readOnly" | "safe" | "all" | "coordinator";
+			disallowedTools?: string[];
 		};
 	};
 
@@ -195,4 +205,5 @@ export interface LinearAgentSessionData {
 	attachmentsDir: string;
 	allowedDirectories: string[];
 	allowedTools: string[];
+	disallowedTools: string[];
 }

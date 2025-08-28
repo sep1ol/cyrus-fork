@@ -12,6 +12,7 @@ import type {
 export interface ClaudeRunnerConfig {
 	workingDirectory?: string;
 	allowedTools?: string[];
+	disallowedTools?: string[];
 	allowedDirectories?: string[];
 	resumeSessionId?: string; // Session ID to resume from previous Claude session
 	workspaceName?: string;
