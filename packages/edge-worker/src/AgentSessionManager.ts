@@ -726,7 +726,9 @@ export class AgentSessionManager {
 	/**
 	 * Get ClaudeRunner for a specific session
 	 */
-	getClaudeRunner(linearAgentActivitySessionId: string): ClaudeRunner | undefined {
+	getClaudeRunner(
+		linearAgentActivitySessionId: string,
+	): ClaudeRunner | undefined {
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		return session?.claudeRunner;
 	}

@@ -1,7 +1,7 @@
-import * as fs from "fs-extra";
 import { basename, extname } from "node:path";
+import { createSdkMcpServer, tool } from "@anthropic-ai/claude-code";
 import { LinearClient } from "@linear/sdk";
-import { tool, createSdkMcpServer } from "@anthropic-ai/claude-code";
+import * as fs from "fs-extra";
 import { z } from "zod";
 
 /**
@@ -76,13 +76,16 @@ export interface CyrusToolsOptions {
 	 * Called when a new agent session is created
 	 */
 	onSessionCreated?: (childSessionId: string, parentSessionId: string) => void;
-	
+
 	/**
 	 * Callback to deliver feedback to a parent session
 	 * Called when feedback is given to a child session
 	 */
-	onFeedbackDelivery?: (childSessionId: string, message: string) => Promise<boolean>;
-	
+	onFeedbackDelivery?: (
+		childSessionId: string,
+		message: string,
+	) => Promise<boolean>;
+
 	/**
 	 * The ID of the current parent session (if any)
 	 */
@@ -94,7 +97,7 @@ export interface CyrusToolsOptions {
  */
 export function createCyrusToolsServer(
 	linearApiToken: string,
-	options: CyrusToolsOptions = {}
+	options: CyrusToolsOptions = {},
 ) {
 	const linearClient = new LinearClient({ apiKey: linearApiToken });
 
@@ -140,7 +143,7 @@ export function createCyrusToolsServer(
 				console.log(
 					`Requesting upload URL for ${finalFilename} (${size} bytes, ${finalContentType})`,
 				);
-				
+
 				// Use LinearClient's fileUpload method directly
 				const uploadPayload = await linearClient.fileUpload(
 					finalContentType,
@@ -262,9 +265,7 @@ export function createCyrusToolsServer(
 				}
 
 				const agentSessionId = result.agentSession.id;
-				console.log(
-					`Agent session created successfully: ${agentSessionId}`,
-				);
+				console.log(`Agent session created successfully: ${agentSessionId}`);
 
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
@@ -354,10 +355,7 @@ export function createCyrusToolsServer(
 						);
 					}
 				} catch (error) {
-					console.error(
-						`[CyrusTools] Failed to deliver feedback:`,
-						error,
-					);
+					console.error(`[CyrusTools] Failed to deliver feedback:`, error);
 				}
 			}
 
@@ -367,9 +365,9 @@ export function createCyrusToolsServer(
 				content: [
 					{
 						type: "text" as const,
-						text: JSON.stringify({ 
+						text: JSON.stringify({
 							success: true,
-							delivered 
+							delivered,
 						}),
 					},
 				],

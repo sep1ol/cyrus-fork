@@ -2555,21 +2555,24 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						console.log(
 							`[EdgeWorker] Processing feedback for child session ${childSessionId}`,
 						);
-						
+
 						// Find the parent session for this child
 						const parentId = this.childToParentAgentSession.get(childSessionId);
-						
+
 						if (parentId && message) {
 							console.log(
 								`[EdgeWorker] Delivering feedback to parent session ${parentId}`,
 							);
-							
+
 							// Find the repository containing this session
 							const repo = await this.getRepositoryForSession(parentId);
 							if (repo) {
-								const agentSessionManager = this.agentSessionManagers.get(repo.id);
+								const agentSessionManager = this.agentSessionManagers.get(
+									repo.id,
+								);
 								if (agentSessionManager) {
-									const parentRunner = agentSessionManager.getClaudeRunner(parentId);
+									const parentRunner =
+										agentSessionManager.getClaudeRunner(parentId);
 									if (parentRunner) {
 										// Send message directly to parent's streaming session
 										parentRunner.addStreamMessage(message);
@@ -2581,7 +2584,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 								}
 							}
 						}
-						
+
 						return false;
 					},
 				}),

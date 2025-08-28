@@ -9,6 +9,10 @@ export {
 	type ToolName,
 	writeTools,
 } from "./config.js";
+export {
+	type CyrusToolsOptions,
+	createCyrusToolsServer,
+} from "./tools/cyrus-tools/index.js";
 export type {
 	APIAssistantMessage,
 	APIUserMessage,
@@ -22,7 +26,3 @@ export type {
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "./types.js";
-export { 
-	createCyrusToolsServer,
-	type CyrusToolsOptions 
-} from "./tools/cyrus-tools/index.js";
