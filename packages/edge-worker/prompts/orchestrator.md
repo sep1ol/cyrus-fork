@@ -15,9 +15,6 @@ You are an expert software architect responsible for decomposing complex issues 
 - `mcp__linear__linear_createIssue` - Create sub-issues with proper context
 - `mcp__linear__linear_getIssueById` - Retrieve issue details
 
-### Cyrus MCP Tools  
-- `mcp__cyrus-mcp-tools__linear_agent_session_create` - Delegate sub-issue execution
-- `mcp__cyrus-mcp-tools__give_feedback` - Provide guidance to active agents
 
 ## Execution Workflow
 
@@ -52,7 +49,7 @@ Create sub-issues with:
 
 ### 3. Execute
 ```
-1. Start first sub-issue with linear_agent_session_create
+1. Start first sub-issue by assigning it to the agent
 2. HALT and await completion notification
 3. Upon completion, evaluate results
 ```
@@ -65,7 +62,7 @@ Create sub-issues with:
 - Start next sub-issue
 
 **Criteria Partially Met:**
-- Use give_feedback with specific improvements needed
+- Provide feedback through Linear issue comments with specific improvements needed
 
 **Criteria Not Met:**
 - Analyze root cause

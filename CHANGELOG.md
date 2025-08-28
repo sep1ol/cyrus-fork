@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Updated @anthropic-ai/claude-code from v1.0.90 to v1.0.95 for latest Claude Code improvements. See [Claude Code v1.0.95 changelog](https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md#1095)
+- Replaced external cyrus-mcp-tools MCP server with inline tools using SDK callbacks for better performance
+- Cyrus tools (file upload, agent session creation, feedback) now run in-process instead of via separate MCP server
+
+### Removed
+- Removed cyrus-mcp-tools package in favor of inline tool implementation
 
 ## [0.1.45] - 2025-08-28
 

@@ -10,6 +10,7 @@ import {
 import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
+	createCyrusToolsServer,
 	getAllTools,
 	getCoordinatorTools,
 	getReadOnlyTools,
@@ -873,12 +874,10 @@ export class EdgeWorker extends EventEmitter {
 			session,
 			repository,
 			linearAgentActivitySessionId,
-			agentSessionManager,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
 			undefined, // resumeSessionId
-			linearAgentActivitySessionId, // Pass current session ID as parent context
 			labels, // Pass labels for model override
 		);
 		const runner = new ClaudeRunner(runnerConfig);
@@ -1911,28 +1910,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * @param issue Full Linear issue object from Linear SDK
 	 * @param repositoryId Repository ID for Linear client lookup
 	 */
-	/**
-	 * Get the repository configuration for a given session
-	 */
-	private getRepositoryForSession(
-		session: CyrusAgentSession,
-	): RepositoryConfig | undefined {
-		// Find the repository that matches the session's workspace path
-		for (const repo of this.config.repositories) {
-			if (session.workspace.path.includes(repo.workspaceBaseDir)) {
-				return repo;
-			}
-		}
-		// Fallback: try to find by issue ID in Linear client
-		for (const [repoId, _] of this.linearClients) {
-			const repo = this.config.repositories.find((r) => r.id === repoId);
-			if (repo) {
-				// Additional checks could be added here if needed
-				return repo;
-			}
-		}
-		return undefined;
-	}
 
 	private async moveIssueToStartedState(
 		issue: LinearIssue,
@@ -2544,7 +2521,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Build MCP configuration with automatic Linear server injection
+	 * Build MCP configuration with automatic Linear server injection and inline cyrus tools
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
@@ -2559,14 +2536,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					LINEAR_API_TOKEN: repository.linearToken,
 				},
 			},
-			"cyrus-mcp-tools": {
-				type: "stdio",
-				command: "npx",
-				args: ["-y", "cyrus-mcp-tools"],
-				env: {
-					LINEAR_API_TOKEN: repository.linearToken,
-				},
-			},
+			"cyrus-tools": {
+				type: "sdk",
+				server: createCyrusToolsServer(repository.linearToken),
+			} as unknown as McpServerConfig,
 		};
 
 		return mcpConfig;
@@ -2631,153 +2604,70 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
 		linearAgentActivitySessionId: string,
-		agentSessionManager: AgentSessionManager,
 		systemPrompt: string | undefined,
 		allowedTools: string[],
 		allowedDirectories: string[],
 		resumeSessionId?: string,
-		parentAgentSessionId?: string,
 		labels?: string[],
 	): any {
 		// Build hooks configuration
 		const hooks = {
 			PostToolUse: [
 				{
-					matcher: "mcp__cyrus-mcp-tools__linear_agent_session_create",
-					hooks: [
-						async (
-							input: any,
-							_toolUseID: string | undefined,
-							_options: { signal: AbortSignal },
-						) => {
-							// Check if this is the linear_agent_session_create tool
-							if (
-								input.tool_name ===
-								"mcp__cyrus-mcp-tools__linear_agent_session_create"
-							) {
-								const toolResponse = input.tool_response;
-
-								// The response is an array with a single object containing type and text fields
-								// Parse the JSON from the text field to get the agentSessionId
-								if (
-									Array.isArray(toolResponse) &&
-									toolResponse.length > 0 &&
-									toolResponse[0].type === "text" &&
-									toolResponse[0].text
-								) {
-									try {
-										const responseData = JSON.parse(toolResponse[0].text);
-										const childAgentSessionId = responseData.agentSessionId;
-
-										// If there's a parent session, create the mapping
-										if (parentAgentSessionId && childAgentSessionId) {
-											console.log(
-												`[Parent-Child Mapping] Creating: child ${childAgentSessionId} -> parent ${parentAgentSessionId}`,
-											);
-
-											this.childToParentAgentSession.set(
-												childAgentSessionId,
-												parentAgentSessionId,
-											);
-
-											console.log(
-												`[Parent-Child Mapping] Successfully created. Total mappings: ${this.childToParentAgentSession.size}`,
-											);
-
-											// Save state after adding new mapping
-											this.savePersistedState().catch((error) => {
-												console.error(
-													`[Parent-Child Mapping] Failed to save state after creating mapping:`,
-													error,
-												);
-											});
-										}
-									} catch (error) {
-										console.error(
-											`[Parent-Child Mapping] Failed to parse agentSessionId from tool response:`,
-											error,
-										);
-									}
-								}
-							}
-
-							return { continue: true };
-						},
-					],
+					matcher: "mcp__cyrus-tools__linear_agent_session_create",
+					callback: (result: any) => {
+						if (result?.agentSessionId) {
+							console.log(
+								`[EdgeWorker Hook] Agent session created: ${result.agentSessionId}, mapping to parent ${linearAgentActivitySessionId}`,
+							);
+							// Map child to parent session
+							this.childToParentAgentSession.set(
+								result.agentSessionId,
+								linearAgentActivitySessionId,
+							);
+							console.log(
+								`[EdgeWorker Hook] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+							);
+						}
+						return result;
+					},
 				},
 				{
-					matcher: "mcp__cyrus-mcp-tools__linear_agent_give_feedback",
-					hooks: [
-						async (
-							input: any,
-							_toolUseID: string | undefined,
-							_options: { signal: AbortSignal },
-						) => {
-							// Check if this is the give_feedback tool
-							if (
-								input.tool_name ===
-								"mcp__cyrus-mcp-tools__linear_agent_give_feedback"
-							) {
-								const toolInput = input.tool_input as {
-									agentSessionId?: string;
-									message?: string;
-								};
-								const childAgentSessionId = toolInput?.agentSessionId;
-								const feedbackMessage = toolInput?.message;
-
-								if (childAgentSessionId && feedbackMessage) {
-									console.log(
-										`[Give Feedback] Triggering child session resumption: ${childAgentSessionId}`,
-									);
-
-									// Get the child session
-									const childSession =
-										agentSessionManager.getSession(childAgentSessionId);
-									if (!childSession) {
-										console.error(
-											`[Give Feedback] Child session not found: ${childAgentSessionId}`,
-										);
-										return { continue: true };
-									}
-
-									// Find the repository for this session
-									const repo = this.getRepositoryForSession(childSession);
-									if (!repo) {
-										console.error(
-											`[Give Feedback] Repository not found for child session: ${childAgentSessionId}`,
-										);
-										return { continue: true };
-									}
-
-									// Prepare the prompt with the feedback message and child session ID
-									const prompt = `Feedback from parent session regarding child agent session ${childAgentSessionId}:\n\n${feedbackMessage}`;
-
-									// Resume the child session with the feedback
-									try {
-										await this.resumeClaudeSession(
-											childSession,
-											repo,
-											childAgentSessionId,
-											agentSessionManager,
-											prompt,
-											"", // No attachment manifest for feedback
-											false, // Not a new session
-										);
+					matcher: "mcp__cyrus-tools__linear_agent_give_feedback",
+					callback: async (result: any, _toolName: string, args: any) => {
+						console.log(
+							`[EdgeWorker Hook] Processing feedback for child session ${args?.agentSessionId}`,
+						);
+						
+						// Find the parent session for this child
+						const parentSessionId = this.childToParentAgentSession.get(
+							args?.agentSessionId,
+						);
+						
+						if (parentSessionId && args?.message) {
+							console.log(
+								`[EdgeWorker Hook] Delivering feedback to parent session ${parentSessionId}`,
+							);
+							
+							// Find the repository containing this session
+							const repository = await this.getRepositoryForSession(parentSessionId);
+							if (repository) {
+								const agentSessionManager = this.agentSessionManagers.get(repository.id);
+								if (agentSessionManager) {
+									const parentRunner = agentSessionManager.getClaudeRunner(parentSessionId);
+									if (parentRunner) {
+										// Send message directly to parent's streaming session
+										parentRunner.addStreamMessage(args.message);
 										console.log(
-											`[Give Feedback] Successfully resumed child session ${childAgentSessionId} with feedback`,
-										);
-									} catch (error) {
-										console.error(
-											`[Give Feedback] Failed to resume child session ${childAgentSessionId}:`,
-											error,
+											`[EdgeWorker Hook] Feedback delivered successfully to parent session`,
 										);
 									}
 								}
 							}
-
-							return { continue: true };
-						},
-					],
+						}
+						
+						return result;
+					},
 				},
 			],
 		};
@@ -2899,7 +2789,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Linear MCP tools that should always be available
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const linearMcpTools = ["mcp__linear", "mcp__cyrus-mcp-tools"];
+		const linearMcpTools = ["mcp__linear", "mcp__cyrus-tools"];
 
 		// Combine and deduplicate
 		const allTools = [...new Set([...baseTools, ...linearMcpTools])];
@@ -2924,6 +2814,20 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		}
 
 		return agentSessionManager.getSessionsByIssueId(issueId);
+	}
+
+	/**
+	 * Get repository for a given session ID
+	 */
+	private async getRepositoryForSession(
+		sessionId: string,
+	): Promise<RepositoryConfig | undefined> {
+		for (const [repositoryId, manager] of this.agentSessionManagers) {
+			if (manager.hasClaudeRunner(sessionId)) {
+				return this.repositories.get(repositoryId);
+			}
+		}
+		return undefined;
 	}
 
 	/**
@@ -3312,12 +3216,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			session,
 			repository,
 			linearAgentActivitySessionId,
-			agentSessionManager,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
-			linearAgentActivitySessionId,
 			labels, // Pass labels for model override
 		);
 

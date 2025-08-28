@@ -687,12 +687,20 @@ export class LinearService {
 			}
 
 			// Get the user to assign
-			const _user = assigneeId ? await this.client.user(assigneeId) : null;
+			const user = assigneeId ? await this.client.user(assigneeId) : null;
 
 			// Update the issue with the new assignee
-			const _updatedIssue = await issue.update({
+			const updatedIssue = await issue.update({
 				assigneeId: assigneeId,
 			});
+
+			// Note: user and updatedIssue are available if needed for validation
+			if (user && assigneeId) {
+				console.log(`Assigning issue to user: ${user.name}`);
+			}
+			if (updatedIssue) {
+				console.log(`Issue updated successfully`);
+			}
 
 			// Get the updated assignee data
 			// We need to get the full issue record and its relationships
@@ -768,9 +776,14 @@ export class LinearService {
 			}
 
 			// Convert the issue to a subtask
-			const _updatedIssue = await issue.update({
+			const updatedIssue = await issue.update({
 				parentId: parentIssueId,
 			});
+
+			// Note: updatedIssue is available if needed for validation
+			if (updatedIssue) {
+				console.log(`Issue converted to subtask successfully`);
+			}
 
 			// Get parent data - we need to fetch the updated issue to get relationships
 			const updatedIssueData = await this.client.issue(issue.id);
@@ -1486,7 +1499,7 @@ export class LinearService {
 		health?: "onTrack" | "atRisk" | "offTrack" | string;
 		userId?: string;
 		attachments?: string[];
-	}) {
+	}): Promise<any> {
 		try {
 			// Get the project
 			const project = await this.client.project(args.projectId);
@@ -1542,7 +1555,7 @@ export class LinearService {
 		id: string;
 		body?: string;
 		health?: "onTrack" | "atRisk" | "offTrack" | string;
-	}) {
+	}): Promise<any> {
 		try {
 			// Get the project update
 			const projectUpdate = await this.client.projectUpdate(args.id);
@@ -1602,7 +1615,7 @@ export class LinearService {
 	 * @param limit Maximum number of updates to return
 	 * @returns List of project updates
 	 */
-	async getProjectUpdates(projectId: string, limit = 25) {
+	async getProjectUpdates(projectId: string, limit = 25): Promise<any> {
 		try {
 			// Get the project
 			const project = await this.client.project(projectId);
@@ -1694,7 +1707,7 @@ export class LinearService {
 	 */
 	async getInitiatives(
 		args: { includeArchived?: boolean; limit?: number } = {},
-	) {
+	): Promise<any> {
 		try {
 			const initiatives = await this.client.initiatives({
 				first: args.limit || 50,
@@ -1738,7 +1751,7 @@ export class LinearService {
 	 * @param includeProjects Whether to include associated projects
 	 * @returns Initiative details with optional projects
 	 */
-	async getInitiativeById(id: string, includeProjects = true) {
+	async getInitiativeById(id: string, includeProjects = true): Promise<any> {
 		try {
 			const initiative = await this.client.initiative(id);
 			if (!initiative) {
@@ -1802,7 +1815,7 @@ export class LinearService {
 		targetDate?: string;
 		ownerId?: string;
 		sortOrder?: number;
-	}) {
+	}): Promise<any> {
 		try {
 			const createPayload = await this.client.createInitiative({
 				name: args.name,
@@ -1853,7 +1866,7 @@ export class LinearService {
 			ownerId?: string;
 			sortOrder?: number;
 		},
-	) {
+	): Promise<any> {
 		try {
 			const updatePayload = await this.client.updateInitiative(initiativeId, {
 				name: updateData.name,

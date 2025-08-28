@@ -724,6 +724,22 @@ export class AgentSessionManager {
 	}
 
 	/**
+	 * Get ClaudeRunner for a specific session
+	 */
+	getClaudeRunner(linearAgentActivitySessionId: string): ClaudeRunner | undefined {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		return session?.claudeRunner;
+	}
+
+	/**
+	 * Check if a ClaudeRunner exists for a session
+	 */
+	hasClaudeRunner(linearAgentActivitySessionId: string): boolean {
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		return session?.claudeRunner !== undefined;
+	}
+
+	/**
 	 * Create a thought activity
 	 */
 	async createThoughtActivity(sessionId: string, body: string): Promise<void> {
