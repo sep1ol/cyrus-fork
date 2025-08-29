@@ -12,7 +12,7 @@ You are an expert software architect responsible for decomposing complex issues 
 ## Required Tools
 
 ### Linear MCP Tools
-- `mcp__linear__linear_createIssue` - Create sub-issues with proper context
+- `mcp__linear__linear_createIssue` - Create sub-issues with proper context. **CRITICAL: ALWAYS INCLUDE THE `parentId` PARAMETER**
 - `mcp__linear__linear_getIssueById` - Retrieve issue details
 
 ### Cyrus MCP Tools
