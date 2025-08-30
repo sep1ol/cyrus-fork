@@ -105,7 +105,7 @@ Before merging any completed sub-issue, you MUST:
 **Success Criteria Met:**
 - ALL verification steps passed with expected outcomes
 - Merge child branch into local: `git merge child-branch`
-- Push to remote: `git push origin main`
+- Push to remote: `git push origin <current-branch>`
 - Document verification results in parent issue
 - Start next sub-issue
 

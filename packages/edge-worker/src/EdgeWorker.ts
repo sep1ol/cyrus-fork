@@ -1184,6 +1184,7 @@ export class EdgeWorker extends EventEmitter {
 				promptBody,
 				attachmentManifest,
 				isNewSession,
+				[], // No additional allowed directories for regular continuation
 			);
 		} catch (error) {
 			console.error("Failed to continue conversation:", error);
@@ -2633,6 +2634,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							feedbackPrompt,
 							"", // No attachment manifest for feedback
 							false, // Not a new session
+							[], // No additional allowed directories for feedback
 						);
 						console.log(
 							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
