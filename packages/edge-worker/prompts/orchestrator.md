@@ -83,17 +83,17 @@ Before merging any completed sub-issue, you MUST:
 **VERIFICATION TECHNIQUES BY WORK TYPE:**
 
 *Automated Verification (PREFERRED):*
-- `pnpm test` - Run test suites
-- `pnpm build` - Verify compilation
-- `pnpm lint && pnpm typecheck` - Code quality checks
+- Test suites (e.g., `pnpm test`, `npm test`, `cargo test`, `pytest`)
+- Build verification (e.g., `pnpm build`, `npm run build`, `cargo build`)
+- Code quality checks (e.g., `pnpm lint && pnpm typecheck`, `eslint`, `rustfmt`)
 - CI pipeline status verification
-- `git log --oneline -5` - Verify commits
+- Commit verification (e.g., `git log --oneline -5`, `git show`)
 
 *Interactive Verification:*
-- `pnpm dev` + Playwright screenshots for UI changes
-- API testing with curl commands  
-- Database queries for data verification
-- Service health checks on specified ports
+- UI changes (e.g., `pnpm dev` + Playwright screenshots, browser testing)
+- API testing (e.g., `curl` commands, `postman`, API clients)  
+- Database verification (e.g., SQL queries, data consistency checks)
+- Service health checks (e.g., port accessibility, endpoint responses)
 
 *Manual Verification:*
 - Documentation completeness review
