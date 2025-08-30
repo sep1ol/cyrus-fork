@@ -8,11 +8,19 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import {
-	AbortError,
 	query,
 	type SDKMessage,
 	type SDKUserMessage,
 } from "@anthropic-ai/claude-code";
+
+// AbortError is no longer exported in v1.0.95, so we define it locally
+export class AbortError extends Error {
+	constructor(message?: string) {
+		super(message);
+		this.name = "AbortError";
+	}
+}
+
 import type {
 	ClaudeRunnerConfig,
 	ClaudeRunnerEvents,

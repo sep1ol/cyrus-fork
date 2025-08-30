@@ -7,9 +7,14 @@ import {
 	LinearClient,
 	type Issue as LinearIssue,
 } from "@linear/sdk";
-import type { McpServerConfig, SDKMessage } from "cyrus-claude-runner";
+import type {
+	ClaudeRunnerConfig,
+	McpServerConfig,
+	SDKMessage,
+} from "cyrus-claude-runner";
 import {
 	ClaudeRunner,
+	createCyrusToolsServer,
 	getAllTools,
 	getCoordinatorTools,
 	getReadOnlyTools,
@@ -882,13 +887,11 @@ export class EdgeWorker extends EventEmitter {
 			session,
 			repository,
 			linearAgentActivitySessionId,
-			agentSessionManager,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
 			disallowedTools,
 			undefined, // resumeSessionId
-			linearAgentActivitySessionId, // Pass current session ID as parent context
 			labels, // Pass labels for model override
 		);
 		const runner = new ClaudeRunner(runnerConfig);
@@ -1921,28 +1924,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	 * @param issue Full Linear issue object from Linear SDK
 	 * @param repositoryId Repository ID for Linear client lookup
 	 */
-	/**
-	 * Get the repository configuration for a given session
-	 */
-	private getRepositoryForSession(
-		session: CyrusAgentSession,
-	): RepositoryConfig | undefined {
-		// Find the repository that matches the session's workspace path
-		for (const repo of this.config.repositories) {
-			if (session.workspace.path.includes(repo.workspaceBaseDir)) {
-				return repo;
-			}
-		}
-		// Fallback: try to find by issue ID in Linear client
-		for (const [repoId, _] of this.linearClients) {
-			const repo = this.config.repositories.find((r) => r.id === repoId);
-			if (repo) {
-				// Additional checks could be added here if needed
-				return repo;
-			}
-		}
-		return undefined;
-	}
 
 	private async moveIssueToStartedState(
 		issue: LinearIssue,
@@ -2554,10 +2535,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	}
 
 	/**
-	 * Build MCP configuration with automatic Linear server injection
+	 * Build MCP configuration with automatic Linear server injection and inline cyrus tools
 	 */
 	private buildMcpConfig(
 		repository: RepositoryConfig,
+		parentSessionId?: string,
 	): Record<string, McpServerConfig> {
 		// Always inject the Linear MCP servers with the repository's token
 		const mcpConfig: Record<string, McpServerConfig> = {
@@ -2569,14 +2551,87 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					LINEAR_API_TOKEN: repository.linearToken,
 				},
 			},
-			"cyrus-mcp-tools": {
-				type: "stdio",
-				command: "npx",
-				args: ["-y", "cyrus-mcp-tools"],
-				env: {
-					LINEAR_API_TOKEN: repository.linearToken,
+			"cyrus-tools": createCyrusToolsServer(repository.linearToken, {
+				parentSessionId,
+				onSessionCreated: (childSessionId, parentId) => {
+					console.log(
+						`[EdgeWorker] Agent session created: ${childSessionId}, mapping to parent ${parentId}`,
+					);
+					// Map child to parent session
+					this.childToParentAgentSession.set(childSessionId, parentId);
+					console.log(
+						`[EdgeWorker] Parent-child mapping updated: ${this.childToParentAgentSession.size} mappings`,
+					);
 				},
-			},
+				onFeedbackDelivery: async (childSessionId, message) => {
+					console.log(
+						`[EdgeWorker] Processing feedback delivery to child session ${childSessionId}`,
+					);
+
+					// Find the repository containing the child session
+					// We need to search all repositories for this child session
+					let childRepo: RepositoryConfig | undefined;
+					let childAgentSessionManager: AgentSessionManager | undefined;
+
+					for (const [repoId, manager] of this.agentSessionManagers) {
+						if (manager.hasClaudeRunner(childSessionId)) {
+							childRepo = this.repositories.get(repoId);
+							childAgentSessionManager = manager;
+							break;
+						}
+					}
+
+					if (!childRepo || !childAgentSessionManager) {
+						console.error(
+							`[EdgeWorker] Child session ${childSessionId} not found in any repository`,
+						);
+						return false;
+					}
+
+					// Get the child session
+					const childSession =
+						childAgentSessionManager.getSession(childSessionId);
+					if (!childSession) {
+						console.error(
+							`[EdgeWorker] Child session ${childSessionId} not found`,
+						);
+						return false;
+					}
+
+					console.log(
+						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
+					);
+
+					// Find the parent session ID for logging purposes
+					const parentId = this.childToParentAgentSession.get(childSessionId);
+
+					// Format the feedback as a prompt for the child session
+					const feedbackPrompt = `Feedback from parent session${parentId ? ` ${parentId}` : ""} regarding child agent session ${childSessionId}:\n\n${message}`;
+
+					// Resume the CHILD session with the feedback from the parent
+					try {
+						await this.resumeClaudeSession(
+							childSession,
+							childRepo,
+							childSessionId,
+							childAgentSessionManager,
+							feedbackPrompt,
+							"", // No attachment manifest for feedback
+							false, // Not a new session
+						);
+						console.log(
+							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
+						);
+						return true;
+					} catch (error) {
+						console.error(
+							`[EdgeWorker] Failed to resume child session with feedback:`,
+							error,
+						);
+						return false;
+					}
+				},
+			}),
 		};
 
 		return mcpConfig;
@@ -2641,157 +2696,15 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		session: CyrusAgentSession,
 		repository: RepositoryConfig,
 		linearAgentActivitySessionId: string,
-		agentSessionManager: AgentSessionManager,
 		systemPrompt: string | undefined,
 		allowedTools: string[],
 		allowedDirectories: string[],
 		disallowedTools: string[],
 		resumeSessionId?: string,
-		parentAgentSessionId?: string,
 		labels?: string[],
-	): any {
-		// Build hooks configuration
-		const hooks = {
-			PostToolUse: [
-				{
-					matcher: "mcp__cyrus-mcp-tools__linear_agent_session_create",
-					hooks: [
-						async (
-							input: any,
-							_toolUseID: string | undefined,
-							_options: { signal: AbortSignal },
-						) => {
-							// Check if this is the linear_agent_session_create tool
-							if (
-								input.tool_name ===
-								"mcp__cyrus-mcp-tools__linear_agent_session_create"
-							) {
-								const toolResponse = input.tool_response;
-
-								// The response is an array with a single object containing type and text fields
-								// Parse the JSON from the text field to get the agentSessionId
-								if (
-									Array.isArray(toolResponse) &&
-									toolResponse.length > 0 &&
-									toolResponse[0].type === "text" &&
-									toolResponse[0].text
-								) {
-									try {
-										const responseData = JSON.parse(toolResponse[0].text);
-										const childAgentSessionId = responseData.agentSessionId;
-
-										// If there's a parent session, create the mapping
-										if (parentAgentSessionId && childAgentSessionId) {
-											console.log(
-												`[Parent-Child Mapping] Creating: child ${childAgentSessionId} -> parent ${parentAgentSessionId}`,
-											);
-
-											this.childToParentAgentSession.set(
-												childAgentSessionId,
-												parentAgentSessionId,
-											);
-
-											console.log(
-												`[Parent-Child Mapping] Successfully created. Total mappings: ${this.childToParentAgentSession.size}`,
-											);
-
-											// Save state after adding new mapping
-											this.savePersistedState().catch((error) => {
-												console.error(
-													`[Parent-Child Mapping] Failed to save state after creating mapping:`,
-													error,
-												);
-											});
-										}
-									} catch (error) {
-										console.error(
-											`[Parent-Child Mapping] Failed to parse agentSessionId from tool response:`,
-											error,
-										);
-									}
-								}
-							}
-
-							return { continue: true };
-						},
-					],
-				},
-				{
-					matcher: "mcp__cyrus-mcp-tools__linear_agent_give_feedback",
-					hooks: [
-						async (
-							input: any,
-							_toolUseID: string | undefined,
-							_options: { signal: AbortSignal },
-						) => {
-							// Check if this is the give_feedback tool
-							if (
-								input.tool_name ===
-								"mcp__cyrus-mcp-tools__linear_agent_give_feedback"
-							) {
-								const toolInput = input.tool_input as {
-									agentSessionId?: string;
-									message?: string;
-								};
-								const childAgentSessionId = toolInput?.agentSessionId;
-								const feedbackMessage = toolInput?.message;
-
-								if (childAgentSessionId && feedbackMessage) {
-									console.log(
-										`[Give Feedback] Triggering child session resumption: ${childAgentSessionId}`,
-									);
-
-									// Get the child session
-									const childSession =
-										agentSessionManager.getSession(childAgentSessionId);
-									if (!childSession) {
-										console.error(
-											`[Give Feedback] Child session not found: ${childAgentSessionId}`,
-										);
-										return { continue: true };
-									}
-
-									// Find the repository for this session
-									const repo = this.getRepositoryForSession(childSession);
-									if (!repo) {
-										console.error(
-											`[Give Feedback] Repository not found for child session: ${childAgentSessionId}`,
-										);
-										return { continue: true };
-									}
-
-									// Prepare the prompt with the feedback message and child session ID
-									const prompt = `Feedback from parent session regarding child agent session ${childAgentSessionId}:\n\n${feedbackMessage}`;
-
-									// Resume the child session with the feedback
-									try {
-										await this.resumeClaudeSession(
-											childSession,
-											repo,
-											childAgentSessionId,
-											agentSessionManager,
-											prompt,
-											"", // No attachment manifest for feedback
-											false, // Not a new session
-										);
-										console.log(
-											`[Give Feedback] Successfully resumed child session ${childAgentSessionId} with feedback`,
-										);
-									} catch (error) {
-										console.error(
-											`[Give Feedback] Failed to resume child session ${childAgentSessionId}:`,
-											error,
-										);
-									}
-								}
-							}
-
-							return { continue: true };
-						},
-					],
-				},
-			],
-		};
+	): ClaudeRunnerConfig {
+		// No hooks needed - logic is now in the tools themselves
+		const hooks = {};
 
 		// Check for model override labels (case-insensitive)
 		let modelOverride: string | undefined;
@@ -2839,7 +2752,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			workspaceName: session.issue?.identifier || session.issueId,
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
-			mcpConfig: this.buildMcpConfig(repository),
+			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
 			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
 			// Priority order: label override > repository config > global default
 			model: modelOverride || repository.model || this.config.defaultModel,
@@ -2960,7 +2873,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		// Linear MCP tools that should always be available
 		// See: https://docs.anthropic.com/en/docs/claude-code/iam#tool-specific-permission-rules
-		const linearMcpTools = ["mcp__linear", "mcp__cyrus-mcp-tools"];
+		const linearMcpTools = ["mcp__linear", "mcp__cyrus-tools"];
 
 		// Combine and deduplicate
 		const allTools = [...new Set([...baseTools, ...linearMcpTools])];
@@ -3374,13 +3287,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			session,
 			repository,
 			linearAgentActivitySessionId,
-			agentSessionManager,
 			systemPrompt,
 			allowedTools,
 			allowedDirectories,
 			disallowedTools,
 			needsNewClaudeSession ? undefined : session.claudeSessionId,
-			linearAgentActivitySessionId,
 			labels, // Pass labels for model override
 		);
 

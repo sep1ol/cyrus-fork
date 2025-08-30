@@ -1,4 +1,4 @@
-export { ClaudeRunner, StreamingPrompt } from "./ClaudeRunner.js";
+export { AbortError, ClaudeRunner, StreamingPrompt } from "./ClaudeRunner.js";
 export {
 	availableTools,
 	getAllTools,
@@ -9,6 +9,10 @@ export {
 	type ToolName,
 	writeTools,
 } from "./config.js";
+export {
+	type CyrusToolsOptions,
+	createCyrusToolsServer,
+} from "./tools/cyrus-tools/index.js";
 export type {
 	APIAssistantMessage,
 	APIUserMessage,
