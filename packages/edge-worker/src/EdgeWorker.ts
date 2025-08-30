@@ -153,7 +153,11 @@ export class EdgeWorker extends EventEmitter {
 						);
 						return parentId;
 					},
-					async (parentSessionId: string, prompt: string, childSessionId: string) => {
+					async (
+						parentSessionId: string,
+						prompt: string,
+						childSessionId: string,
+					) => {
 						console.log(
 							`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
 						);
@@ -3298,7 +3302,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 		await mkdir(attachmentsDir, { recursive: true });
 
-		const allowedDirectories = [attachmentsDir, ...additionalAllowedDirectories];
+		const allowedDirectories = [
+			attachmentsDir,
+			...additionalAllowedDirectories,
+		];
 
 		// Create runner configuration
 		const runnerConfig = this.buildClaudeRunnerConfig(
