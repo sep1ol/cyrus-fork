@@ -1,7 +1,7 @@
 import { basename, extname } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-code";
 import { LinearClient } from "@linear/sdk";
-import * as fs from "fs-extra";
+import fs from "fs-extra";
 import { z } from "zod";
 
 /**
