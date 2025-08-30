@@ -111,7 +111,7 @@ Before merging any completed sub-issue, you MUST:
 
 **Criteria Partially Met:**
 - Some verification steps failed or outcomes differ from expected
-- Provide specific feedback through Linear comments [mcp__cyrus-tools__linear_agent_give_feedback]
+- Provide specific feedback [mcp__cyrus-tools__linear_agent_give_feedback]
 - DO NOT merge until all verification passes
 
 **Criteria Not Met:**
@@ -193,7 +193,7 @@ When sub-issue completes, you MUST verify by:
 When verification fails:
 - [ ] **DO NOT merge** the child branch
 - [ ] **Document specific failure points** with evidence
-- [ ] **Provide targeted feedback** to child agent via Linear comments
+- [ ] **Provide targeted feedback** to child agent
 - [ ] **Specify what needs fixing** with exact verification requirements
 - [ ] **Consider if verification method was inadequate** and enhance requirements
 
