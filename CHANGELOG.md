@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.
 - Removed cyrus-mcp-tools package in favor of inline tool implementation
 
 ### Added
+- **Mandatory verification framework for orchestrator agents**: Enhanced parent-child delegation with executable verification requirements
+  - Parent orchestrators can now access child agent worktrees for independent verification
+  - **Orchestrator prompt v2.2.0** with mandatory verification requirements in sub-issue descriptions
+  - Child agents must provide detailed verification instructions (commands, expected outcomes, visual evidence)
+  - Parents gain filesystem permissions to child worktrees during verification process
+  - No more "verification theater" - actual executable validation required before merging child work
 - **@cyrus /label-based-prompt command**: New special command for mention-triggered sessions
   - Use `@cyrus /label-based-prompt` in comments to trigger label-based prompts instead of mention prompts
   - Automatically determines and includes appropriate system prompts based on issue labels
