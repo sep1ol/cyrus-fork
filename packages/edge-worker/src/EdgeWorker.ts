@@ -2754,13 +2754,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 			// If a model override is found, also set a reasonable fallback
 			if (modelOverride) {
-				// Set fallback to the next lower tier: opus->sonnet, sonnet->haiku, haiku->haiku
+				// Set fallback to the next lower tier: opus->sonnet, sonnet->haiku, haiku->sonnet
 				if (modelOverride === "opus") {
 					fallbackModelOverride = "sonnet";
 				} else if (modelOverride === "sonnet") {
 					fallbackModelOverride = "haiku";
 				} else {
-					fallbackModelOverride = "haiku";
+					fallbackModelOverride = "sonnet"; // haiku falls back to sonnet since same model retry doesn't help
 				}
 			}
 		}
