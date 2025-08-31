@@ -153,7 +153,11 @@ export class EdgeWorker extends EventEmitter {
 						);
 						return parentId;
 					},
-					async (parentSessionId: string, prompt: string) => {
+					async (
+						parentSessionId: string,
+						prompt: string,
+						childSessionId: string,
+					) => {
 						console.log(
 							`[Parent Session Resume] Child session completed, resuming parent session ${parentSessionId}`,
 						);
@@ -176,6 +180,20 @@ export class EdgeWorker extends EventEmitter {
 							`[Parent Session Resume] Found parent session - Issue: ${parentSession.issueId}, Workspace: ${parentSession.workspace.path}`,
 						);
 
+						// Get the child session to access its workspace path
+						const childSession = agentSessionManager.getSession(childSessionId);
+						const childWorkspaceDirs: string[] = [];
+						if (childSession) {
+							childWorkspaceDirs.push(childSession.workspace.path);
+							console.log(
+								`[Parent Session Resume] Adding child workspace to parent allowed directories: ${childSession.workspace.path}`,
+							);
+						} else {
+							console.warn(
+								`[Parent Session Resume] Could not find child session ${childSessionId} to add workspace to parent allowed directories`,
+							);
+						}
+
 						await this.postParentResumeAcknowledgment(parentSessionId, repo.id);
 
 						// Resume the parent session with the child's result
@@ -191,6 +209,7 @@ export class EdgeWorker extends EventEmitter {
 								prompt,
 								"", // No attachment manifest for child results
 								false, // Not a new session
+								childWorkspaceDirs, // Add child workspace directories to parent's allowed directories
 							);
 							console.log(
 								`[Parent Session Resume] Successfully resumed parent session ${parentSessionId} with child results`,
@@ -795,6 +814,10 @@ export class EdgeWorker extends EventEmitter {
 		const AGENT_SESSION_MARKER = "This thread is for an agent session";
 		const isMentionTriggered =
 			commentBody && !commentBody.includes(AGENT_SESSION_MARKER);
+		// Check if the comment contains the /label-based-prompt command
+		const isLabelBasedPromptRequested = commentBody?.includes(
+			"/label-based-prompt",
+		);
 
 		// Initialize the agent session in AgentSessionManager
 		const agentSessionManager = this.agentSessionManagers.get(repository.id);
@@ -833,7 +856,7 @@ export class EdgeWorker extends EventEmitter {
 		// Fetch labels (needed for both model selection and system prompt determination)
 		const labels = await this.fetchIssueLabels(fullIssue);
 
-		// Only determine system prompt for delegation (not mentions)
+		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
 		let systemPrompt: string | undefined;
 		let systemPromptVersion: string | undefined;
 		let promptType:
@@ -843,8 +866,8 @@ export class EdgeWorker extends EventEmitter {
 			| "orchestrator"
 			| undefined;
 
-		if (!isMentionTriggered) {
-			// Determine system prompt based on labels (delegation case)
+		if (!isMentionTriggered || isLabelBasedPromptRequested) {
+			// Determine system prompt based on labels (delegation case or /label-based-prompt command)
 			const systemPromptResult = await this.determineSystemPromptFromLabels(
 				labels,
 				repository,
@@ -916,24 +939,31 @@ export class EdgeWorker extends EventEmitter {
 		);
 		try {
 			// Choose the appropriate prompt builder based on trigger type and system prompt
-			const promptResult = isMentionTriggered
-				? await this.buildMentionPrompt(
-						fullIssue,
-						agentSession,
-						attachmentResult.manifest,
-					)
-				: systemPrompt
+			const promptResult =
+				isMentionTriggered && isLabelBasedPromptRequested
 					? await this.buildLabelBasedPrompt(
 							fullIssue,
 							repository,
 							attachmentResult.manifest,
 						)
-					: await this.buildPromptV2(
-							fullIssue,
-							repository,
-							undefined,
-							attachmentResult.manifest,
-						);
+					: isMentionTriggered
+						? await this.buildMentionPrompt(
+								fullIssue,
+								agentSession,
+								attachmentResult.manifest,
+							)
+						: systemPrompt
+							? await this.buildLabelBasedPrompt(
+									fullIssue,
+									repository,
+									attachmentResult.manifest,
+								)
+							: await this.buildPromptV2(
+									fullIssue,
+									repository,
+									undefined,
+									attachmentResult.manifest,
+								);
 
 			const { prompt, version: userPromptVersion } = promptResult;
 
@@ -945,11 +975,14 @@ export class EdgeWorker extends EventEmitter {
 				});
 			}
 
-			const promptType = isMentionTriggered
-				? "mention"
-				: systemPrompt
-					? "label-based"
-					: "fallback";
+			const promptType =
+				isMentionTriggered && isLabelBasedPromptRequested
+					? "label-based-prompt-command"
+					: isMentionTriggered
+						? "mention"
+						: systemPrompt
+							? "label-based"
+							: "fallback";
 			console.log(
 				`[EdgeWorker] Initial prompt built successfully using ${promptType} workflow, length: ${prompt.length} characters`,
 			);
@@ -1169,6 +1202,7 @@ export class EdgeWorker extends EventEmitter {
 				promptBody,
 				attachmentManifest,
 				isNewSession,
+				[], // No additional allowed directories for regular continuation
 			);
 		} catch (error) {
 			console.error("Failed to continue conversation:", error);
@@ -2618,6 +2652,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 							feedbackPrompt,
 							"", // No attachment manifest for feedback
 							false, // Not a new session
+							[], // No additional allowed directories for feedback
 						);
 						console.log(
 							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
@@ -2733,13 +2768,13 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 			// If a model override is found, also set a reasonable fallback
 			if (modelOverride) {
-				// Set fallback to the next lower tier: opus->sonnet, sonnet->haiku, haiku->haiku
+				// Set fallback to the next lower tier: opus->sonnet, sonnet->haiku, haiku->sonnet
 				if (modelOverride === "opus") {
 					fallbackModelOverride = "sonnet";
 				} else if (modelOverride === "sonnet") {
 					fallbackModelOverride = "haiku";
 				} else {
-					fallbackModelOverride = "haiku";
+					fallbackModelOverride = "sonnet"; // haiku falls back to sonnet since same model retry doesn't help
 				}
 			}
 		}
@@ -3219,6 +3254,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		promptBody: string,
 		attachmentManifest: string = "",
 		isNewSession: boolean = false,
+		additionalAllowedDirectories: string[] = [],
 	): Promise<void> {
 		// Check for existing runner
 		const existingRunner = session.claudeRunner;
@@ -3280,7 +3316,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 		await mkdir(attachmentsDir, { recursive: true });
 
-		const allowedDirectories = [attachmentsDir];
+		const allowedDirectories = [
+			attachmentsDir,
+			...additionalAllowedDirectories,
+		];
 
 		// Create runner configuration
 		const runnerConfig = this.buildClaudeRunnerConfig(
