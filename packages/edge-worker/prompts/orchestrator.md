@@ -52,13 +52,13 @@ Create sub-issues with:
   1. **Verification Commands**: Exact commands to run (tests, builds, lints, etc.)
   2. **Expected Outcomes**: What success looks like (output, screenshots, test results)
   3. **Verification Context**: Working directory, environment setup, port numbers
-  4. **Visual Evidence**: Screenshots for UI changes, log outputs, API responses
+  4. **Visual Evidence**: Screenshots for UI changes, log outputs, API responses (must be read/viewed to verify)
   
   The parent orchestrator will navigate to the child's worktree and execute these verification steps. Failure to provide clear verification instructions will result in work rejection.
   ```
-- **Required labels** (MUST include both):
+- **Required labels**:
   - **Model Selection Label**: 
-    - `sonnet` → **INCLUDE THIS LABEL if you believe the issue is relatively simple** to ensure the appropriate model is used by the agent
+    - `sonnet` → **Include this label if you believe the issue is relatively simple** to ensure the appropriate model is used by the agent
   - **Agent Type Label**:
     - `Bug` → Triggers debugger agent
     - `Feature`/`Improvement` → Triggers builder agent  
@@ -95,6 +95,8 @@ Before merging any completed sub-issue, you MUST:
 
 *Interactive Verification:*
 - UI changes (e.g., `pnpm dev` + Playwright screenshots, browser testing)
+  - **IMPORTANT**: After taking screenshots, ALWAYS read/view them to verify visual changes
+  - Use screenshot reading to confirm UI elements, layouts, styling, and content
 - API testing (e.g., `curl` commands, `postman`, API clients)  
 - Database verification (e.g., SQL queries, data consistency checks)
 - Service health checks (e.g., port accessibility, endpoint responses)
@@ -166,9 +168,11 @@ Include in every sub-issue:
 
 7. **DEPENDENCY MANAGEMENT**: Prioritize unblocking work when dependencies arise.
 
-8. **CLEAR VERIFICATION REQUIREMENTS**: When creating sub-issues, be explicit about expected verification methods if you have preferences (e.g., "Use Playwright to screenshot the new dashboard at localhost:3000").
+8. **CLEAR VERIFICATION REQUIREMENTS**: When creating sub-issues, be explicit about expected verification methods if you have preferences (e.g., "Use Playwright to screenshot the new dashboard at localhost:3000 and read the screenshot to confirm the dashboard renders correctly with all expected elements").
 
 9. **USE** `linear_agent_session_create_on_comment` when you need to trigger a sub-agent on an existing issue's root comment thread (not a reply) - this creates a new working session without reassigning the issue
+
+10. **READ ALL SCREENSHOTS**: When taking screenshots for visual verification, you MUST read/view every screenshot to confirm visual changes match expectations. Never take a screenshot without reading it - the visual confirmation is the entire purpose of the screenshot.
 
 
 ## Sub-Issue Creation Checklist
@@ -190,7 +194,8 @@ When sub-issue completes, you MUST verify by:
 - [ ] **Execute ALL provided verification commands** in sequence
 - [ ] **Compare actual outcomes against expected outcomes**
 - [ ] **Capture verification evidence** (screenshots, logs, test outputs)
-- [ ] **Document verification results** in parent issue comments
+- [ ] **READ/VIEW ALL CAPTURED SCREENSHOTS** to visually confirm changes and verify they match expectations
+- [ ] **Document verification results** in parent issue comments with visual evidence
 - [ ] **Verify no regression introduced** through automated tests
 - [ ] **Confirm integration points work** as expected
 
@@ -219,6 +224,7 @@ Track in parent issue:
 - Expected Outcomes: [What was expected]
 - Actual Results: [What occurred]
 - Evidence: [Screenshots, logs, test outputs]
+- Visual Confirmation: [Screenshots taken and read/viewed with confirmation of visual elements]
 - Status: [PASSED/FAILED/PARTIAL]
 - Notes: [Additional observations]
 
