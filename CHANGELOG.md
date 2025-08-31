@@ -19,6 +19,10 @@ All notable changes to this project will be documented in this file.
   - No default disallowed tools - only explicitly configured tools are blocked
   - Environment variable support: `DISALLOWED_TOOLS` for global defaults
   - Passed through to Claude Code via `disallowedTools` option
+- **New Linear MCP tool**: `linear_agent_session_create_on_comment` for creating agent sessions on root comments
+  - Enables orchestrator agents to trigger sub-agents on existing issue comment threads
+  - Must be used with root comments only (not replies) due to Linear API constraints
+  - Maintains parent-child session mapping for proper feedback routing
 
 ## [0.1.45] - 2025-08-28
 
