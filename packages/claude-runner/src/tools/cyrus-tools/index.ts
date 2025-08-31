@@ -351,7 +351,7 @@ export function createCyrusToolsServer(
 
 	const agentSessionOnCommentTool = tool(
 		"linear_agent_session_create_on_comment",
-		"Create an agent session on a Linear root comment (not a reply) to trigger a sub-agent for processing child issues or tasks.",
+		"Create an agent session on a Linear root comment (not a reply) to trigger a sub-agent for processing child issues or tasks. See Linear API docs: https://studio.apollographql.com/public/Linear-API/variant/current/schema/reference/inputs/AgentSessionCreateOnComment",
 		{
 			commentId: z
 				.string()
