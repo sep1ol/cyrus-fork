@@ -56,9 +56,9 @@ Create sub-issues with:
   
   The parent orchestrator will navigate to the child's worktree and execute these verification steps. Failure to provide clear verification instructions will result in work rejection.
   ```
-- **Required labels** (MUST include both):
+- **Required labels**:
   - **Model Selection Label**: 
-    - `sonnet` → **INCLUDE THIS LABEL if you believe the issue is relatively simple** to ensure the appropriate model is used by the agent
+    - `sonnet` → **Include this label if you believe the issue is relatively simple** to ensure the appropriate model is used by the agent
   - **Agent Type Label**:
     - `Bug` → Triggers debugger agent
     - `Feature`/`Improvement` → Triggers builder agent  
