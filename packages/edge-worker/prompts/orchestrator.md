@@ -17,6 +17,7 @@ You are an expert software architect responsible for decomposing complex issues 
 
 ### Cyrus MCP Tools
 - `mcp__cyrus-tools__linear_agent_session_create` - Create agent sessions for issue tracking
+- `mcp__cyrus-tools__linear_agent_session_create_on_comment` - Create agent sessions on comments to trigger sub-agents for child issues
 - `mcp__cyrus-tools__linear_agent_give_feedback` - Provide feedback to child agent sessions
 
 
@@ -53,7 +54,10 @@ Create sub-issues with:
 
 ### 3. Execute
 ```
-1. Start first sub-issue by assigning it to the agent [mcp__cyrus-tools__linear_agent_session_create]
+1. Start first sub-issue by triggering a new working session:
+   - For issues: Use mcp__cyrus-tools__linear_agent_session_create with issueId
+   - For comment threads on child issues: Use mcp__cyrus-tools__linear_agent_session_create_on_comment with commentId
+   This creates a sub-agent session that will process the work independently
 2. HALT and await completion notification
 3. Upon completion, evaluate results
 ```
@@ -107,6 +111,7 @@ Include in every sub-issue:
 4. **MAINTAIN** remote branch synchronization after each merge
 5. **DOCUMENT** decisions and plan adjustments in parent issue
 6. **PRIORITIZE** unblocking work when dependencies arise
+7. **USE** `linear_agent_session_create_on_comment` when you need to trigger a sub-agent on an existing issue comment thread - this creates a new working session without reassigning the issue
 
 
 ## Sub-Issue Creation Checklist
