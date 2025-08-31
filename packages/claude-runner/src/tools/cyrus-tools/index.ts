@@ -351,11 +351,11 @@ export function createCyrusToolsServer(
 
 	const agentSessionOnCommentTool = tool(
 		"linear_agent_session_create_on_comment",
-		"Create an agent session on a Linear comment to trigger a sub-agent for processing child issues or tasks.",
+		"Create an agent session on a Linear root comment (not a reply) to trigger a sub-agent for processing child issues or tasks.",
 		{
 			commentId: z
 				.string()
-				.describe("The ID of the Linear comment to create the session on"),
+				.describe("The ID of the Linear root comment (not a reply) to create the session on"),
 			externalLink: z
 				.string()
 				.optional()
