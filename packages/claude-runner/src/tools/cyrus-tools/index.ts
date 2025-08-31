@@ -355,7 +355,9 @@ export function createCyrusToolsServer(
 		{
 			commentId: z
 				.string()
-				.describe("The ID of the Linear root comment (not a reply) to create the session on"),
+				.describe(
+					"The ID of the Linear root comment (not a reply) to create the session on",
+				),
 			externalLink: z
 				.string()
 				.optional()
@@ -409,7 +411,9 @@ export function createCyrusToolsServer(
 				}
 
 				const agentSessionId = result.agentSession.id;
-				console.log(`Agent session created successfully on comment: ${agentSessionId}`);
+				console.log(
+					`Agent session created successfully on comment: ${agentSessionId}`,
+				);
 
 				// Register the child-to-parent mapping if we have a parent session
 				if (options.parentSessionId && options.onSessionCreated) {
@@ -529,6 +533,11 @@ export function createCyrusToolsServer(
 	return createSdkMcpServer({
 		name: "cyrus-tools",
 		version: "1.0.0",
-		tools: [uploadTool, agentSessionTool, agentSessionOnCommentTool, giveFeedbackTool],
+		tools: [
+			uploadTool,
+			agentSessionTool,
+			agentSessionOnCommentTool,
+			giveFeedbackTool,
+		],
 	});
 }
