@@ -9,7 +9,10 @@ import {
 } from "@linear/sdk";
 import type {
 	ClaudeRunnerConfig,
+	HookCallbackMatcher,
+	HookEvent,
 	McpServerConfig,
+	PostToolUseHookInput,
 	SDKMessage,
 } from "cyrus-claude-runner";
 import {
@@ -2822,8 +2825,28 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		resumeSessionId?: string,
 		labels?: string[],
 	): ClaudeRunnerConfig {
-		// No hooks needed - logic is now in the tools themselves
-		const hooks = {};
+		// Configure PostToolUse hook for playwright screenshots
+		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
+			PostToolUse: [
+				{
+					matcher: "playwright_screenshot",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							console.log(
+								`Tool ${postToolUseInput.tool_name} completed with response:`,
+								postToolUseInput.tool_response,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"Screenshot taken successfully. You should use the Read tool to view the screenshot file to analyze the visual content.",
+							};
+						},
+					],
+				},
+			],
+		};
 
 		// Check for model override labels (case-insensitive)
 		let modelOverride: string | undefined;
