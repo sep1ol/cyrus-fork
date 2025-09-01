@@ -1423,6 +1423,22 @@ export class EdgeWorker extends EventEmitter {
 			// Determine the base branch considering parent issues
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
+			// Fetch assignee information
+			let assigneeId = "";
+			let assigneeName = "";
+			try {
+				if (issue.assigneeId) {
+					assigneeId = issue.assigneeId;
+					// Fetch the full assignee object to get the name
+					const assignee = await issue.assignee;
+					if (assignee) {
+						assigneeName = assignee.displayName || assignee.name || "";
+					}
+				}
+			} catch (error) {
+				console.warn(`[EdgeWorker] Failed to fetch assignee details:`, error);
+			}
+
 			// Build the simplified prompt with only essential variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
@@ -1434,7 +1450,9 @@ export class EdgeWorker extends EventEmitter {
 					/{{issue_description}}/g,
 					issue.description || "No description provided",
 				)
-				.replace(/{{issue_url}}/g, issue.url || "");
+				.replace(/{{issue_url}}/g, issue.url || "")
+				.replace(/{{assignee_id}}/g, assigneeId)
+				.replace(/{{assignee_name}}/g, assigneeName);
 
 			if (attachmentManifest) {
 				console.log(

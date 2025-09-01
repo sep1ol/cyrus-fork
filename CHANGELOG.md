@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 - Removed cyrus-mcp-tools package in favor of inline tool implementation
 
 ### Added
+- **Sub-issue assignee inheritance**: Sub-issues created by orchestrator agents now automatically inherit the same assignee as their parent issue
+  - Enhanced label-prompt-template to include assignee information (`{{assignee_id}}` and `{{assignee_name}}`)
+  - Updated orchestrator prompt instructions to require `assigneeId` parameter in sub-issue creation
+  - Modified EdgeWorker to extract and inject parent issue assignee data into orchestrator context
 - **Mandatory verification framework for orchestrator agents**: Enhanced parent-child delegation with executable verification requirements
   - Parent orchestrators can now access child agent worktrees for independent verification
   - **Orchestrator prompt v2.2.0** with mandatory verification requirements in sub-issue descriptions
