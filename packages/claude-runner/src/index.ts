@@ -1,3 +1,11 @@
+// Re-export hook types from Claude SDK for use in edge-worker
+export type {
+	HookCallbackMatcher,
+	HookEvent,
+	HookInput,
+	HookJSONOutput,
+	PostToolUseHookInput,
+} from "@anthropic-ai/claude-code";
 export { AbortError, ClaudeRunner, StreamingPrompt } from "./ClaudeRunner.js";
 export {
 	availableTools,
@@ -26,12 +34,3 @@ export type {
 	SDKSystemMessage,
 	SDKUserMessage,
 } from "./types.js";
-
-// Re-export hook types from Claude SDK for use in edge-worker
-export type {
-	HookCallbackMatcher,
-	HookEvent,
-	HookInput,
-	PostToolUseHookInput,
-	HookJSONOutput,
-} from "@anthropic-ai/claude-code";

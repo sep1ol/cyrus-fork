@@ -2743,19 +2743,25 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 	): ClaudeRunnerConfig {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
-			PostToolUse: [{
-				matcher: "playwright_screenshot",
-				hooks: [
-					async (input, _toolUseID, { signal: _signal }) => {
-						const postToolUseInput = input as PostToolUseHookInput;
-						console.log(`Tool ${postToolUseInput.tool_name} completed with response:`, postToolUseInput.tool_response);
-						return {
-							continue: true,
-							additionalContext: "Screenshot taken successfully. You should use the Read tool to view the screenshot file to analyze the visual content."
-						};
-					}
-				]
-			}]
+			PostToolUse: [
+				{
+					matcher: "playwright_screenshot",
+					hooks: [
+						async (input, _toolUseID, { signal: _signal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							console.log(
+								`Tool ${postToolUseInput.tool_name} completed with response:`,
+								postToolUseInput.tool_response,
+							);
+							return {
+								continue: true,
+								additionalContext:
+									"Screenshot taken successfully. You should use the Read tool to view the screenshot file to analyze the visual content.",
+							};
+						},
+					],
+				},
+			],
 		};
 
 		// Check for model override labels (case-insensitive)
