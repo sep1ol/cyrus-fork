@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 - Removed cyrus-mcp-tools package in favor of inline tool implementation
 
 ### Added
+- **Sub-issue assignee inheritance with workspace context**: Sub-issues created by orchestrator agents now automatically inherit the same assignee as their parent issue, with complete workspace awareness
+  - Enhanced label-prompt-template to include assignee information (`{{assignee_id}}` and `{{assignee_name}}`)
+  - Added workspace teams context (`{{workspace_teams}}`) with team names, keys, IDs, and descriptions
+  - Added workspace labels context (`{{workspace_labels}}`) with label names, IDs, and descriptions  
+  - Updated orchestrator prompt instructions to require `assigneeId` parameter in sub-issue creation
+  - Modified EdgeWorker to fetch and inject Linear workspace data (teams, labels, assignee) into orchestrator context
 - **Mandatory verification framework for orchestrator agents**: Enhanced parent-child delegation with executable verification requirements
   - Parent orchestrators can now access child agent worktrees for independent verification
   - **Orchestrator prompt v2.2.0** with mandatory verification requirements in sub-issue descriptions
