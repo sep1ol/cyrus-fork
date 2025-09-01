@@ -14,3 +14,12 @@
 <name>{{assignee_name}}</name>
 </assignee>
 </linear_issue>
+
+<workspace_context>
+<teams>
+{{workspace_teams}}
+</teams>
+<labels>
+{{workspace_labels}}
+</labels>
+</workspace_context>

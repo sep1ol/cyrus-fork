@@ -1439,6 +1439,70 @@ export class EdgeWorker extends EventEmitter {
 				console.warn(`[EdgeWorker] Failed to fetch assignee details:`, error);
 			}
 
+			// Get LinearClient for this repository
+			const linearClient = this.linearClients.get(repository.id);
+			if (!linearClient) {
+				console.error(`No LinearClient found for repository ${repository.id}`);
+				throw new Error(
+					`No LinearClient found for repository ${repository.id}`,
+				);
+			}
+
+			// Fetch workspace teams and labels
+			let workspaceTeams = "";
+			let workspaceLabels = "";
+			try {
+				console.log(
+					`[EdgeWorker] Fetching workspace teams and labels for repository ${repository.id}`,
+				);
+
+				// Fetch teams
+				const teamsConnection = await linearClient.teams();
+				const teamsArray = [];
+				for (const team of teamsConnection.nodes) {
+					teamsArray.push({
+						id: team.id,
+						name: team.name,
+						key: team.key,
+						description: team.description || "",
+						color: team.color,
+					});
+				}
+				workspaceTeams = teamsArray
+					.map(
+						(team) =>
+							`- ${team.name} (${team.key}): ${team.id}${team.description ? ` - ${team.description}` : ""}`,
+					)
+					.join("\n");
+
+				// Fetch labels
+				const labelsConnection = await linearClient.issueLabels();
+				const labelsArray = [];
+				for (const label of labelsConnection.nodes) {
+					labelsArray.push({
+						id: label.id,
+						name: label.name,
+						description: label.description || "",
+						color: label.color,
+					});
+				}
+				workspaceLabels = labelsArray
+					.map(
+						(label) =>
+							`- ${label.name}: ${label.id}${label.description ? ` - ${label.description}` : ""}`,
+					)
+					.join("\n");
+
+				console.log(
+					`[EdgeWorker] Fetched ${teamsArray.length} teams and ${labelsArray.length} labels`,
+				);
+			} catch (error) {
+				console.warn(
+					`[EdgeWorker] Failed to fetch workspace teams and labels:`,
+					error,
+				);
+			}
+
 			// Build the simplified prompt with only essential variables
 			let prompt = template
 				.replace(/{{repository_name}}/g, repository.name)
@@ -1452,7 +1516,9 @@ export class EdgeWorker extends EventEmitter {
 				)
 				.replace(/{{issue_url}}/g, issue.url || "")
 				.replace(/{{assignee_id}}/g, assigneeId)
-				.replace(/{{assignee_name}}/g, assigneeName);
+				.replace(/{{assignee_name}}/g, assigneeName)
+				.replace(/{{workspace_teams}}/g, workspaceTeams)
+				.replace(/{{workspace_labels}}/g, workspaceLabels);
 
 			if (attachmentManifest) {
 				console.log(
