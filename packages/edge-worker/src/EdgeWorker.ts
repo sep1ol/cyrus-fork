@@ -9,7 +9,12 @@ import {
 } from "@linear/sdk";
 import type {
 	ClaudeRunnerConfig,
+	HookCallbackMatcher,
+	HookEvent,
+	HookInput,
+	HookJSONOutput,
 	McpServerConfig,
+	PostToolUseHookInput,
 	SDKMessage,
 } from "cyrus-claude-runner";
 import {
@@ -2738,8 +2743,60 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		resumeSessionId?: string,
 		labels?: string[],
 	): ClaudeRunnerConfig {
-		// No hooks needed - logic is now in the tools themselves
-		const hooks = {};
+		// Configure PostToolUse hook for playwright screenshots
+		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
+			PostToolUse: [
+				{
+					matcher: "mcp__playwright__playwright_screenshot",
+					hooks: [
+						async (input: HookInput, _toolUseID: string | undefined, _options: { signal: AbortSignal }) => {
+							const postToolUseInput = input as PostToolUseHookInput;
+							
+							try {
+								console.log(`[EdgeWorker] Screenshot tool completed: ${postToolUseInput.tool_name}`);
+								
+								// Extract file path from tool response
+								const toolResponse = postToolUseInput.tool_response as any;
+								let filePath: string | null = null;
+								
+								if (toolResponse) {
+									// Try to extract file path from various possible response formats
+									filePath = toolResponse.filePath || 
+											 toolResponse.file_path ||
+											 (toolResponse.fileName ? `/tmp/${toolResponse.fileName}` : null);
+								}
+								
+								// Create hint to use Read tool on screenshot file
+								let additionalContext = "Screenshot taken successfully.";
+								if (filePath) {
+									additionalContext += ` IMPORTANT: You should now use the Read tool to view the screenshot at: ${filePath}. This will help you analyze the visual content and verify what was captured in the screenshot.`;
+								} else {
+									additionalContext += " Consider using the Read tool to view the screenshot file if it was saved to disk.";
+								}
+								
+								return {
+									continue: true,
+									hookSpecificOutput: {
+										hookEventName: 'PostToolUse' as const,
+										additionalContext: additionalContext
+									}
+								} as HookJSONOutput;
+								
+							} catch (error) {
+								console.error(`[EdgeWorker] Error in screenshot PostToolUse hook:`, error);
+								return {
+									continue: true,
+									hookSpecificOutput: {
+										hookEventName: 'PostToolUse' as const,
+										additionalContext: "Screenshot completed. Consider using the Read tool to view the screenshot file."
+									}
+								} as HookJSONOutput;
+							}
+						}
+					]
+				}
+			]
+		};
 
 		// Check for model override labels (case-insensitive)
 		let modelOverride: string | undefined;
