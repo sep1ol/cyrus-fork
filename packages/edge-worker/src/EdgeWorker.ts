@@ -2744,7 +2744,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
 			PostToolUse: [{
-				matcher: "mcp__playwright__playwright_screenshot",
+				matcher: "playwright_screenshot",
 				hooks: [
 					async (input, _toolUseID, { signal: _signal }) => {
 						const postToolUseInput = input as PostToolUseHookInput;
