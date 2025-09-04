@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { ClaudeRunner } from "../dist/ClaudeRunner.js";
-import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+import { ClaudeRunner } from "../dist/ClaudeRunner.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +27,14 @@ async function testGetChildIssues() {
 		mcpConfig: {
 			"cyrus-tools": {
 				type: "inline-sdk",
-				module: path.join(__dirname, "..", "dist", "tools", "cyrus-tools", "index.js"),
+				module: path.join(
+					__dirname,
+					"..",
+					"dist",
+					"tools",
+					"cyrus-tools",
+					"index.js",
+				),
 				initParams: [linearToken],
 				// For testing, don't set up session management callbacks
 			},
@@ -63,9 +70,11 @@ async function testGetChildIssues() {
 		// Test the tool with a sample issue identifier
 		// Replace with an actual issue that has child issues in your Linear workspace
 		const testIssueId = process.argv[2] || "CYHOST-91";
-		
+
 		console.log(`Testing linear_get_child_issues with issue: ${testIssueId}`);
-		console.log("Options: includeCompleted=true, includeArchived=false, limit=10\n");
+		console.log(
+			"Options: includeCompleted=true, includeArchived=false, limit=10\n",
+		);
 
 		const result = await runner.callTool("linear_get_child_issues", {
 			issueId: testIssueId,
@@ -76,19 +85,25 @@ async function testGetChildIssues() {
 
 		if (result.content && result.content.length > 0) {
 			const response = JSON.parse(result.content[0].text);
-			
+
 			if (response.success) {
 				console.log("✅ Tool executed successfully!\n");
-				console.log(`Parent Issue: ${response.parentIssue.identifier} - ${response.parentIssue.title}`);
+				console.log(
+					`Parent Issue: ${response.parentIssue.identifier} - ${response.parentIssue.title}`,
+				);
 				console.log(`Parent URL: ${response.parentIssue.url}`);
 				console.log(`Number of child issues: ${response.childCount}\n`);
-				
+
 				if (response.children.length > 0) {
 					console.log("Child Issues:");
 					for (const child of response.children) {
 						console.log(`  - ${child.identifier}: ${child.title}`);
-						console.log(`    State: ${child.state} | Assignee: ${child.assignee || 'Unassigned'}`);
-						console.log(`    Priority: ${child.priorityLabel || 'No priority'}`);
+						console.log(
+							`    State: ${child.state} | Assignee: ${child.assignee || "Unassigned"}`,
+						);
+						console.log(
+							`    Priority: ${child.priorityLabel || "No priority"}`,
+						);
 						console.log(`    URL: ${child.url}`);
 						console.log("");
 					}
@@ -105,7 +120,7 @@ async function testGetChildIssues() {
 
 		// Test with different options
 		console.log("\n--- Testing with includeCompleted=false ---\n");
-		
+
 		const activeOnlyResult = await runner.callTool("linear_get_child_issues", {
 			issueId: testIssueId,
 			limit: 10,
@@ -115,17 +130,18 @@ async function testGetChildIssues() {
 
 		if (activeOnlyResult.content && activeOnlyResult.content.length > 0) {
 			const response = JSON.parse(activeOnlyResult.content[0].text);
-			
+
 			if (response.success) {
 				console.log(`Active child issues only: ${response.childCount} found`);
 				if (response.children.length > 0) {
 					for (const child of response.children) {
-						console.log(`  - ${child.identifier}: ${child.title} (${child.state})`);
+						console.log(
+							`  - ${child.identifier}: ${child.title} (${child.state})`,
+						);
 					}
 				}
 			}
 		}
-
 	} catch (error) {
 		console.error("Test failed:", error);
 		process.exit(1);
