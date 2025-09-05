@@ -344,11 +344,16 @@ describe("EdgeWorker - Feedback Delivery", () => {
 				feedbackMessage,
 			);
 
-			// Assert
-			expect(result).toBe(false);
+			// Assert - Now returns true immediately (fire-and-forget)
+			expect(result).toBe(true);
 			expect(resumeClaudeSessionSpy).toHaveBeenCalledOnce();
+
+			// Wait a bit for the async error handling to occur
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// The error is logged asynchronously
 			expect(console.error).toHaveBeenCalledWith(
-				`[EdgeWorker] Failed to resume child session with feedback:`,
+				`[EdgeWorker] Failed to complete child session with feedback:`,
 				expect.any(Error),
 			);
 		});
