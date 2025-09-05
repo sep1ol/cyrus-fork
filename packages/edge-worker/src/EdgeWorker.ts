@@ -2731,28 +2731,36 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 					const feedbackPrompt = `Feedback from parent session${parentId ? ` ${parentId}` : ""} regarding child agent session ${childSessionId}:\n\n${message}`;
 
 					// Resume the CHILD session with the feedback from the parent
-					try {
-						await this.resumeClaudeSession(
-							childSession,
-							childRepo,
-							childSessionId,
-							childAgentSessionManager,
-							feedbackPrompt,
-							"", // No attachment manifest for feedback
-							false, // Not a new session
-							[], // No additional allowed directories for feedback
-						);
-						console.log(
-							`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
-						);
-						return true;
-					} catch (error) {
-						console.error(
-							`[EdgeWorker] Failed to resume child session with feedback:`,
-							error,
-						);
-						return false;
-					}
+					// Important: We don't await the full session completion to avoid timeouts.
+					// The feedback is delivered immediately when the session starts, so we can
+					// return success right away while the session continues in the background.
+					this.resumeClaudeSession(
+						childSession,
+						childRepo,
+						childSessionId,
+						childAgentSessionManager,
+						feedbackPrompt,
+						"", // No attachment manifest for feedback
+						false, // Not a new session
+						[], // No additional allowed directories for feedback
+					)
+						.then(() => {
+							console.log(
+								`[EdgeWorker] Child session ${childSessionId} completed processing feedback`,
+							);
+						})
+						.catch((error) => {
+							console.error(
+								`[EdgeWorker] Failed to complete child session with feedback:`,
+								error,
+							);
+						});
+
+					// Return success immediately after initiating the session
+					console.log(
+						`[EdgeWorker] Feedback delivered successfully to child session ${childSessionId}`,
+					);
+					return true;
 				},
 			}),
 		};
