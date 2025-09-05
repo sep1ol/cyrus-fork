@@ -2221,7 +2221,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			let imageCount = 0;
 			let skippedCount = 0;
 			let failedCount = 0;
-			const maxAttachments = 10;
+			const maxAttachments = 20;
 
 			// Ensure directory exists
 			await mkdir(attachmentsDir, { recursive: true });
@@ -2436,7 +2436,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		let newAttachmentCount = 0;
 		let newImageCount = 0;
 		let failedCount = 0;
-		const maxAttachments = 10;
+		const maxAttachments = 20;
 
 		// Extract URLs from the comment
 		const urls = this.extractAttachmentUrls(commentBody);
