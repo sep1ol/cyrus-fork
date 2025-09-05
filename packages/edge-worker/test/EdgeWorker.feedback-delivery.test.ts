@@ -224,9 +224,9 @@ describe("EdgeWorker - Feedback Delivery", () => {
 			expect(childSession.issueId).toBe("CHILD-456");
 			expect(childSession.claudeSessionId).toBe("child-claude-session-456");
 
-			// Verify correct prompt format: feedback FROM parent TO child
+			// Verify correct prompt format with enhanced markdown: feedback FROM parent TO child
 			expect(prompt).toBe(
-				`Feedback from parent session ${parentSessionId} regarding child agent session ${childSessionId}:\n\n${feedbackMessage}`,
+				`## Received feedback from orchestrator\n\n---\n\n${feedbackMessage}\n\n---`,
 			);
 
 			// Verify repository is passed correctly
@@ -267,7 +267,7 @@ describe("EdgeWorker - Feedback Delivery", () => {
 
 			const prompt = resumeClaudeSessionSpy.mock.calls[0][4];
 			expect(prompt).toBe(
-				`Feedback from parent session regarding child agent session ${childSessionId}:\n\n${feedbackMessage}`,
+				`## Received feedback from orchestrator\n\n---\n\n${feedbackMessage}\n\n---`,
 			);
 		});
 

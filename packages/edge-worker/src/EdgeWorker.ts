@@ -2724,11 +2724,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 						`[EdgeWorker] Found child session - Issue: ${childSession.issueId}`,
 					);
 
-					// Find the parent session ID for logging purposes
-					const parentId = this.childToParentAgentSession.get(childSessionId);
-
-					// Format the feedback as a prompt for the child session
-					const feedbackPrompt = `Feedback from parent session${parentId ? ` ${parentId}` : ""} regarding child agent session ${childSessionId}:\n\n${message}`;
+					// Format the feedback as a prompt for the child session with enhanced markdown formatting
+					const feedbackPrompt = `## Received feedback from orchestrator\n\n---\n\n${message}\n\n---`;
 
 					// Resume the CHILD session with the feedback from the parent
 					try {
