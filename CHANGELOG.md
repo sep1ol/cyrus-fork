@@ -4,12 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.48] - 2025-01-11
+
 ### Added
 - **Direct OAuth authorization support**: The CLI can now handle OAuth authorization directly when `LINEAR_DIRECT_WEBHOOKS=true`
   - New `/oauth/authorize` endpoint in SharedApplicationServer for self-hosted OAuth flow
   - Automatic OAuth code exchange when using direct webhooks mode
   - Support for custom Linear OAuth applications via `LINEAR_CLIENT_ID` and `LINEAR_CLIENT_SECRET` environment variables
   - Maintains backward compatibility with proxy-based OAuth for standard deployments
+
+### Packages
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.31
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.48
 
 ## [0.1.47] - 2025-01-09
 
