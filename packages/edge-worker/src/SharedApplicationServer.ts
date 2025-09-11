@@ -96,7 +96,9 @@ export class SharedApplicationServer {
 				);
 
 				// Start ngrok tunnel if auth token is provided and not external host
-				if (this.ngrokAuthToken && process.env.CYRUS_HOST_EXTERNAL !== "true") {
+				const isExternalHost =
+					process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+				if (this.ngrokAuthToken && !isExternalHost) {
 					try {
 						await this.startNgrokTunnel();
 					} catch (error) {
