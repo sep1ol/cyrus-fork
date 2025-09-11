@@ -407,8 +407,12 @@ class EdgeApp {
 
 		// Skip ngrok setup if using external host
 		if (process.env.CYRUS_HOST_EXTERNAL === "true") {
-			console.log(`\n📡 Using external host configuration (CYRUS_HOST_EXTERNAL=true)`);
-			console.log(`   Skipping ngrok setup - using ${process.env.CYRUS_BASE_URL || 'configured base URL'}`);
+			console.log(
+				`\n📡 Using external host configuration (CYRUS_HOST_EXTERNAL=true)`,
+			);
+			console.log(
+				`   Skipping ngrok setup - using ${process.env.CYRUS_BASE_URL || "configured base URL"}`,
+			);
 			return undefined;
 		}
 

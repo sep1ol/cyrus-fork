@@ -1,10 +1,10 @@
+import { randomUUID } from "node:crypto";
 import {
 	createServer,
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
 import { URL } from "node:url";
-import { randomUUID } from "node:crypto";
 import { forward } from "@ngrok/ngrok";
 
 /**
@@ -49,7 +49,10 @@ export class SharedApplicationServer {
 	>();
 	private oauthCallbacks = new Map<string, OAuthCallback>();
 	private oauthCallbackHandler: OAuthCallbackHandler | null = null;
-	private oauthStates = new Map<string, { createdAt: number; redirectUri?: string }>();
+	private oauthStates = new Map<
+		string,
+		{ createdAt: number; redirectUri?: string }
+	>();
 	private port: number;
 	private host: string;
 	private isListening = false;
@@ -253,11 +256,12 @@ export class SharedApplicationServer {
 			this.oauthCallbacks.set(flowId, { resolve, reject, id: flowId });
 
 			// Check if we should use direct Linear OAuth
-			const useDirectOAuth = process.env.LINEAR_DIRECT_WEBHOOKS === "true" && 
-			                      process.env.LINEAR_CLIENT_ID;
+			const useDirectOAuth =
+				process.env.LINEAR_DIRECT_WEBHOOKS === "true" &&
+				process.env.LINEAR_CLIENT_ID;
 
 			let authUrl: string;
-			
+
 			if (useDirectOAuth) {
 				// Use local OAuth authorize endpoint
 				const callbackBaseUrl = this.getBaseUrl();
@@ -477,7 +481,7 @@ export class SharedApplicationServer {
 		try {
 			const code = url.searchParams.get("code");
 			const state = url.searchParams.get("state");
-			
+
 			// Check if this is a direct Linear callback (has code and state)
 			if (code && state && process.env.LINEAR_DIRECT_WEBHOOKS === "true") {
 				await this.handleDirectLinearCallback(_req, res, url);
@@ -582,7 +586,9 @@ export class SharedApplicationServer {
 			const clientId = process.env.LINEAR_CLIENT_ID;
 			if (!clientId) {
 				res.writeHead(400, { "Content-Type": "text/plain" });
-				res.end("LINEAR_CLIENT_ID environment variable is required for direct OAuth");
+				res.end(
+					"LINEAR_CLIENT_ID environment variable is required for direct OAuth",
+				);
 				return;
 			}
 
@@ -609,7 +615,10 @@ export class SharedApplicationServer {
 			authUrl.searchParams.set("redirect_uri", `${this.getBaseUrl()}/callback`);
 			authUrl.searchParams.set("response_type", "code");
 			authUrl.searchParams.set("state", state);
-			authUrl.searchParams.set("scope", "read,write,app:assignable,app:mentionable");
+			authUrl.searchParams.set(
+				"scope",
+				"read,write,app:assignable,app:mentionable",
+			);
 			authUrl.searchParams.set("actor", "app");
 			authUrl.searchParams.set("prompt", "consent");
 
@@ -658,7 +667,9 @@ export class SharedApplicationServer {
 			const tokenResponse = await this.exchangeCodeForToken(code);
 
 			// Get workspace info using the token
-			const workspaceInfo = await this.getWorkspaceInfo(tokenResponse.access_token);
+			const workspaceInfo = await this.getWorkspaceInfo(
+				tokenResponse.access_token,
+			);
 
 			// Success! Return the Linear credentials
 			const linearCredentials = {
