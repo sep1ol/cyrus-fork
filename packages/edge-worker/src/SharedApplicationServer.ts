@@ -258,20 +258,22 @@ export class SharedApplicationServer {
 			this.oauthCallbacks.set(flowId, { resolve, reject, id: flowId });
 
 			// Check if we should use direct Linear OAuth
-			const useDirectOAuth =
-				process.env.LINEAR_DIRECT_WEBHOOKS === "true" &&
-				process.env.LINEAR_CLIENT_ID;
+			const isDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
+			const useDirectOAuth = isDirectWebhooks && process.env.LINEAR_CLIENT_ID;
 
+			const callbackBaseUrl = this.getBaseUrl();
 			let authUrl: string;
 
 			if (useDirectOAuth) {
 				// Use local OAuth authorize endpoint
-				const callbackBaseUrl = this.getBaseUrl();
-				authUrl = `${callbackBaseUrl}/oauth/authorize`;
+				authUrl = `${callbackBaseUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
+				console.log(
+					`\n🔐 Using direct OAuth mode (LINEAR_DIRECT_WEBHOOKS=true)`,
+				);
 			} else {
 				// Use proxy OAuth endpoint
-				const callbackBaseUrl = this.getBaseUrl();
-				authUrl = `${proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
+				authUrl = `${proxyUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
 			}
 
 			console.log(`\n👉 Opening your browser to authorize with Linear...`);
@@ -485,7 +487,9 @@ export class SharedApplicationServer {
 			const state = url.searchParams.get("state");
 
 			// Check if this is a direct Linear callback (has code and state)
-			if (code && state && process.env.LINEAR_DIRECT_WEBHOOKS === "true") {
+			const isDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
+			if (code && state && isDirectWebhooks) {
 				await this.handleDirectLinearCallback(_req, res, url);
 				return;
 			}
@@ -575,7 +579,9 @@ export class SharedApplicationServer {
 	): Promise<void> {
 		try {
 			// Check if LINEAR_DIRECT_WEBHOOKS is enabled
-			if (process.env.LINEAR_DIRECT_WEBHOOKS !== "true") {
+			const isDirectWebhooks =
+				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
+			if (!isDirectWebhooks) {
 				// Redirect to proxy OAuth endpoint
 				const callbackBaseUrl = this.getBaseUrl();
 				const proxyAuthUrl = `${this.proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
