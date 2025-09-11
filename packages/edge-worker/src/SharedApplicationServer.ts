@@ -257,10 +257,10 @@ export class SharedApplicationServer {
 			// Store callback for this flow
 			this.oauthCallbacks.set(flowId, { resolve, reject, id: flowId });
 
-			// Check if we should use direct Linear OAuth
-			const isDirectWebhooks =
-				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
-			const useDirectOAuth = isDirectWebhooks && process.env.LINEAR_CLIENT_ID;
+			// Check if we should use direct Linear OAuth (when self-hosting)
+			const isExternalHost =
+				process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
+			const useDirectOAuth = isExternalHost && process.env.LINEAR_CLIENT_ID;
 
 			const callbackBaseUrl = this.getBaseUrl();
 			let authUrl: string;
@@ -268,9 +268,7 @@ export class SharedApplicationServer {
 			if (useDirectOAuth) {
 				// Use local OAuth authorize endpoint
 				authUrl = `${callbackBaseUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
-				console.log(
-					`\n🔐 Using direct OAuth mode (LINEAR_DIRECT_WEBHOOKS=true)`,
-				);
+				console.log(`\n🔐 Using direct OAuth mode (CYRUS_HOST_EXTERNAL=true)`);
 			} else {
 				// Use proxy OAuth endpoint
 				authUrl = `${proxyUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
@@ -487,9 +485,13 @@ export class SharedApplicationServer {
 			const state = url.searchParams.get("state");
 
 			// Check if this is a direct Linear callback (has code and state)
+			const isExternalHost =
+				process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
 			const isDirectWebhooks =
 				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
-			if (code && state && isDirectWebhooks) {
+
+			// Handle direct callback if both external host and direct webhooks are enabled
+			if (code && state && isExternalHost && isDirectWebhooks) {
 				await this.handleDirectLinearCallback(_req, res, url);
 				return;
 			}
@@ -578,10 +580,14 @@ export class SharedApplicationServer {
 		_url: URL,
 	): Promise<void> {
 		try {
-			// Check if LINEAR_DIRECT_WEBHOOKS is enabled
+			// Check if we're in external host mode with direct webhooks
+			const isExternalHost =
+				process.env.CYRUS_HOST_EXTERNAL?.toLowerCase().trim() === "true";
 			const isDirectWebhooks =
 				process.env.LINEAR_DIRECT_WEBHOOKS?.toLowerCase().trim() === "true";
-			if (!isDirectWebhooks) {
+
+			// Only handle OAuth locally if both external host AND direct webhooks are enabled
+			if (!isExternalHost || !isDirectWebhooks) {
 				// Redirect to proxy OAuth endpoint
 				const callbackBaseUrl = this.getBaseUrl();
 				const proxyAuthUrl = `${this.proxyUrl}/oauth/authorize?callback=${callbackBaseUrl}/callback`;
