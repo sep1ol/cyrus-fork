@@ -11,6 +11,7 @@ import http from "node:http";
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import type { Issue } from "@linear/sdk";
 import { DEFAULT_PROXY_URL } from "cyrus-core";
 import {
@@ -43,11 +44,17 @@ if (cyrusHomeArg) {
 	CYRUS_HOME = resolve(homedir(), ".cyrus");
 }
 
-// Note: __dirname removed since version is now hardcoded
+// Get the directory of the current module for reading package.json
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Read package.json to get the actual version
+const packageJsonPath = resolve(__dirname, "..", "package.json");
+const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 
 // Handle --version argument
 if (args.includes("--version")) {
-	console.log("0.1.37");
+	console.log(packageJson.version);
 	process.exit(0);
 }
 
