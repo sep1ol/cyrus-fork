@@ -1567,8 +1567,11 @@ export class EdgeWorker extends EventEmitter {
 				.replace(/{{workspace_labels}}/g, workspaceLabels);
 
 			// Append agent guidance if present
+			// Note: Linear provides guidance in priority order - team-specific guidance appears
+			// before workspace-level guidance. All guidance rules are included.
 			if (guidance && guidance.length > 0) {
-				prompt += "\n\n<agent_guidance>\n";
+				prompt +=
+					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
 				for (const rule of guidance) {
 					const origin = rule.origin
 						? rule.origin.type === "Team"
@@ -1638,8 +1641,11 @@ ${mentionContent}
 IMPORTANT: You were specifically mentioned in the comment above. Focus on addressing the specific question or request in the mention. You can use the Linear MCP tools to fetch additional context about the issue if needed.`;
 
 			// Append agent guidance if present
+			// Note: Linear provides guidance in priority order - team-specific guidance appears
+			// before workspace-level guidance. All guidance rules are included.
 			if (guidance && guidance.length > 0) {
-				prompt += "\n\n<agent_guidance>\n";
+				prompt +=
+					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
 				for (const rule of guidance) {
 					const origin = rule.origin
 						? rule.origin.type === "Team"
@@ -2016,8 +2022,11 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			}
 
 			// Append agent guidance if present
+			// Note: Linear provides guidance in priority order - team-specific guidance appears
+			// before workspace-level guidance. All guidance rules are included.
 			if (guidance && guidance.length > 0) {
-				prompt += "\n\n<agent_guidance>\n";
+				prompt +=
+					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
 				for (const rule of guidance) {
 					const origin = rule.origin
 						? rule.origin.type === "Team"
