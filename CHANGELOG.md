@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Agent guidance injection**: Cyrus now automatically receives and includes both workspace-level and team-specific agent guidance from Linear in all prompts. When both types of guidance are configured, both are included in the prompt, with team-specific guidance taking precedence as specified by Linear's guidance system.
+
+### Changed
+- Updated @linear/sdk from v58.1.0 to v60.0.0 to support agent guidance feature
+
 ## [0.1.52] - 2025-10-04
 
 ### Changed
