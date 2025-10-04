@@ -297,11 +297,11 @@ export class ClaudeRunner extends EventEmitter {
 			// Parse MCP config - merge file(s) and inline configs
 			let mcpServers = {};
 
-			// First, check for .mcp.json in working directory if not explicitly configured
+			// Build list of config paths to load (in order of precedence)
 			const configPaths: string[] = [];
 
-			// Auto-detect .mcp.json in working directory (only if mcpConfigPath is not set)
-			if (this.config.workingDirectory && !this.config.mcpConfigPath) {
+			// Auto-detect .mcp.json in working directory (base config)
+			if (this.config.workingDirectory) {
 				const autoMcpPath = join(this.config.workingDirectory, ".mcp.json");
 				if (existsSync(autoMcpPath)) {
 					try {
@@ -321,7 +321,7 @@ export class ClaudeRunner extends EventEmitter {
 				}
 			}
 
-			// Add explicitly configured paths (these will override auto-detected config)
+			// Add explicitly configured paths (these will extend/override the base config)
 			if (this.config.mcpConfigPath) {
 				const explicitPaths = Array.isArray(this.config.mcpConfigPath)
 					? this.config.mcpConfigPath
