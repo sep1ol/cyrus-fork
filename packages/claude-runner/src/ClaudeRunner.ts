@@ -348,6 +348,10 @@ export class ClaudeRunner extends EventEmitter {
 						type: "preset",
 						preset: "claude_code",
 					},
+					// load file based settings, to maintain more backwards compatibility,
+					// particularly with CLAUDE.md files, settings files, and custom slash commands,
+					// see: https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default
+					settingSources: ["user", "project", "local"],
 					...(this.config.workingDirectory && {
 						cwd: this.config.workingDirectory,
 					}),
