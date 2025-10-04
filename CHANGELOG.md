@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.52] - 2025-10-04
+
+### Changed
+- Version bump for all packages to ensure proper dependency resolution
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.27
+
+#### cyrus-core
+- cyrus-core@0.0.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.34
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.20
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.52
+
+## [0.1.51] - 2025-10-04
+
 ### Fixed
 - **Restored file-based settings loading**: Fixed regression from claude-agent-sdk update where CLAUDE.md files, settings files, and custom slash commands were not being loaded
   - Added explicit `settingSources: ["user", "project", "local"]` configuration to ClaudeRunner
@@ -19,6 +43,23 @@ All notable changes to this project will be documented in this file.
 - Updated @anthropic-ai/sdk from v0.64.0 to v0.65.0 for latest Anthropic SDK improvements
   - Added support for Claude Sonnet 4.5 and context management features
   - See [@anthropic-ai/sdk v0.65.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.64.0...sdk-v0.65.0)
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.26
+
+#### cyrus-core
+- cyrus-core@0.0.14
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.33
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.19
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.51
 
 ## [0.1.50] - 2025-09-30
 
