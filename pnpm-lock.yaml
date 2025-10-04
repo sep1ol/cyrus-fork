@@ -34,8 +34,8 @@ importers:
   apps/cli:
     dependencies:
       '@linear/sdk':
-        specifier: ^58.1.0
-        version: 58.1.0(encoding@0.1.13)
+        specifier: ^60.0.0
+        version: 60.0.0(encoding@0.1.13)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../../packages/claude-runner
@@ -111,8 +111,8 @@ importers:
         specifier: ^0.65.0
         version: 0.65.0(zod@3.25.75)
       '@linear/sdk':
-        specifier: ^58.1.0
-        version: 58.1.0(encoding@0.1.13)
+        specifier: ^60.0.0
+        version: 60.0.0(encoding@0.1.13)
       fs-extra:
         specifier: ^11.3.0
         version: 11.3.0
@@ -139,8 +139,8 @@ importers:
   packages/core:
     dependencies:
       '@linear/sdk':
-        specifier: ^58.1.0
-        version: 58.1.0(encoding@0.1.13)
+        specifier: ^60.0.0
+        version: 60.0.0(encoding@0.1.13)
       cyrus-claude-runner:
         specifier: workspace:*
         version: link:../claude-runner
@@ -158,8 +158,8 @@ importers:
   packages/edge-worker:
     dependencies:
       '@linear/sdk':
-        specifier: ^58.1.0
-        version: 58.1.0(encoding@0.1.13)
+        specifier: ^60.0.0
+        version: 60.0.0(encoding@0.1.13)
       '@ngrok/ngrok':
         specifier: ^1.5.1
         version: 1.5.1
