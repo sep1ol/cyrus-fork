@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.52] - 2025-10-04
+
+### Changed
+- Version bump for all packages to ensure proper dependency resolution
+
+### Packages
+
+#### cyrus-claude-runner
+- cyrus-claude-runner@0.0.27
+
+#### cyrus-core
+- cyrus-core@0.0.15
+
+#### cyrus-edge-worker
+- cyrus-edge-worker@0.0.34
+
+#### cyrus-ndjson-client
+- cyrus-ndjson-client@0.0.20
+
+#### cyrus-ai (CLI)
+- cyrus-ai@0.1.52
+
 ## [0.1.51] - 2025-10-04
 
 ### Fixed
