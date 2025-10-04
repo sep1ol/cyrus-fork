@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Restored file-based settings loading**: Fixed regression from claude-agent-sdk update where CLAUDE.md files, settings files, and custom slash commands were not being loaded
+  - Added explicit `settingSources: ["user", "project", "local"]` configuration to ClaudeRunner
+  - This restores backwards compatibility with existing user configurations
+  - See [Claude Code SDK Migration Guide](https://docs.claude.com/en/docs/claude-code/sdk/migration-guide#settings-sources-no-longer-loaded-by-default)
+
 ### Changed
 - **Default model changed from opus to sonnet 4.5**: The default Claude model is now `sonnet` instead of `opus`
   - Fallback model changed from `sonnet` to `haiku`
