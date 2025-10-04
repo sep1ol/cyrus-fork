@@ -837,11 +837,14 @@ export class EdgeWorker extends EventEmitter {
 				`[EdgeWorker] Agent guidance received: ${guidance.length} rule(s)`,
 			);
 			for (const rule of guidance) {
-				const origin = rule.origin
-					? rule.origin.type === "Team"
-						? `Team: ${rule.origin.team.displayName}`
-						: "Organization"
-					: "Unknown";
+				let origin = "Unknown";
+				if (rule.origin) {
+					if (rule.origin.__typename === "TeamOriginWebhookPayload") {
+						origin = `Team: ${rule.origin.team.displayName}`;
+					} else {
+						origin = "Organization";
+					}
+				}
 				console.log(
 					`[EdgeWorker]   - ${origin}: ${rule.body.substring(0, 100)}...`,
 				);
@@ -1573,11 +1576,14 @@ export class EdgeWorker extends EventEmitter {
 				prompt +=
 					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
 				for (const rule of guidance) {
-					const origin = rule.origin
-						? rule.origin.type === "Team"
-							? `Team (${rule.origin.team.displayName})`
-							: "Organization"
-						: "Global";
+					let origin = "Global";
+					if (rule.origin) {
+						if (rule.origin.__typename === "TeamOriginWebhookPayload") {
+							origin = `Team (${rule.origin.team.displayName})`;
+						} else {
+							origin = "Organization";
+						}
+					}
 					prompt += `\n## Guidance from ${origin}\n${rule.body}\n`;
 				}
 				prompt += "\n</agent_guidance>";
@@ -1647,11 +1653,14 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 				prompt +=
 					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
 				for (const rule of guidance) {
-					const origin = rule.origin
-						? rule.origin.type === "Team"
-							? `Team (${rule.origin.team.displayName})`
-							: "Organization"
-						: "Global";
+					let origin = "Global";
+					if (rule.origin) {
+						if (rule.origin.__typename === "TeamOriginWebhookPayload") {
+							origin = `Team (${rule.origin.team.displayName})`;
+						} else {
+							origin = "Organization";
+						}
+					}
 					prompt += `\n## Guidance from ${origin}\n${rule.body}\n`;
 				}
 				prompt += "\n</agent_guidance>";
@@ -2028,11 +2037,14 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				prompt +=
 					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
 				for (const rule of guidance) {
-					const origin = rule.origin
-						? rule.origin.type === "Team"
-							? `Team (${rule.origin.team.displayName})`
-							: "Organization"
-						: "Global";
+					let origin = "Global";
+					if (rule.origin) {
+						if (rule.origin.__typename === "TeamOriginWebhookPayload") {
+							origin = `Team (${rule.origin.team.displayName})`;
+						} else {
+							origin = "Organization";
+						}
+					}
 					prompt += `\n## Guidance from ${origin}\n${rule.body}\n`;
 				}
 				prompt += "\n</agent_guidance>";

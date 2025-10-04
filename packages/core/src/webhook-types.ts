@@ -3,6 +3,8 @@
  * These are the exact structures Linear sends in webhooks
  */
 
+import type { LinearDocument } from "@linear/sdk";
+
 /**
  * Linear team data from webhooks
  */
@@ -185,38 +187,15 @@ export interface LinearWebhookCreator {
 }
 
 /**
- * Team properties including parent information for guidance rules
+ * Agent guidance types - re-exported from @linear/sdk for convenience
  */
-export interface LinearWebhookTeamWithParent {
-	displayName: string;
-	id: string;
-	key: string;
-	name: string;
-	parentId?: string;
-}
-
-/**
- * Organization origin for guidance rules
- */
-export interface LinearWebhookOrganizationOrigin {
-	type: "Organization";
-}
-
-/**
- * Team origin for guidance rules
- */
-export interface LinearWebhookTeamOrigin {
-	type: "Team";
-	team: LinearWebhookTeamWithParent;
-}
-
-/**
- * Agent guidance rule metadata
- */
-export interface LinearWebhookGuidanceRule {
-	body: string;
-	origin?: LinearWebhookOrganizationOrigin | LinearWebhookTeamOrigin;
-}
+export type LinearWebhookGuidanceRule =
+	LinearDocument.GuidanceRuleWebhookPayload;
+export type LinearWebhookOrganizationOrigin =
+	LinearDocument.OrganizationOriginWebhookPayload;
+export type LinearWebhookTeamOrigin = LinearDocument.TeamOriginWebhookPayload;
+export type LinearWebhookTeamWithParent =
+	LinearDocument.TeamWithParentWebhookPayload;
 
 /**
  * Agent Session data from webhooks
