@@ -126,6 +126,7 @@ describe("ClaudeRunner", () => {
 					abortController: expect.any(AbortController),
 					cwd: "/tmp/test",
 					systemPrompt: { type: "preset", preset: "claude_code" },
+					settingSources: ["user", "project", "local"],
 				},
 			});
 		});
@@ -155,6 +156,7 @@ describe("ClaudeRunner", () => {
 					abortController: expect.any(AbortController),
 					cwd: "/tmp/test",
 					systemPrompt: { type: "preset", preset: "claude_code" },
+					settingSources: ["user", "project", "local"],
 				},
 			});
 		});
@@ -184,6 +186,7 @@ describe("ClaudeRunner", () => {
 					abortController: expect.any(AbortController),
 					cwd: "/tmp/test",
 					systemPrompt: "You are a helpful assistant",
+					settingSources: ["user", "project", "local"],
 				},
 			});
 		});
