@@ -347,6 +347,9 @@ export class ClaudeRunner extends EventEmitter {
 					systemPrompt: this.config.systemPrompt || {
 						type: "preset",
 						preset: "claude_code",
+						...(this.config.appendSystemPrompt && {
+							append: this.config.appendSystemPrompt,
+						}),
 					},
 					// load file based settings, to maintain more backwards compatibility,
 					// particularly with CLAUDE.md files, settings files, and custom slash commands,
@@ -357,9 +360,6 @@ export class ClaudeRunner extends EventEmitter {
 					}),
 					...(this.config.allowedDirectories && {
 						allowedDirectories: this.config.allowedDirectories,
-					}),
-					...(this.config.appendSystemPrompt && {
-						appendSystemPrompt: this.config.appendSystemPrompt,
 					}),
 					...(processedAllowedTools && { allowedTools: processedAllowedTools }),
 					...(processedDisallowedTools && {
