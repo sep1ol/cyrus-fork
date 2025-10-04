@@ -185,6 +185,40 @@ export interface LinearWebhookCreator {
 }
 
 /**
+ * Team properties including parent information for guidance rules
+ */
+export interface LinearWebhookTeamWithParent {
+	displayName: string;
+	id: string;
+	key: string;
+	name: string;
+	parentId?: string;
+}
+
+/**
+ * Organization origin for guidance rules
+ */
+export interface LinearWebhookOrganizationOrigin {
+	type: "Organization";
+}
+
+/**
+ * Team origin for guidance rules
+ */
+export interface LinearWebhookTeamOrigin {
+	type: "Team";
+	team: LinearWebhookTeamWithParent;
+}
+
+/**
+ * Agent guidance rule metadata
+ */
+export interface LinearWebhookGuidanceRule {
+	body: string;
+	origin?: LinearWebhookOrganizationOrigin | LinearWebhookTeamOrigin;
+}
+
+/**
  * Agent Session data from webhooks
  */
 export interface LinearWebhookAgentSession {
@@ -248,6 +282,7 @@ export interface LinearAgentSessionCreatedWebhook {
 	oauthClientId: string;
 	appUserId: string;
 	agentSession: LinearWebhookAgentSession;
+	guidance?: LinearWebhookGuidanceRule[];
 	webhookTimestamp: string;
 	webhookId: string;
 }
@@ -264,6 +299,7 @@ export interface LinearAgentSessionPromptedWebhook {
 	appUserId: string;
 	agentSession: LinearWebhookAgentSession;
 	agentActivity: LinearWebhookAgentActivity;
+	guidance?: LinearWebhookGuidanceRule[];
 	webhookTimestamp: string;
 	webhookId: string;
 }
