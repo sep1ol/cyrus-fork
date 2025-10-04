@@ -1570,24 +1570,7 @@ export class EdgeWorker extends EventEmitter {
 				.replace(/{{workspace_labels}}/g, workspaceLabels);
 
 			// Append agent guidance if present
-			// Note: Linear provides guidance in priority order - team-specific guidance appears
-			// before workspace-level guidance. All guidance rules are included.
-			if (guidance && guidance.length > 0) {
-				prompt +=
-					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
-				for (const rule of guidance) {
-					let origin = "Global";
-					if (rule.origin) {
-						if (rule.origin.__typename === "TeamOriginWebhookPayload") {
-							origin = `Team (${rule.origin.team.displayName})`;
-						} else {
-							origin = "Organization";
-						}
-					}
-					prompt += `\n## Guidance from ${origin}\n${rule.body}\n`;
-				}
-				prompt += "\n</agent_guidance>";
-			}
+			prompt += this.formatAgentGuidance(guidance);
 
 			if (attachmentManifest) {
 				console.log(
@@ -1647,24 +1630,7 @@ ${mentionContent}
 IMPORTANT: You were specifically mentioned in the comment above. Focus on addressing the specific question or request in the mention. You can use the Linear MCP tools to fetch additional context about the issue if needed.`;
 
 			// Append agent guidance if present
-			// Note: Linear provides guidance in priority order - team-specific guidance appears
-			// before workspace-level guidance. All guidance rules are included.
-			if (guidance && guidance.length > 0) {
-				prompt +=
-					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
-				for (const rule of guidance) {
-					let origin = "Global";
-					if (rule.origin) {
-						if (rule.origin.__typename === "TeamOriginWebhookPayload") {
-							origin = `Team (${rule.origin.team.displayName})`;
-						} else {
-							origin = "Organization";
-						}
-					}
-					prompt += `\n## Guidance from ${origin}\n${rule.body}\n`;
-				}
-				prompt += "\n</agent_guidance>";
-			}
+			prompt += this.formatAgentGuidance(guidance);
 
 			// Append attachment manifest if any
 			if (attachmentManifest) {
@@ -1692,6 +1658,35 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 		const version = versionTagMatch ? versionTagMatch[1] : undefined;
 		// Return undefined for empty strings
 		return version?.trim() ? version : undefined;
+	}
+
+	/**
+	 * Format agent guidance rules as markdown for injection into prompts
+	 * @param guidance Array of guidance rules from Linear
+	 * @returns Formatted markdown string with guidance, or empty string if no guidance
+	 */
+	private formatAgentGuidance(guidance?: LinearWebhookGuidanceRule[]): string {
+		if (!guidance || guidance.length === 0) {
+			return "";
+		}
+
+		let formatted =
+			"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
+
+		for (const rule of guidance) {
+			let origin = "Global";
+			if (rule.origin) {
+				if (rule.origin.__typename === "TeamOriginWebhookPayload") {
+					origin = `Team (${rule.origin.team.displayName})`;
+				} else {
+					origin = "Organization";
+				}
+			}
+			formatted += `\n## Guidance from ${origin}\n${rule.body}\n`;
+		}
+
+		formatted += "\n</agent_guidance>";
+		return formatted;
 	}
 
 	/**
@@ -2031,24 +2026,7 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 			}
 
 			// Append agent guidance if present
-			// Note: Linear provides guidance in priority order - team-specific guidance appears
-			// before workspace-level guidance. All guidance rules are included.
-			if (guidance && guidance.length > 0) {
-				prompt +=
-					"\n\n<agent_guidance>\nThe following guidance has been configured for this workspace/team in Linear. Team-specific guidance takes precedence over workspace-level guidance.\n";
-				for (const rule of guidance) {
-					let origin = "Global";
-					if (rule.origin) {
-						if (rule.origin.__typename === "TeamOriginWebhookPayload") {
-							origin = `Team (${rule.origin.team.displayName})`;
-						} else {
-							origin = "Organization";
-						}
-					}
-					prompt += `\n## Guidance from ${origin}\n${rule.body}\n`;
-				}
-				prompt += "\n</agent_guidance>";
-			}
+			prompt += this.formatAgentGuidance(guidance);
 
 			// Append attachment manifest if provided
 			if (attachmentManifest) {
