@@ -2754,11 +2754,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Always inject the Linear MCP servers with the repository's token
 		const mcpConfig: Record<string, McpServerConfig> = {
 			linear: {
-				type: "stdio",
-				command: "npx",
-				args: ["-y", "@tacticlaunch/mcp-linear"],
-				env: {
-					LINEAR_API_TOKEN: repository.linearToken,
+				type: "http",
+				url: "https://mcp.linear.app/mcp",
+				headers: {
+					Authorization: `Bearer ${repository.linearToken}`,
 				},
 			},
 			"cyrus-tools": createCyrusToolsServer(repository.linearToken, {
