@@ -2752,6 +2752,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		parentSessionId?: string,
 	): Record<string, McpServerConfig> {
 		// Always inject the Linear MCP servers with the repository's token
+		// https://linear.app/docs/mcp
 		const mcpConfig: Record<string, McpServerConfig> = {
 			linear: {
 				type: "http",
