@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Upgraded to official Linear MCP server**: Replaced the unofficial `@tacticlaunch/mcp-linear` stdio-based server with Linear's official HTTP-based MCP server (`https://mcp.linear.app/mcp`). This provides better stability and access to the latest Linear API features.
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.5 to v0.1.8 for latest Claude Agent SDK improvements
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.8 to v0.1.9 - fixes critical bug where custom system prompts were not being properly respected. See [@anthropic-ai/claude-agent-sdk v0.1.9 release notes](https://github.com/anthropics/claude-agent-sdk-typescript/releases/tag/v0.1.9)
 
 ## [0.1.54] - 2025-10-04
 
