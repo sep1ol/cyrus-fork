@@ -17,6 +17,8 @@ import type {
 	SerializedCyrusAgentSessionEntry,
 	Workspace,
 } from "cyrus-core";
+import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
+import type { SharedApplicationServer } from "./SharedApplicationServer.js";
 
 /**
  * Manages Linear Agent Sessions integration with Claude Code SDK
@@ -32,11 +34,16 @@ export class AgentSessionManager {
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private procedureRouter?: ProcedureRouter;
+	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
 	private resumeParentSession?: (
 		parentSessionId: string,
 		prompt: string,
 		childSessionId: string,
+	) => Promise<void>;
+	private resumeNextSubroutine?: (
+		linearAgentActivitySessionId: string,
 	) => Promise<void>;
 
 	constructor(
@@ -47,10 +54,18 @@ export class AgentSessionManager {
 			prompt: string,
 			childSessionId: string,
 		) => Promise<void>,
+		resumeNextSubroutine?: (
+			linearAgentActivitySessionId: string,
+		) => Promise<void>,
+		procedureRouter?: ProcedureRouter,
+		sharedApplicationServer?: SharedApplicationServer,
 	) {
 		this.linearClient = linearClient;
 		this.getParentSessionId = getParentSessionId;
 		this.resumeParentSession = resumeParentSession;
+		this.resumeNextSubroutine = resumeNextSubroutine;
+		this.procedureRouter = procedureRouter;
+		this.sharedApplicationServer = sharedApplicationServer;
 	}
 
 	/**
@@ -103,6 +118,7 @@ export class AgentSessionManager {
 		linearSession.claudeSessionId = claudeSystemMessage.session_id;
 		linearSession.updatedAt = Date.now();
 		linearSession.metadata = {
+			...linearSession.metadata, // Preserve existing metadata
 			model: claudeSystemMessage.model,
 			tools: claudeSystemMessage.tools,
 			permissionMode: claudeSystemMessage.permissionMode,
@@ -228,43 +244,241 @@ export class AgentSessionManager {
 			usage: resultMessage.usage,
 		});
 
-		// Add result entry if present
+		// Handle result using procedure routing system
 		if ("result" in resultMessage && resultMessage.result) {
-			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+			await this.handleProcedureCompletion(
+				session,
+				linearAgentActivitySessionId,
+				resultMessage,
+			);
+		}
+	}
 
-			// Check if this is a child session and send result to parent
-			if (this.getParentSessionId && this.resumeParentSession) {
-				const parentAgentSessionId = this.getParentSessionId(
-					linearAgentActivitySessionId,
+	/**
+	 * Handle completion using procedure routing system
+	 */
+	private async handleProcedureCompletion(
+		session: CyrusAgentSession,
+		linearAgentActivitySessionId: string,
+		resultMessage: SDKResultMessage,
+	): Promise<void> {
+		if (!this.procedureRouter) {
+			throw new Error("ProcedureRouter not available");
+		}
+
+		// Check if error occurred
+		if (resultMessage.subtype !== "success") {
+			console.log(
+				`[AgentSessionManager] Subroutine completed with error, not triggering next subroutine`,
+			);
+			return;
+		}
+
+		const claudeSessionId = session.claudeSessionId;
+		if (!claudeSessionId) {
+			console.error(
+				`[AgentSessionManager] No Claude session ID found for procedure session`,
+			);
+			return;
+		}
+
+		// Check if there's a next subroutine
+		const nextSubroutine = this.procedureRouter.getNextSubroutine(session);
+
+		if (nextSubroutine) {
+			// More subroutines to run - check if current subroutine requires approval
+			const currentSubroutine =
+				this.procedureRouter.getCurrentSubroutine(session);
+
+			if (currentSubroutine?.requiresApproval) {
+				console.log(
+					`[AgentSessionManager] Current subroutine "${currentSubroutine.name}" requires approval before proceeding`,
 				);
-				if (parentAgentSessionId) {
-					console.log(
-						`[AgentSessionManager] Session ${linearAgentActivitySessionId} is a child of ${parentAgentSessionId}, sending result to parent`,
+
+				// Check if SharedApplicationServer is available
+				if (!this.sharedApplicationServer) {
+					console.error(
+						`[AgentSessionManager] SharedApplicationServer not available for approval workflow`,
+					);
+					await this.createErrorActivity(
+						linearAgentActivitySessionId,
+						"Approval workflow failed: Server not available",
+					);
+					return;
+				}
+
+				// Extract the final result from the completed subroutine
+				const subroutineResult =
+					"result" in resultMessage && resultMessage.result
+						? resultMessage.result
+						: "No result available";
+
+				try {
+					// Register approval request with server
+					const approvalRequest =
+						this.sharedApplicationServer.registerApprovalRequest(
+							linearAgentActivitySessionId,
+						);
+
+					// Post approval elicitation to Linear with auth signal URL
+					const approvalMessage = `The previous step has completed. Please review the result below and approve to continue:\n\n${subroutineResult}`;
+
+					await this.createApprovalElicitation(
+						linearAgentActivitySessionId,
+						approvalMessage,
+						approvalRequest.url,
 					);
 
-					// Resume parent session with child result
-					try {
-						const childResult = resultMessage.result;
-						const promptToParent = `Child agent session, with ID ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
+					console.log(
+						`[AgentSessionManager] Waiting for approval at URL: ${approvalRequest.url}`,
+					);
 
-						// Use the resumeParentSession callback to handle the parent session
-						await this.resumeParentSession(
-							parentAgentSessionId,
-							promptToParent,
-							linearAgentActivitySessionId, // Pass child session ID
-						);
+					// Wait for approval with timeout (30 minutes)
+					const approvalTimeout = 30 * 60 * 1000;
+					const timeoutPromise = new Promise<never>((_, reject) =>
+						setTimeout(
+							() => reject(new Error("Approval timeout")),
+							approvalTimeout,
+						),
+					);
 
+					const { approved, feedback } = await Promise.race([
+						approvalRequest.promise,
+						timeoutPromise,
+					]);
+
+					if (!approved) {
 						console.log(
-							`[AgentSessionManager] Successfully sent child result to parent session ${parentAgentSessionId}`,
+							`[AgentSessionManager] Approval rejected for session ${linearAgentActivitySessionId}`,
 						);
-					} catch (error) {
-						console.error(
-							`[AgentSessionManager] Failed to resume parent session with child result:`,
-							error,
+						await this.createErrorActivity(
+							linearAgentActivitySessionId,
+							`Workflow stopped: User rejected approval.${feedback ? `\n\nFeedback: ${feedback}` : ""}`,
+						);
+						return; // Stop workflow
+					}
+
+					console.log(
+						`[AgentSessionManager] Approval granted, continuing to next subroutine`,
+					);
+
+					// Optionally post feedback as a thought
+					if (feedback) {
+						await this.createThoughtActivity(
+							linearAgentActivitySessionId,
+							`User feedback: ${feedback}`,
 						);
 					}
+
+					// Continue with advancement (fall through to existing code)
+				} catch (error) {
+					const errorMessage = (error as Error).message;
+					if (errorMessage === "Approval timeout") {
+						console.log(
+							`[AgentSessionManager] Approval timed out for session ${linearAgentActivitySessionId}`,
+						);
+						await this.createErrorActivity(
+							linearAgentActivitySessionId,
+							"Workflow stopped: Approval request timed out after 30 minutes.",
+						);
+					} else {
+						console.error(
+							`[AgentSessionManager] Approval request failed:`,
+							error,
+						);
+						await this.createErrorActivity(
+							linearAgentActivitySessionId,
+							`Workflow stopped: Approval request failed - ${errorMessage}`,
+						);
+					}
+					return; // Stop workflow
 				}
 			}
+
+			// Advance procedure state
+			console.log(
+				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
+			);
+			this.procedureRouter.advanceToNextSubroutine(session, claudeSessionId);
+
+			// Trigger next subroutine
+			if (this.resumeNextSubroutine) {
+				try {
+					await this.resumeNextSubroutine(linearAgentActivitySessionId);
+				} catch (error) {
+					console.error(
+						`[AgentSessionManager] Failed to trigger next subroutine:`,
+						error,
+					);
+				}
+			}
+		} else {
+			// Procedure complete - post final result
+			console.log(
+				`[AgentSessionManager] All subroutines completed, posting final result to Linear`,
+			);
+			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
+
+			// Handle child session completion
+			const isChildSession = this.getParentSessionId?.(
+				linearAgentActivitySessionId,
+			);
+			if (isChildSession && this.resumeParentSession) {
+				await this.handleChildSessionCompletion(
+					linearAgentActivitySessionId,
+					resultMessage,
+				);
+			}
+		}
+	}
+
+	/**
+	 * Handle child session completion and resume parent
+	 */
+	private async handleChildSessionCompletion(
+		linearAgentActivitySessionId: string,
+		resultMessage: SDKResultMessage,
+	): Promise<void> {
+		if (!this.getParentSessionId || !this.resumeParentSession) {
+			return;
+		}
+
+		const parentAgentSessionId = this.getParentSessionId(
+			linearAgentActivitySessionId,
+		);
+
+		if (!parentAgentSessionId) {
+			console.error(
+				`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
+			);
+			return;
+		}
+
+		console.log(
+			`[AgentSessionManager] Child session ${linearAgentActivitySessionId} completed, resuming parent ${parentAgentSessionId}`,
+		);
+
+		try {
+			const childResult =
+				"result" in resultMessage
+					? resultMessage.result
+					: "No result available";
+			const promptToParent = `Child agent session ${linearAgentActivitySessionId} completed with result:\n\n${childResult}`;
+
+			await this.resumeParentSession(
+				parentAgentSessionId,
+				promptToParent,
+				linearAgentActivitySessionId,
+			);
+
+			console.log(
+				`[AgentSessionManager] Successfully resumed parent session ${parentAgentSessionId}`,
+			);
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Failed to resume parent session:`,
+				error,
+			);
 		}
 	}
 
@@ -284,7 +498,7 @@ export class AgentSessionManager {
 							message,
 						);
 
-						// Post model notification thought
+						// Post model notification
 						const systemMessage = message as SDKSystemMessage;
 						if (systemMessage.model) {
 							await this.postModelNotificationThought(
@@ -512,7 +726,7 @@ export class AgentSessionManager {
 				return;
 			}
 
-			// Store entry locally now that we're posting it
+			// Store entry locally first
 			const entries = this.entries.get(linearAgentActivitySessionId) || [];
 			entries.push(entry);
 			this.entries.set(linearAgentActivitySessionId, entries);
@@ -577,7 +791,7 @@ export class AgentSessionManager {
 					}
 					break;
 				}
-				case "assistant":
+				case "assistant": {
 					// Assistant messages can be thoughts or responses
 					if (entry.metadata?.toolUseId) {
 						const toolName = entry.metadata.toolName || "Tool";
@@ -658,19 +872,13 @@ export class AgentSessionManager {
 						}
 					} else {
 						// Regular assistant message - create a thought
-						// Check if this message contains the last message marker
-						if (entry.content.includes("___LAST_MESSAGE_MARKER___")) {
-							console.log(
-								`[AgentSessionManager] Skipping assistant message with last message marker - will be posted as response later`,
-							);
-							return; // Skip posting this as a thought
-						}
 						content = {
 							type: "thought",
 							body: entry.content,
 						};
 					}
 					break;
+				}
 
 				case "system":
 					// System messages are thoughts
@@ -688,13 +896,9 @@ export class AgentSessionManager {
 							body: entry.content,
 						};
 					} else {
-						// Strip the last message marker from the response
-						const cleanedContent = entry.content
-							.replace(/___LAST_MESSAGE_MARKER___/g, "")
-							.trim();
 						content = {
 							type: "response",
-							body: cleanedContent,
+							body: entry.content,
 						};
 					}
 					break;
@@ -705,6 +909,20 @@ export class AgentSessionManager {
 						type: "thought",
 						body: entry.content,
 					};
+			}
+
+			// Check if current subroutine has suppressThoughtPosting enabled
+			// If so, suppress thoughts and actions (but still post responses and results)
+			const currentSubroutine =
+				this.procedureRouter?.getCurrentSubroutine(session);
+			if (currentSubroutine?.suppressThoughtPosting) {
+				// Only suppress thoughts and actions, not responses or results
+				if (content.type === "thought" || content.type === "action") {
+					console.log(
+						`[AgentSessionManager] Suppressing ${content.type} posting for subroutine "${currentSubroutine.name}"`,
+					);
+					return; // Don't post to Linear
+				}
 			}
 
 			const activityInput: LinearDocument.AgentActivityCreateInput = {
@@ -1059,6 +1277,53 @@ export class AgentSessionManager {
 	}
 
 	/**
+	 * Create an approval elicitation activity with auth signal
+	 */
+	async createApprovalElicitation(
+		sessionId: string,
+		body: string,
+		approvalUrl: string,
+	): Promise<void> {
+		const session = this.sessions.get(sessionId);
+		if (!session || !session.linearAgentActivitySessionId) {
+			console.warn(
+				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
+			);
+			return;
+		}
+
+		try {
+			const result = await this.linearClient.createAgentActivity({
+				agentSessionId: session.linearAgentActivitySessionId,
+				content: {
+					type: "elicitation",
+					body,
+				},
+				signal: LinearDocument.AgentActivitySignal.Auth,
+				signalMetadata: {
+					url: approvalUrl,
+				},
+			});
+
+			if (result.success) {
+				console.log(
+					`[AgentSessionManager] Created approval elicitation for session ${sessionId} with URL: ${approvalUrl}`,
+				);
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to create approval elicitation:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error creating approval elicitation:`,
+				error,
+			);
+		}
+	}
+
+	/**
 	 * Clear completed sessions older than specified time
 	 */
 	cleanup(olderThanMs: number = 24 * 60 * 60 * 1000): void {
@@ -1166,6 +1431,80 @@ export class AgentSessionManager {
 		} catch (error) {
 			console.error(
 				`[AgentSessionManager] Error posting model notification:`,
+				error,
+			);
+		}
+	}
+
+	/**
+	 * Post an ephemeral "Routing your request..." thought and return the activity ID
+	 */
+	async postRoutingThought(
+		linearAgentActivitySessionId: string,
+	): Promise<string | null> {
+		try {
+			const result = await this.linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: "Routing your request…",
+				},
+				ephemeral: true,
+			});
+
+			if (result.success && result.agentActivity) {
+				const activity = await result.agentActivity;
+				console.log(
+					`[AgentSessionManager] Posted routing thought for session ${linearAgentActivitySessionId}`,
+				);
+				return activity.id;
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to post routing thought:`,
+					result,
+				);
+				return null;
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error posting routing thought:`,
+				error,
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Post the procedure selection result as a non-ephemeral thought
+	 */
+	async postProcedureSelectionThought(
+		linearAgentActivitySessionId: string,
+		procedureName: string,
+		classification: string,
+	): Promise<void> {
+		try {
+			const result = await this.linearClient.createAgentActivity({
+				agentSessionId: linearAgentActivitySessionId,
+				content: {
+					type: "thought",
+					body: `Selected procedure: **${procedureName}** (classified as: ${classification})`,
+				},
+				ephemeral: false,
+			});
+
+			if (result.success) {
+				console.log(
+					`[AgentSessionManager] Posted procedure selection for session ${linearAgentActivitySessionId}: ${procedureName}`,
+				);
+			} else {
+				console.error(
+					`[AgentSessionManager] Failed to post procedure selection:`,
+					result,
+				);
+			}
+		} catch (error) {
+			console.error(
+				`[AgentSessionManager] Error posting procedure selection:`,
 				error,
 			);
 		}

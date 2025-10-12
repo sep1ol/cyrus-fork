@@ -19,6 +19,8 @@ import type {
 import {
 	ClaudeRunner,
 	createCyrusToolsServer,
+	createImageToolsServer,
+	createSoraToolsServer,
 	getAllTools,
 	getCoordinatorTools,
 	getReadOnlyTools,
@@ -55,6 +57,11 @@ import { LinearWebhookClient } from "cyrus-linear-webhook-client";
 import { NdjsonClient } from "cyrus-ndjson-client";
 import { fileTypeFromBuffer } from "file-type";
 import { AgentSessionManager } from "./AgentSessionManager.js";
+import {
+	type ProcedureDefinition,
+	ProcedureRouter,
+	type RequestClassification,
+} from "./procedures/index.js";
 import { SharedApplicationServer } from "./SharedApplicationServer.js";
 import type {
 	EdgeWorkerConfig,
@@ -74,9 +81,6 @@ export declare interface EdgeWorker {
 	): boolean;
 }
 
-const LAST_MESSAGE_MARKER =
-	"\n\nIMPORTANT: When providing your final summary response, include the special marker ___LAST_MESSAGE_MARKER___ at the very beginning of your message. This marker will be automatically removed before posting.";
-
 /**
  * Unified edge worker that **orchestrates**
  *   capturing Linear webhooks,
@@ -94,6 +98,7 @@ export class EdgeWorker extends EventEmitter {
 	private sharedApplicationServer: SharedApplicationServer;
 	private cyrusHome: string;
 	private childToParentAgentSession: Map<string, string> = new Map(); // Maps child agentSessionId to parent agentSessionId
+	private procedureRouter: ProcedureRouter; // Intelligent workflow routing
 	private configWatcher?: FSWatcher; // File watcher for config.json
 	private configPath?: string; // Path to config.json file
 	private tokenToRepoIds: Map<string, string[]> = new Map(); // Maps Linear token to repository IDs using that token
@@ -105,6 +110,13 @@ export class EdgeWorker extends EventEmitter {
 		this.persistenceManager = new PersistenceManager(
 			join(this.cyrusHome, "state"),
 		);
+
+		// Initialize procedure router with haiku model for fast classification
+		this.procedureRouter = new ProcedureRouter({
+			cyrusHome: this.cyrusHome,
+			model: "haiku",
+			timeoutMs: 10000,
+		});
 
 		console.log(
 			`[EdgeWorker Constructor] Initializing parent-child session mapping system`,
@@ -172,6 +184,86 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
+					async (linearAgentActivitySessionId: string) => {
+						console.log(
+							`[Subroutine Transition] Advancing to next subroutine for session ${linearAgentActivitySessionId}`,
+						);
+
+						// Get the session
+						const session = agentSessionManager.getSession(
+							linearAgentActivitySessionId,
+						);
+						if (!session) {
+							console.error(
+								`[Subroutine Transition] Session ${linearAgentActivitySessionId} not found`,
+							);
+							return;
+						}
+
+						// Get next subroutine (advancement already handled by AgentSessionManager)
+						const nextSubroutine =
+							this.procedureRouter.getCurrentSubroutine(session);
+
+						if (!nextSubroutine) {
+							console.log(
+								`[Subroutine Transition] Procedure complete for session ${linearAgentActivitySessionId}`,
+							);
+							return;
+						}
+
+						console.log(
+							`[Subroutine Transition] Next subroutine: ${nextSubroutine.name}`,
+						);
+
+						// Load subroutine prompt
+						const __filename = fileURLToPath(import.meta.url);
+						const __dirname = dirname(__filename);
+						const subroutinePromptPath = join(
+							__dirname,
+							"prompts",
+							nextSubroutine.promptPath,
+						);
+
+						let subroutinePrompt: string;
+						try {
+							subroutinePrompt = await readFile(subroutinePromptPath, "utf-8");
+							console.log(
+								`[Subroutine Transition] Loaded ${nextSubroutine.name} subroutine prompt (${subroutinePrompt.length} characters)`,
+							);
+						} catch (error) {
+							console.error(
+								`[Subroutine Transition] Failed to load subroutine prompt from ${subroutinePromptPath}:`,
+								error,
+							);
+							// Fallback to simple prompt
+							subroutinePrompt = `Continue with: ${nextSubroutine.description}`;
+						}
+
+						// Resume Claude session with subroutine prompt
+						try {
+							await this.resumeClaudeSession(
+								session,
+								repo,
+								linearAgentActivitySessionId,
+								agentSessionManager,
+								subroutinePrompt,
+								"", // No attachment manifest
+								false, // Not a new session
+								[], // No additional allowed directories
+								nextSubroutine.maxTurns, // Use subroutine-specific maxTurns
+							);
+							console.log(
+								`[Subroutine Transition] Successfully resumed session for ${nextSubroutine.name} subroutine${nextSubroutine.maxTurns ? ` (maxTurns=${nextSubroutine.maxTurns})` : ""}`,
+							);
+						} catch (error) {
+							console.error(
+								`[Subroutine Transition] Failed to resume session for ${nextSubroutine.name} subroutine:`,
+								error,
+							);
+						}
+					},
+					this.procedureRouter,
+					this.sharedApplicationServer,
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 			}
@@ -519,7 +611,7 @@ export class EdgeWorker extends EventEmitter {
 			await this.handleConfigChange();
 		});
 
-		this.configWatcher.on("error", (error) => {
+		this.configWatcher.on("error", (error: unknown) => {
 			console.error("❌ Config watcher error:", error);
 		});
 	}
@@ -702,6 +794,9 @@ export class EdgeWorker extends EventEmitter {
 							agentSessionManager,
 						);
 					},
+					undefined, // No resumeNextSubroutine callback for dynamically added repos
+					this.procedureRouter,
+					this.sharedApplicationServer,
 				);
 				this.agentSessionManagers.set(repo.id, agentSessionManager);
 
@@ -1458,8 +1553,87 @@ export class EdgeWorker extends EventEmitter {
 			allowedDirectories,
 		} = sessionData;
 
-		// Fetch labels (needed for both model selection and system prompt determination)
+		// Initialize procedure metadata using intelligent routing
+		if (!session.metadata) {
+			session.metadata = {};
+		}
+
+		// Post ephemeral "Routing..." thought
+		await agentSessionManager.postRoutingThought(linearAgentActivitySessionId);
+
+		// Fetch labels early (needed for label override check)
 		const labels = await this.fetchIssueLabels(fullIssue);
+
+		// Check for label overrides BEFORE AI routing
+		const debuggerConfig = repository.labelPrompts?.debugger;
+		const debuggerLabels = Array.isArray(debuggerConfig)
+			? debuggerConfig
+			: debuggerConfig?.labels;
+		const hasDebuggerLabel = debuggerLabels?.some((label) =>
+			labels.includes(label),
+		);
+
+		const orchestratorConfig = repository.labelPrompts?.orchestrator;
+		const orchestratorLabels = Array.isArray(orchestratorConfig)
+			? orchestratorConfig
+			: orchestratorConfig?.labels;
+		const hasOrchestratorLabel = orchestratorLabels?.some((label) =>
+			labels.includes(label),
+		);
+
+		let finalProcedure: ProcedureDefinition;
+		let finalClassification: RequestClassification;
+
+		// If labels indicate a specific procedure, use that instead of AI routing
+		if (hasDebuggerLabel) {
+			const debuggerProcedure =
+				this.procedureRouter.getProcedure("debugger-full");
+			if (!debuggerProcedure) {
+				throw new Error("debugger-full procedure not found in registry");
+			}
+			finalProcedure = debuggerProcedure;
+			finalClassification = "debugger";
+			console.log(
+				`[EdgeWorker] Using debugger-full procedure due to debugger label (skipping AI routing)`,
+			);
+		} else if (hasOrchestratorLabel) {
+			const orchestratorProcedure =
+				this.procedureRouter.getProcedure("orchestrator-full");
+			if (!orchestratorProcedure) {
+				throw new Error("orchestrator-full procedure not found in registry");
+			}
+			finalProcedure = orchestratorProcedure;
+			finalClassification = "orchestrator";
+			console.log(
+				`[EdgeWorker] Using orchestrator-full procedure due to orchestrator label (skipping AI routing)`,
+			);
+		} else {
+			// No label override - use AI routing
+			const issueDescription =
+				`${issue.title}\n\n${fullIssue.description || ""}`.trim();
+			const routingDecision =
+				await this.procedureRouter.determineRoutine(issueDescription);
+			finalProcedure = routingDecision.procedure;
+			finalClassification = routingDecision.classification;
+
+			// Log AI routing decision
+			console.log(
+				`[EdgeWorker] AI routing decision for ${linearAgentActivitySessionId}:`,
+			);
+			console.log(`  Classification: ${routingDecision.classification}`);
+			console.log(`  Procedure: ${finalProcedure.name}`);
+			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+		}
+
+		// Initialize procedure metadata in session with final decision
+		this.procedureRouter.initializeProcedureMetadata(session, finalProcedure);
+
+		// Post single procedure selection result (replaces ephemeral routing thought)
+		await agentSessionManager.postProcedureSelectionThought(
+			linearAgentActivitySessionId,
+			finalProcedure.name,
+			finalClassification,
+		);
 
 		// Only determine system prompt for delegation (not mentions) or when /label-based-prompt is requested
 		let systemPrompt: string | undefined;
@@ -1637,6 +1811,8 @@ export class EdgeWorker extends EventEmitter {
 
 		let session = agentSessionManager.getSession(linearAgentActivitySessionId);
 		let isNewSession = false;
+		let fullIssue: LinearIssue | null = null;
+
 		if (!session) {
 			console.log(
 				`[EdgeWorker] No existing session found for agent activity session ${linearAgentActivitySessionId}, creating new session`,
@@ -1659,21 +1835,104 @@ export class EdgeWorker extends EventEmitter {
 			);
 
 			// Destructure session data for new session
-			const { fullIssue: newFullIssue } = sessionData;
+			fullIssue = sessionData.fullIssue;
 			session = sessionData.session;
+
+			console.log(
+				`[EdgeWorker] Created new session ${linearAgentActivitySessionId} (prompted webhook)`,
+			);
 
 			// Save state and emit events for new session
 			await this.savePersistedState();
-			this.emit(
-				"session:started",
-				newFullIssue.id,
-				newFullIssue,
+			this.emit("session:started", fullIssue.id, fullIssue, repository.id);
+			this.config.handlers?.onSessionStart?.(
+				fullIssue.id,
+				fullIssue,
 				repository.id,
 			);
-			this.config.handlers?.onSessionStart?.(
-				newFullIssue.id,
-				newFullIssue,
+		} else {
+			console.log(
+				`[EdgeWorker] Found existing session ${linearAgentActivitySessionId} for new user prompt`,
+			);
+
+			// Post instant acknowledgment for existing session BEFORE any async work
+			// Check streaming status first to determine the message
+			const isCurrentlyStreaming =
+				session?.claudeRunner?.isStreaming() || false;
+
+			await this.postInstantPromptedAcknowledgment(
+				linearAgentActivitySessionId,
 				repository.id,
+				isCurrentlyStreaming,
+			);
+
+			// Need to fetch full issue for routing context
+			const linearClient = this.linearClients.get(repository.id);
+			if (linearClient) {
+				try {
+					fullIssue = await linearClient.issue(issue.id);
+				} catch (error) {
+					console.warn(
+						`[EdgeWorker] Failed to fetch full issue for routing: ${issue.id}`,
+						error,
+					);
+					// Continue with degraded routing context
+				}
+			}
+		}
+
+		// Check if runner is actively streaming before routing
+		const existingRunner = session?.claudeRunner;
+		const isStreaming = existingRunner?.isStreaming() || false;
+
+		// Always route procedure for new comments, UNLESS actively streaming
+		if (!isStreaming) {
+			// Initialize procedure metadata using intelligent routing
+			if (!session.metadata) {
+				session.metadata = {};
+			}
+
+			// Post ephemeral "Routing..." thought
+			await agentSessionManager.postRoutingThought(
+				linearAgentActivitySessionId,
+			);
+
+			// For prompted events, use the actual prompt content from the user
+			// Combine with issue context for better routing
+			if (!fullIssue) {
+				console.warn(
+					`[EdgeWorker] Routing without full issue details for ${linearAgentActivitySessionId}`,
+				);
+			}
+			const promptBody = webhook.agentActivity.content.body;
+			const routingDecision = await this.procedureRouter.determineRoutine(
+				promptBody.trim(),
+			);
+			const selectedProcedure = routingDecision.procedure;
+
+			// Initialize procedure metadata in session (resets for each new comment)
+			this.procedureRouter.initializeProcedureMetadata(
+				session,
+				selectedProcedure,
+			);
+
+			// Post procedure selection result (replaces ephemeral routing thought)
+			await agentSessionManager.postProcedureSelectionThought(
+				linearAgentActivitySessionId,
+				selectedProcedure.name,
+				routingDecision.classification,
+			);
+
+			// Log routing decision
+			console.log(
+				`[EdgeWorker] Routing decision for ${linearAgentActivitySessionId} (prompted webhook, ${isNewSession ? "new" : "existing"} session):`,
+			);
+			console.log(`  Classification: ${routingDecision.classification}`);
+			console.log(`  Procedure: ${selectedProcedure.name}`);
+			console.log(`  Reasoning: ${routingDecision.reasoning}`);
+		} else {
+			console.log(
+				`[EdgeWorker] Skipping routing for ${linearAgentActivitySessionId} - runner is actively streaming`,
 			);
 		}
 
@@ -1684,16 +1943,8 @@ export class EdgeWorker extends EventEmitter {
 			);
 		}
 
-		// Nothing before this should create latency or be async, so that these remain instant and low-latency for user experience
-		const existingRunner = session.claudeRunner;
-		if (!isNewSession) {
-			// Only post acknowledgment for existing sessions (new sessions already handled it above)
-			await this.postInstantPromptedAcknowledgment(
-				linearAgentActivitySessionId,
-				repository.id,
-				existingRunner?.isStreaming() || false,
-			);
-		}
+		// Acknowledgment already posted above for both new and existing sessions
+		// (before any async routing work to ensure instant user feedback)
 
 		// Get Linear client for this repository
 		const linearClient = this.linearClients.get(repository.id);
@@ -1795,7 +2046,6 @@ export class EdgeWorker extends EventEmitter {
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
 
 			existingRunner.addStreamMessage(fullPrompt);
 			return; // Exit early - comment has been added to stream
@@ -2142,7 +2392,6 @@ export class EdgeWorker extends EventEmitter {
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
 			console.log(
 				`[EdgeWorker] Label-based prompt built successfully, length: ${prompt.length} characters`,
 			);
@@ -2200,7 +2449,6 @@ IMPORTANT: You were specifically mentioned in the comment above. Focus on addres
 				prompt = `${prompt}\n\n${attachmentManifest}`;
 			}
 
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
 			return { prompt };
 		} catch (error) {
 			console.error(`[EdgeWorker] Error building mention prompt:`, error);
@@ -2605,8 +2853,6 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				prompt = `${prompt}\n\n<repository-specific-instruction>\n${repository.appendInstruction}\n</repository-specific-instruction>`;
 			}
 
-			prompt = `${prompt}${LAST_MESSAGE_MARKER}`;
-
 			console.log(
 				`[EdgeWorker] Final prompt length: ${prompt.length} characters`,
 			);
@@ -2634,7 +2880,7 @@ Branch: ${issue.branchName}
 Working directory: ${repository.repositoryPath}
 Base branch: ${baseBranch}
 
-${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution. ${LAST_MESSAGE_MARKER}`;
+${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please analyze this issue and help implement a solution.`;
 
 			return { prompt: fallbackPrompt, version: undefined };
 		}
@@ -3413,6 +3659,25 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			}),
 		};
 
+		// Add OpenAI-based MCP servers if API key is configured
+		if (repository.openaiApiKey) {
+			// Sora video generation tools
+			mcpConfig["sora-tools"] = createSoraToolsServer({
+				apiKey: repository.openaiApiKey,
+				outputDirectory: repository.openaiOutputDirectory,
+			});
+
+			// GPT Image generation tools
+			mcpConfig["image-tools"] = createImageToolsServer({
+				apiKey: repository.openaiApiKey,
+				outputDirectory: repository.openaiOutputDirectory,
+			});
+
+			console.log(
+				`[EdgeWorker] Configured OpenAI MCP servers (Sora + GPT Image) for repository: ${repository.name}`,
+			);
+		}
+
 		return mcpConfig;
 	}
 
@@ -3464,7 +3729,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			const manifestSuffix = attachmentManifest
 				? `\n\n${attachmentManifest}`
 				: "";
-			return `${promptBody}${manifestSuffix}${LAST_MESSAGE_MARKER}`;
+			return `${promptBody}${manifestSuffix}`;
 		}
 	}
 
@@ -3481,6 +3746,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		disallowedTools: string[],
 		resumeSessionId?: string,
 		labels?: string[],
+		maxTurns?: number,
 	): ClaudeRunnerConfig {
 		// Configure PostToolUse hook for playwright screenshots
 		const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {
@@ -3552,7 +3818,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			cyrusHome: this.cyrusHome,
 			mcpConfigPath: repository.mcpConfigPath,
 			mcpConfig: this.buildMcpConfig(repository, linearAgentActivitySessionId),
-			appendSystemPrompt: (systemPrompt || "") + LAST_MESSAGE_MARKER,
+			appendSystemPrompt: systemPrompt || "",
 			// Priority order: label override > repository config > global default
 			model: modelOverride || repository.model || this.config.defaultModel,
 			fallbackModel:
@@ -3572,6 +3838,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 		if (resumeSessionId) {
 			(config as any).resumeSessionId = resumeSessionId;
+		}
+
+		if (maxTurns !== undefined) {
+			(config as any).maxTurns = maxTurns;
 		}
 
 		return config;
@@ -4019,6 +4289,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		attachmentManifest: string = "",
 		isNewSession: boolean = false,
 		additionalAllowedDirectories: string[] = [],
+		maxTurns?: number,
 	): Promise<void> {
 		// Check for existing runner
 		const existingRunner = session.claudeRunner;
@@ -4029,7 +4300,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			if (attachmentManifest) {
 				fullPrompt = `${promptBody}\n\n${attachmentManifest}`;
 			}
-			fullPrompt = `${fullPrompt}${LAST_MESSAGE_MARKER}`;
 
 			existingRunner.addStreamMessage(fullPrompt);
 			return;
@@ -4086,6 +4356,10 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		];
 
 		// Create runner configuration
+		const resumeSessionId = needsNewClaudeSession
+			? undefined
+			: session.claudeSessionId;
+
 		const runnerConfig = this.buildClaudeRunnerConfig(
 			session,
 			repository,
@@ -4094,8 +4368,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 			allowedTools,
 			allowedDirectories,
 			disallowedTools,
-			needsNewClaudeSession ? undefined : session.claudeSessionId,
+			resumeSessionId,
 			labels, // Pass labels for model override
+			maxTurns, // Pass maxTurns if specified
 		);
 
 		const runner = new ClaudeRunner(runnerConfig);
@@ -4116,7 +4391,6 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		);
 
 		// Start streaming session
-
 		try {
 			await runner.startStreaming(fullPrompt);
 		} catch (error) {

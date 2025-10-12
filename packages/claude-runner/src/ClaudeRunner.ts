@@ -86,6 +86,13 @@ export class StreamingPrompt {
 	}
 
 	/**
+	 * Check if the stream is complete
+	 */
+	get completed(): boolean {
+		return this.isComplete;
+	}
+
+	/**
 	 * Process pending resolvers with queued messages
 	 */
 	private processQueue(): void {
@@ -404,6 +411,7 @@ export class ClaudeRunner extends EventEmitter {
 					}),
 					...(Object.keys(mcpServers).length > 0 && { mcpServers }),
 					...(this.config.hooks && { hooks: this.config.hooks }),
+					...(this.config.maxTurns && { maxTurns: this.config.maxTurns }),
 				},
 			};
 
@@ -595,7 +603,11 @@ export class ClaudeRunner extends EventEmitter {
 	 * Check if session is in streaming mode and still running
 	 */
 	isStreaming(): boolean {
-		return this.streamingPrompt !== null && this.isRunning();
+		return (
+			this.streamingPrompt !== null &&
+			!this.streamingPrompt.completed &&
+			this.isRunning()
+		);
 	}
 
 	/**
