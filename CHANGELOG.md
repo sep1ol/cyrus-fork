@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
-- Updated @anthropic-ai/claude-agent-sdk from v0.1.14 to v0.1.15 - includes parity with Claude Code v2.0.15, environment type improvements, and startup performance improvements for MCP servers. See [@anthropic-ai/claude-agent-sdk v0.1.15 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0115)
+- Updated @anthropic-ai/claude-agent-sdk from v0.1.15 to v0.1.19 - includes parity with Claude Code v2.0.19. See [@anthropic-ai/claude-agent-sdk v0.1.19 changelog](https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md#0119)
+- Updated @anthropic-ai/sdk from v0.65.0 to v0.66.0 - see [@anthropic-ai/sdk v0.66.0 changelog](https://github.com/anthropics/anthropic-sdk-typescript/compare/sdk-v0.65.0...sdk-v0.66.0)
 
 ## [0.1.57] - 2025-10-12
 
