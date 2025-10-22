@@ -40,6 +40,19 @@ export interface CyrusAgentSession {
 		totalCostUsd?: number;
 		usage?: any;
 		commentId?: string;
+		shouldSyncToLinear?: boolean; // Control whether to sync activities to Linear (false for fake sessions from data change webhooks)
+		// Thread reply support
+		originalCommentId?: string; // ID of the comment that triggered this session
+		originalCommentBody?: string; // Body of the original comment for context
+		shouldReplyInThread?: boolean; // Whether to post a reply when session completes
+		// Response template selection (for adaptive responses)
+		responseTemplate?: string; // Automatically selected by select-template subroutine (e.g., "just-replying", "task-completion", "documentation", etc.)
+		// Issue change tracking
+		issueChangeHistory?: Array<{
+			timestamp: number;
+			changes: string; // Human-readable summary
+			updatedFields: string[]; // List of specific changes
+		}>;
 		procedure?: {
 			procedureName: string;
 			currentSubroutineIndex: number;

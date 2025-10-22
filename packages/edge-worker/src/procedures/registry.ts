@@ -8,6 +8,21 @@ import type { ProcedureDefinition, RequestClassification } from "./types.js";
  * Predefined subroutine definitions
  */
 export const SUBROUTINES = {
+	analyzeCommand: {
+		name: "analyze-command",
+		promptPath: "subroutines/analyze-command.md",
+		description:
+			"Analyze if user gave explicit command or just made observation",
+		maxTurns: 1,
+		suppressThoughtPosting: false,
+	},
+	selectTemplate: {
+		name: "select-template",
+		promptPath: "subroutines/select-template.md",
+		description: "Select appropriate response template for Linear thread reply",
+		maxTurns: 1,
+		suppressThoughtPosting: true,
+	},
 	primary: {
 		name: "primary",
 		promptPath: "primary", // Special: resolved via label (debugger/builder/scoper/orchestrator)
@@ -106,6 +121,64 @@ export const PROCEDURES: Record<string, ProcedureDefinition> = {
 		description:
 			"Full orchestration workflow with decomposition and delegation to sub-agents",
 		subroutines: [SUBROUTINES.primary, SUBROUTINES.verboseSummary],
+	},
+
+	// Controlled mode procedures - with command analysis and approval gates
+	"full-development-controlled": {
+		name: "full-development-controlled",
+		description:
+			"Controlled mode: Analyze command, select response template, get approval, then execute full development workflow",
+		subroutines: [
+			SUBROUTINES.analyzeCommand,
+			SUBROUTINES.selectTemplate,
+			SUBROUTINES.getApproval,
+			SUBROUTINES.primary,
+			SUBROUTINES.verifications,
+			SUBROUTINES.gitGh,
+			SUBROUTINES.verboseSummary,
+		],
+	},
+
+	"debugger-full-controlled": {
+		name: "debugger-full-controlled",
+		description:
+			"Controlled mode: Analyze command, select response template, get approval, then execute debugging workflow",
+		subroutines: [
+			SUBROUTINES.analyzeCommand,
+			SUBROUTINES.selectTemplate,
+			SUBROUTINES.debuggerReproduction,
+			SUBROUTINES.getApproval,
+			SUBROUTINES.debuggerFix,
+			SUBROUTINES.verifications,
+			SUBROUTINES.gitGh,
+			SUBROUTINES.verboseSummary,
+		],
+	},
+
+	"documentation-edit-controlled": {
+		name: "documentation-edit-controlled",
+		description:
+			"Controlled mode: Analyze command, select response template, get approval, then edit documentation",
+		subroutines: [
+			SUBROUTINES.analyzeCommand,
+			SUBROUTINES.selectTemplate,
+			SUBROUTINES.getApproval,
+			SUBROUTINES.primary,
+			SUBROUTINES.gitGh,
+			SUBROUTINES.conciseSummary,
+		],
+	},
+
+	"simple-question-controlled": {
+		name: "simple-question-controlled",
+		description:
+			"Controlled mode: Analyze command, select response template, then answer question (no approval needed for read-only)",
+		subroutines: [
+			SUBROUTINES.analyzeCommand,
+			SUBROUTINES.selectTemplate,
+			SUBROUTINES.primary,
+			SUBROUTINES.conciseSummary,
+		],
 	},
 };
 

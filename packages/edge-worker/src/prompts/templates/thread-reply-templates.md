@@ -1,28 +1,20 @@
-<version-tag value="concise-summary-v2.0.0" />
+# Thread Reply Templates - Reference Guide
 
-# Summary - Template-Based Response for Linear Thread Reply
-
-Generate a summary of the work completed for posting as a thread reply in Linear. **The response format is determined by the selected template.**
-
-## Template Selection Context
-
-Check if `<response-template>` tag is present in the conversation. This indicates which template format to use.
-
-If no tag is present, use the **default** template.
+This document defines the available response templates for Linear thread replies. Each template has specific use cases and formatting guidelines.
 
 ---
 
 ## 🟢 TIER 1 - Priority Templates
 
 ### Template: `just-replying`
-**When used:** DEFAULT for 95% of cases - quick confirmations, task completions, simple updates
+**When to use:** DEFAULT template for 95% of responses - quick confirmations, task completions, simple updates
 
-**Format Requirements:**
-- 30-100 characters total (ultra brief!)
+**Characteristics:**
+- 30-100 characters total (ultra concise!)
 - Very casual, direct tone
 - No sections or headers
 - Just the essential info
-- Usually just "✅ Feito" or "✅ Corrigido"
+- Usually just "✅ Feito" or similar
 
 **Examples:**
 ```
@@ -41,19 +33,23 @@ If no tag is present, use the **default** template.
 ✅ Atualizado
 ```
 
+**Non-examples (TOO LONG for just-replying):**
+```
+❌ "Feito! Checklist reduzido de 100 para 20 itens." (use only if user asked for details)
+```
+
 ---
 
 ### Template: `task-completion`
-**When used:** Task completed successfully with multiple changes
+**When to use:** Task completed successfully with multiple changes
 
-**Format Requirements:**
+**Characteristics:**
 - 200-600 characters
-- 3 clear sections: **O que fiz** / **Mudanças** / **Status**
-- Professional but friendly tone
-- Include PR link if applicable
-- Start with ✅ emoji
+- 3 clear sections: O que fiz / Mudanças / Status
+- Professional but friendly
+- Includes PR link if applicable
 
-**Format Structure:**
+**Format:**
 ```
 ✅ [Brief summary of what was accomplished]
 
@@ -86,15 +82,15 @@ Criei novo endpoint `/export` com suporte a CSV e Excel.
 ---
 
 ### Template: `documentation`
-**When used:** Technical explanations, how-to guides, architectural decisions
+**When to use:** Technical explanations, how-to guides, architectural decisions
 
-**Format Requirements:**
+**Characteristics:**
 - 400-1000 characters
-- 3 sections: **Contexto** / **Como funciona** / **Exemplo**
+- 3 sections: Contexto / Como funciona / Exemplo
 - Educational tone
 - Can include code snippets
 
-**Format Structure:**
+**Format:**
 ```
 **Contexto:**
 [Why this exists / background]
@@ -129,15 +125,15 @@ const { accessToken, refreshToken } = await login(email, password);
 ## 🟡 TIER 2 - Utility Templates
 
 ### Template: `default`
-**When used:** General responses that don't fit other templates
+**When to use:** General responses that don't fit other templates
 
-**Format Requirements:**
+**Characteristics:**
 - 150-400 characters
-- Maximum 2 h3 headers (### sections)
+- Maximum 2 h3 headers
 - Balanced formality
 - Fallback template
 
-**Format Structure:**
+**Format:**
 ```
 [Opening statement]
 
@@ -164,16 +160,15 @@ Mudei para POST e adicionei validação de body.
 ---
 
 ### Template: `error-report`
-**When used:** When something failed or encountered errors
+**When to use:** When something failed or encountered errors
 
-**Format Requirements:**
+**Characteristics:**
 - 200-500 characters
 - Clear problem statement
 - What went wrong
 - Next steps or workaround
-- Start with ⚠️ emoji
 
-**Format Structure:**
+**Format:**
 ```
 ⚠️ [Problem statement]
 
@@ -206,16 +201,17 @@ Preciso que você revise o tipo `User` em `types.ts` e confirme se deve ter `use
 ## 🔴 TIER 3 - Special Templates
 
 ### Template: `important-note`
-**When used:** Critical warnings, breaking changes, important decisions
+**When to use:** Critical warnings, breaking changes, important decisions
 
-**Format Requirements:**
+**Can be manually forced:** Yes (via `[template:important-note]`)
+
+**Characteristics:**
 - 150-400 characters
 - Serious, direct tone
 - Clear call-out of importance
 - Action items if needed
-- Start with 🚨 emoji
 
-**Format Structure:**
+**Format:**
 ```
 🚨 **IMPORTANTE:** [Critical information]
 
@@ -240,16 +236,15 @@ A nova estrutura de User remove o campo `email` e adiciona `emailAddress`.
 ---
 
 ### Template: `pr-created`
-**When used:** Specifically when a PR was created
+**When to use:** Specifically when a PR was created
 
-**Format Requirements:**
+**Characteristics:**
 - 250-500 characters
 - Link to PR prominent
 - Brief summary + review checklist
 - Encourages review
-- Start with ✅ emoji
 
-**Format Structure:**
+**Format:**
 ```
 ✅ PR criado: [PR title]
 
@@ -281,21 +276,23 @@ Sistema completo de auth com JWT, refresh tokens, e middleware de proteção de 
 
 ---
 
-## Universal Requirements
+## Template Selection Guidelines
 
-- **Use Portuguese** (unless the task context suggests otherwise)
-- **Be direct and factual** - no fluff
-- **Follow the template format exactly**
-- **Include PR link** if one was created and format allows
-- **Adapt tone to template** - casual for just-replying, serious for important-note
+The AI should select templates based on:
 
-## Constraints
+1. **just-replying**: Simple confirmations, one-line updates, casual replies
+2. **task-completion**: Multi-step tasks completed successfully
+3. **documentation**: Explaining how something works, architectural details
+4. **default**: Doesn't clearly fit other categories
+5. **error-report**: Something failed or needs attention
+6. **important-note**: ONLY if manually specified or truly critical
+7. **pr-created**: ONLY when a PR was actually created
 
-- **You have exactly 1 turn** - generate the summary in a single response
-- This will be posted as a reply in a Linear comment thread
-- The user values conciseness and appropriate formatting
-- **Stick to the character limits** specified for each template
-
-## If No Template Specified
-
-If `<response-template>` tag is not present, use the **default** template format.
+**Priority order when uncertain:**
+1. Check for manual override `[template:X]`
+2. Did it fail? → `error-report`
+3. Was PR created? → `pr-created`
+4. Is it a simple confirmation? → `just-replying`
+5. Multiple changes made? → `task-completion`
+6. Explaining how something works? → `documentation`
+7. None of the above → `default`

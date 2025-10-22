@@ -29,6 +29,7 @@ export { PersistenceManager } from "./PersistenceManager.js";
 export type {
 	LinearAgentSessionCreatedWebhook,
 	LinearAgentSessionPromptedWebhook,
+	LinearDataChangeWebhook,
 	LinearIssueAssignedNotification,
 	LinearIssueAssignedWebhook,
 	LinearIssueCommentMentionNotification,
@@ -55,6 +56,7 @@ export type {
 export {
 	isAgentSessionCreatedWebhook,
 	isAgentSessionPromptedWebhook,
+	isDataChangeWebhook,
 	isIssueAssignedWebhook,
 	isIssueCommentMentionWebhook,
 	isIssueNewCommentWebhook,
