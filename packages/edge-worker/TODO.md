@@ -71,15 +71,20 @@
 - [ ] Wire up in EdgeWorker
 - [ ] Update tests
 
-### Phase 7: LinearApiClient Integration
-**Estimated: 2 hours**
+### Phase 7: LinearApiClient Integration ✅
+**Estimated: 2 hours | Actual: ~2.5 hours**
 
-- [ ] Find all direct `linearClient.issue()` calls → use `linearApiClient.getIssue()`
-- [ ] Find all direct `linearClient.comment()` calls → use `linearApiClient.getComment()`
-- [ ] Find all direct `linearClient.createComment()` calls → use `linearApiClient.createComment()`
-- [ ] Find all direct `linearClient.comments()` calls → use `linearApiClient.getIssueComments()`
-- [ ] Add any missing methods to LinearApiClient as needed
-- [ ] Verify retry logic working in production
+- [x] Find all direct `linearClient.issue()` calls → use `linearApiClient.getIssue()` (3 calls replaced)
+- [x] Find all direct `linearClient.comment()` calls → use `linearApiClient.getComment()` (3 calls replaced)
+- [x] Find all direct `linearClient.createComment()` calls → use `linearApiClient.createComment()` (1 call replaced, removed redundant retry logic)
+- [x] Find all direct `linearClient.comments()` calls → use `linearApiClient.getIssueComments()` (2 calls replaced)
+- [x] Replace `linearClient.createAgentActivity()` calls → use `linearApiClient.createAgentActivity()` (5 calls replaced)
+- [x] Replace `linearClient.issueLabels()` → use `linearApiClient.getIssueLabels()` (1 call replaced)
+- [x] Replace `linearClient.teams()` → use `linearApiClient.getRawClient().teams()` (1 call replaced)
+- [x] Replace `linearClient.client.rawRequest()` → use `linearApiClient.executeRawRequest()` (1 call replaced)
+- [x] Update method parameter types (changed `LinearClient` to `LinearApiClient` in `isParentCommentFromBot`)
+- [x] Add missing private field declarations to service scaffolds (WebhookHandler, SessionOrchestrator)
+- [ ] Verify retry logic working in production (deferred to production testing)
 
 ## 🧪 Testing Checklist
 

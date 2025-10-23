@@ -1155,9 +1155,9 @@ export class EdgeWorker extends EventEmitter {
 							}
 
 							// Post cancellation message to Linear
-							const linearClient = this.linearClients.get(repo.id);
-							if (linearClient) {
-								await linearClient.createAgentActivity({
+							const linearApiClient = this.linearApiClients.get(repo.id);
+							if (linearApiClient) {
+								await linearApiClient.createAgentActivity({
 									agentSessionId: session.linearAgentActivitySessionId,
 									content: {
 										type: "response",
@@ -1641,7 +1641,7 @@ export class EdgeWorker extends EventEmitter {
 	 */
 	private async isParentCommentFromBot(
 		parentId: string,
-		linearClient?: LinearClient,
+		linearApiClient?: LinearApiClient,
 	): Promise<boolean> {
 		// First check our tracking Set (fast)
 		if (this.sessionCleanup.isBotParentComment(parentId)) {
@@ -1652,15 +1652,10 @@ export class EdgeWorker extends EventEmitter {
 		}
 
 		// If not in Set and we have Linear client, query the API
-		if (linearClient) {
+		if (linearApiClient) {
 			try {
-				const comment = await retryWithBackoff(
-					async () => {
-						await this.linearRateLimiter.acquire();
-						return linearClient.comment({ id: parentId });
-					},
-					{ maxAttempts: 3, initialDelayMs: 1000 },
-				);
+				// LinearApiClient already has retry logic and rate limiting built-in
+				const comment = await linearApiClient.getComment(parentId);
 				const user = await comment.user;
 				const userId = user?.id;
 
@@ -1754,12 +1749,12 @@ export class EdgeWorker extends EventEmitter {
 			});
 
 			// Check if parent comment is from the bot
-			const linearClient = repository
-				? this.linearClients.get(repository.id)
+			const linearApiClient = repository
+				? this.linearApiClients.get(repository.id)
 				: undefined;
 			const isReplyToBot = await this.isParentCommentFromBot(
 				commentData.parentId,
-				linearClient,
+				linearApiClient,
 			);
 
 			if (isReplyToBot) {
@@ -2117,18 +2112,13 @@ export class EdgeWorker extends EventEmitter {
 		if (reposWithRoutingLabels.length > 0 && issueId && workspaceRepos[0]) {
 			// We need a Linear client to fetch labels
 			// Use the first workspace repo's client temporarily
-			const linearClient = this.linearClients.get(workspaceRepos[0].id);
+			const linearApiClient = this.linearApiClients.get(workspaceRepos[0].id);
 
-			if (linearClient) {
+			if (linearApiClient) {
 				try {
 					// Fetch the issue to get labels
-					const issue = await retryWithBackoff(
-						async () => {
-							await this.linearRateLimiter.acquire();
-							return linearClient.issue(issueId);
-						},
-						{ maxAttempts: 3, initialDelayMs: 1000 },
-					);
+					// LinearApiClient already has retry logic and rate limiting built-in
+					const issue = await linearApiClient.getIssue(issueId);
 					const labels = await this.fetchIssueLabels(issue);
 
 					// Check each repo with routing labels
@@ -2911,16 +2901,11 @@ But NEVER use mcp__linear's createComment function - your text response will be 
 			);
 
 			// Need to fetch full issue for routing context
-			const linearClient = this.linearClients.get(repository.id);
-			if (linearClient) {
+			const linearApiClient = this.linearApiClients.get(repository.id);
+			if (linearApiClient) {
 				try {
-					fullIssue = await retryWithBackoff(
-						async () => {
-							await this.linearRateLimiter.acquire();
-							return linearClient.issue(issue.id);
-						},
-						{ maxAttempts: 3, initialDelayMs: 1000 },
-					);
+					// LinearApiClient already has retry logic and rate limiting built-in
+					fullIssue = await linearApiClient.getIssue(issue.id);
 				} catch (error) {
 					logger.warn("Failed to fetch full issue for routing", {
 						repository: repository.name,
@@ -3002,8 +2987,8 @@ But NEVER use mcp__linear's createComment function - your text response will be 
 		// (before any async routing work to ensure instant user feedback)
 
 		// Get Linear client for this repository
-		const linearClient = this.linearClients.get(repository.id);
-		if (!linearClient) {
+		const linearApiClient = this.linearApiClients.get(repository.id);
+		if (!linearApiClient) {
 			logger.error("No LinearClient found for repository", {
 				repository: repository.name,
 				repositoryId: repository.id,
@@ -3023,7 +3008,7 @@ But NEVER use mcp__linear's createComment function - your text response will be 
 
 		let attachmentManifest = "";
 		try {
-			const result = await linearClient.client.rawRequest(
+			const result = await linearApiClient.executeRawRequest<any>(
 				`
           query GetComment($id: String!) {
             comment(id: $id) {
@@ -3519,8 +3504,8 @@ But NEVER use mcp__linear's createComment function - your text response will be 
 			}
 
 			// Get LinearClient for this repository
-			const linearClient = this.linearClients.get(repository.id);
-			if (!linearClient) {
+			const linearApiClient = this.linearApiClients.get(repository.id);
+			if (!linearApiClient) {
 				logger.error("No LinearClient found for repository", {
 					repository: repository.name,
 					repositoryId: repository.id,
@@ -3540,7 +3525,7 @@ But NEVER use mcp__linear's createComment function - your text response will be 
 				});
 
 				// Fetch teams
-				const teamsConnection = await linearClient.teams();
+				const teamsConnection = await linearApiClient.getRawClient().teams();
 				const teamsArray = [];
 				for (const team of teamsConnection.nodes) {
 					teamsArray.push({
@@ -3559,7 +3544,7 @@ But NEVER use mcp__linear's createComment function - your text response will be 
 					.join("\n");
 
 				// Fetch labels
-				const labelsConnection = await linearClient.issueLabels();
+				const labelsConnection = await linearApiClient.getIssueLabels();
 				const labelsArray = [];
 				for (const label of labelsConnection.nodes) {
 					labelsArray.push({
@@ -3997,18 +3982,16 @@ ${reply.body}
 			const baseBranch = await this.determineBaseBranch(issue, repository);
 
 			// Get formatted comment threads
-			const linearClient = this.linearClients.get(repository.id);
+			const linearApiClient = this.linearApiClients.get(repository.id);
 			let commentThreads = "No comments yet.";
 
-			if (linearClient && issue.id) {
+			if (linearApiClient && issue.id) {
 				try {
 					logger.debug("Fetching comments for issue", {
 						repository: repository.name,
 						issueIdentifier: issue.identifier,
 					});
-					const comments = await linearClient.comments({
-						filter: { issue: { id: { eq: issue.id } } },
-					});
+					const comments = await linearApiClient.getIssueComments(issue.id);
 
 					const commentNodes = comments.nodes;
 					if (commentNodes.length > 0) {
@@ -4072,17 +4055,10 @@ IMPORTANT: Focus specifically on addressing the new comment above. This is a new
 				// Now replace the new comment variables
 				// We'll need to fetch the comment author
 				let authorName = "Unknown";
-				if (linearClient) {
+				if (linearApiClient) {
 					try {
-						const fullComment = await retryWithBackoff(
-							async () => {
-								await this.linearRateLimiter.acquire();
-								return linearClient.comment({
-									id: newComment.id,
-								});
-							},
-							{ maxAttempts: 3, initialDelayMs: 1000 },
-						);
+						// LinearApiClient already has retry logic and rate limiting built-in
+						const fullComment = await linearApiClient.getComment(newComment.id);
 						const user = await fullComment.user;
 						authorName =
 							user?.displayName || user?.name || user?.email || "Unknown";
@@ -4239,8 +4215,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		parentId?: string,
 	): Promise<void> {
 		// Get the Linear client for this repository
-		const linearClient = this.linearClients.get(repositoryId);
-		if (!linearClient) {
+		const linearApiClient = this.linearApiClients.get(repositoryId);
+		if (!linearApiClient) {
 			throw new Error(`No Linear client found for repository ${repositoryId}`);
 		}
 		const commentData: { issueId: string; body: string; parentId?: string } = {
@@ -4251,23 +4227,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		if (parentId) {
 			commentData.parentId = parentId;
 		}
-		const result = await retryWithBackoff(
-			async () => {
-				await this.linearRateLimiter.acquire();
-				return linearClient.createComment(commentData);
-			},
-			{
-				maxAttempts: 3,
-				initialDelayMs: 1000,
-				onRetry: (attempt, error) => {
-					logger.warn("Retrying createComment", {
-						attempt,
-						maxAttempts: 3,
-						error: error.message,
-					});
-				},
-			},
-		);
+		// LinearApiClient already has retry logic and rate limiting built-in
+		const result = await linearApiClient.createComment(commentData);
 
 		// Track this comment as bot-created to prevent responding to it
 		const comment = await result.comment;
@@ -4561,8 +4522,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		});
 
 		// Get Linear client to fetch comment details
-		const linearClient = this.linearClients.get(repositoryId);
-		if (!linearClient) {
+		const linearApiClient = this.linearApiClients.get(repositoryId);
+		if (!linearApiClient) {
 			logger.error("No Linear client found for repository", {
 				repositoryId,
 			});
@@ -4573,13 +4534,9 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		// Linear requires replies to use the TOP-LEVEL comment ID, not nested reply IDs
 		let parentIdForReply = originalCommentId; // Default fallback
 		try {
-			const originalComment = await retryWithBackoff(
-				async () => {
-					await this.linearRateLimiter.acquire();
-					return linearClient.comment({ id: originalCommentId });
-				},
-				{ maxAttempts: 3, initialDelayMs: 1000 },
-			);
+			// LinearApiClient already has retry logic and rate limiting built-in
+			const originalComment =
+				await linearApiClient.getComment(originalCommentId);
 			const parentCommentId = await originalComment.parent;
 
 			if (parentCommentId) {
@@ -4780,11 +4737,11 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 			// Extract URLs from comments if available
 			const commentUrls: string[] = [];
-			const linearClient = this.linearClients.get(repository.id);
+			const linearApiClient = this.linearApiClients.get(repository.id);
 
 			// Fetch native Linear attachments (e.g., Sentry links)
 			const nativeAttachments: Array<{ title: string; url: string }> = [];
-			if (linearClient && issue.id) {
+			if (linearApiClient && issue.id) {
 				// OPTIMIZATION: Fetch attachments and comments in parallel (2x faster)
 				logger.debug("Fetching native attachments and comments in parallel", {
 					repository: repository.name,
@@ -4793,9 +4750,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 
 				const [attachmentsResult, commentsResult] = await Promise.allSettled([
 					issue.attachments(),
-					linearClient.comments({
-						filter: { issue: { id: { eq: issue.id } } },
-					}),
+					linearApiClient.getIssueComments(issue.id),
 				]);
 
 				// Process attachments result
@@ -5789,8 +5744,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const linearApiClient = this.linearApiClients.get(repositoryId);
+			if (!linearApiClient) {
 				logger.warn("No Linear client found for repository", {
 					repositoryId,
 				});
@@ -5805,7 +5760,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await linearApiClient.createAgentActivity(activityInput);
 			if (result.success) {
 				logger.debug("Posted instant acknowledgment thought", {
 					repositoryId,
@@ -5835,8 +5790,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const linearApiClient = this.linearApiClients.get(repositoryId);
+			if (!linearApiClient) {
 				logger.warn("No Linear client found for repository", {
 					repositoryId,
 				});
@@ -5851,7 +5806,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await linearApiClient.createAgentActivity(activityInput);
 			if (result.success) {
 				logger.debug("Posted parent resumption acknowledgment thought", {
 					repositoryId,
@@ -5882,8 +5837,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		repositoryId: string,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const linearApiClient = this.linearApiClients.get(repositoryId);
+			if (!linearApiClient) {
 				logger.warn("No Linear client found for repository", {
 					repositoryId,
 				});
@@ -5964,7 +5919,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await linearApiClient.createAgentActivity(activityInput);
 			if (result.success) {
 				logger.debug("Posted system prompt selection thought", {
 					repositoryId,
@@ -6135,8 +6090,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		isStreaming: boolean,
 	): Promise<void> {
 		try {
-			const linearClient = this.linearClients.get(repositoryId);
-			if (!linearClient) {
+			const linearApiClient = this.linearApiClients.get(repositoryId);
+			if (!linearApiClient) {
 				logger.warn("No Linear client found for repository", {
 					repositoryId,
 				});
@@ -6155,7 +6110,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				},
 			};
 
-			const result = await linearClient.createAgentActivity(activityInput);
+			const result = await linearApiClient.createAgentActivity(activityInput);
 			if (result.success) {
 				logger.debug("Posted instant prompted acknowledgment thought", {
 					repositoryId,
@@ -6185,8 +6140,8 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 		issueId: string,
 		repositoryId: string,
 	): Promise<LinearIssue | null> {
-		const linearClient = this.linearClients.get(repositoryId);
-		if (!linearClient) {
+		const linearApiClient = this.linearApiClients.get(repositoryId);
+		if (!linearApiClient) {
 			logger.warn("No Linear client found for repository", {
 				repositoryId,
 			});
@@ -6198,7 +6153,7 @@ ${newComment ? `New comment to address:\n${newComment.body}\n\n` : ""}Please ana
 				repositoryId,
 				issueId,
 			});
-			const fullIssue = await linearClient.issue(issueId);
+			const fullIssue = await linearApiClient.getIssue(issueId);
 			logger.debug("Successfully fetched issue details", {
 				repositoryId,
 				issueId,
