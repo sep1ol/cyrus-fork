@@ -34,6 +34,7 @@ export interface LinearWebhookComment {
 	body: string; // e.g. "this is a root comment"
 	userId: string; // e.g. "4df89eff-81af-4dd9-9201-cbac79892468"
 	issueId: string; // e.g. "baffe010-6475-4e9a-9aa8-9544e31bf95f"
+	parentId?: string; // Present when this is a reply to another comment
 }
 
 /**
@@ -284,6 +285,20 @@ export interface LinearAgentSessionPromptedWebhook {
 }
 
 /**
+ * Data Change Event webhooks (type="Issue", "Comment", etc.)
+ */
+export interface LinearDataChangeWebhook {
+	type: string; // "Issue", "Comment", "IssueLabel", etc.
+	action: "create" | "update" | "remove";
+	createdAt: string;
+	organizationId: string;
+	webhookTimestamp: string;
+	webhookId: string;
+	data: any; // The changed entity (issue, comment, etc.)
+	updatedFrom?: any; // Previous state (for updates)
+}
+
+/**
  * Union of all webhook types we handle
  */
 export type LinearWebhook =
@@ -292,7 +307,8 @@ export type LinearWebhook =
 	| LinearIssueNewCommentWebhook
 	| LinearIssueUnassignedWebhook
 	| LinearAgentSessionCreatedWebhook
-	| LinearAgentSessionPromptedWebhook;
+	| LinearAgentSessionPromptedWebhook
+	| LinearDataChangeWebhook;
 
 /**
  * Type guards for webhook discrimination
@@ -331,4 +347,16 @@ export function isAgentSessionPromptedWebhook(
 	webhook: LinearWebhook,
 ): webhook is LinearAgentSessionPromptedWebhook {
 	return webhook.type === "AgentSessionEvent" && webhook.action === "prompted";
+}
+
+export function isDataChangeWebhook(
+	webhook: LinearWebhook,
+): webhook is LinearDataChangeWebhook {
+	// Data change webhooks have types like "Issue", "Comment", "IssueLabel", etc.
+	// They don't have the "AppUserNotification" or "AgentSessionEvent" type
+	return (
+		webhook.type !== "AppUserNotification" &&
+		webhook.type !== "AgentSessionEvent" &&
+		"data" in webhook
+	);
 }

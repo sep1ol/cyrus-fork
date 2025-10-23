@@ -6,32 +6,29 @@ compatibility_flags = ["nodejs_compat"]
 # KV namespaces
 [[kv_namespaces]]
 binding = "OAUTH_TOKENS"
-id = "3f479deaed5c48cd9155fb799dd93c14"
-preview_id = "oauth_tokens_preview"
+id = "46593659c0b14f33a612099cd3c4902e"
+preview_id = "8f9bd09c71de4eda84d26284854f4b70"
 
 [[kv_namespaces]]
 binding = "OAUTH_STATE"
-id = "8b994bfaf3754baab6412686666fdf3c"
-preview_id = "oauth_state_preview"
+id = "4d723040d2284c08bc22f71d7168c88e"
+preview_id = "71b58ad0d7024ad2ba09890f8b3f40b8"
 
 [[kv_namespaces]]
 binding = "EDGE_TOKENS"
-id = "e780a2273a7348e5ac27b33dfea4cb1f"
-preview_id = "edge_tokens_preview"
+id = "de819fedb0f642e2ae462c4522df0434"
+preview_id = "5f78b0a489584859a55964ba3271d0f9"
 
 [[kv_namespaces]]
 binding = "WORKSPACE_METADATA"
-id = "0295b62cf81848228d1baf9df9281218"
-preview_id = "workspace_metadata_preview"
+id = "9716e422464f4a3a923c7c4d7f841b21"
+preview_id = "4f441a9a6d394277932f7d916e52fcda"
 
 # Environment variables (use wrangler secret for production)
 [vars]
-OAUTH_REDIRECT_URI = "https://cyrus-proxy.ceedar.workers.dev/oauth/callback"
+OAUTH_REDIRECT_URI = "https://cyrus-proxy.cistech.workers.dev/oauth/callback"
 
 # Durable Objects removed - using webhook-only architecture
-[[migrations]]
-tag = "v2"
-deleted_classes = ["EventStreamDurableObject"]
 
 # Local development settings
 [miniflare]

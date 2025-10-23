@@ -7,6 +7,9 @@ import {
 import { URL } from "node:url";
 import { forward } from "@ngrok/ngrok";
 import { DEFAULT_PROXY_URL, type OAuthCallbackHandler } from "cyrus-core";
+import { Logger } from "./utils/Logger.js";
+
+const logger = new Logger({ name: "SharedApplicationServer" });
 
 /**
  * OAuth callback state for tracking flows
@@ -91,9 +94,11 @@ export class SharedApplicationServer {
 
 			this.server.listen(this.port, this.host, async () => {
 				this.isListening = true;
-				console.log(
-					`🔗 Shared application server listening on http://${this.host}:${this.port}`,
-				);
+				logger.info("Shared application server listening", {
+					host: this.host,
+					port: this.port,
+					pid: process.pid,
+				});
 
 				// Start ngrok tunnel if auth token is provided and not external host
 				const isExternalHost =
@@ -102,7 +107,7 @@ export class SharedApplicationServer {
 					try {
 						await this.startNgrokTunnel();
 					} catch (error) {
-						console.error("🔴 Failed to start ngrok tunnel:", error);
+						logger.error("Failed to start ngrok tunnel", error);
 						// Don't reject here - server can still work without ngrok
 					}
 				}
@@ -124,9 +129,7 @@ export class SharedApplicationServer {
 		// Reject all pending approvals before shutdown
 		for (const [sessionId, approval] of this.pendingApprovals) {
 			approval.reject(new Error("Server shutting down"));
-			console.log(
-				`🔐 Rejected pending approval for session ${sessionId} due to shutdown`,
-			);
+			logger.info("Rejected pending approval due to shutdown", { sessionId });
 		}
 		this.pendingApprovals.clear();
 
@@ -136,9 +139,9 @@ export class SharedApplicationServer {
 				await this.ngrokListener.close();
 				this.ngrokListener = null;
 				this.ngrokUrl = null;
-				console.log("🔗 Ngrok tunnel stopped");
+				logger.info("Ngrok tunnel stopped");
 			} catch (error) {
-				console.error("🔴 Failed to stop ngrok tunnel:", error);
+				logger.error("Failed to stop ngrok tunnel", error);
 			}
 		}
 
@@ -146,7 +149,7 @@ export class SharedApplicationServer {
 			return new Promise((resolve) => {
 				this.server!.close(() => {
 					this.isListening = false;
-					console.log("🔗 Shared application server stopped");
+					logger.info("Shared application server stopped");
 					resolve();
 				});
 			});
@@ -179,19 +182,19 @@ export class SharedApplicationServer {
 		}
 
 		try {
-			console.log("🔗 Starting ngrok tunnel...");
+			logger.info("Starting ngrok tunnel", { port: this.port });
 			this.ngrokListener = await forward({
 				addr: this.port,
 				authtoken: this.ngrokAuthToken,
 			});
 
 			this.ngrokUrl = this.ngrokListener.url();
-			console.log(`🌐 Ngrok tunnel active: ${this.ngrokUrl}`);
+			logger.info("Ngrok tunnel active", { url: this.ngrokUrl });
 
 			// Override CYRUS_BASE_URL with ngrok URL
 			process.env.CYRUS_BASE_URL = this.ngrokUrl || undefined;
 		} catch (error) {
-			console.error("🔴 Failed to start ngrok tunnel:", error);
+			logger.error("Failed to start ngrok tunnel", error);
 			throw error;
 		}
 	}
@@ -212,15 +215,15 @@ export class SharedApplicationServer {
 		if (typeof secretOrHandler === "string" && handler) {
 			// ndjson-client style registration
 			this.webhookHandlers.set(token, { secret: secretOrHandler, handler });
-			console.log(
-				`🔗 Registered webhook handler (proxy-style) for token ending in ...${token.slice(-4)}`,
-			);
+			logger.info("Registered webhook handler (proxy-style)", {
+				tokenSuffix: token.slice(-4),
+			});
 		} else if (typeof secretOrHandler === "function") {
 			// linear-webhook-client style registration
 			this.linearWebhookHandlers.set(token, secretOrHandler);
-			console.log(
-				`🔗 Registered webhook handler (direct-style) for token ending in ...${token.slice(-4)}`,
-			);
+			logger.info("Registered webhook handler (direct-style)", {
+				tokenSuffix: token.slice(-4),
+			});
 		} else {
 			throw new Error("Invalid webhook handler registration parameters");
 		}
@@ -233,9 +236,9 @@ export class SharedApplicationServer {
 		const hadProxyHandler = this.webhookHandlers.delete(token);
 		const hadDirectHandler = this.linearWebhookHandlers.delete(token);
 		if (hadProxyHandler || hadDirectHandler) {
-			console.log(
-				`🔗 Unregistered webhook handler for token ending in ...${token.slice(-4)}`,
-			);
+			logger.info("Unregistered webhook handler", {
+				tokenSuffix: token.slice(-4),
+			});
 		}
 	}
 
@@ -244,7 +247,7 @@ export class SharedApplicationServer {
 	 */
 	registerOAuthCallbackHandler(handler: OAuthCallbackHandler): void {
 		this.oauthCallbackHandler = handler;
-		console.log("🔐 Registered OAuth callback handler");
+		logger.info("Registered OAuth callback handler");
 	}
 
 	/**
@@ -277,14 +280,16 @@ export class SharedApplicationServer {
 			if (useDirectOAuth) {
 				// Use local OAuth authorize endpoint
 				authUrl = `${callbackBaseUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
-				console.log(`\n🔐 Using direct OAuth mode (CYRUS_HOST_EXTERNAL=true)`);
+				logger.info("Using direct OAuth mode", {
+					mode: "direct",
+					externalHost: true,
+				});
 			} else {
 				// Use proxy OAuth endpoint
 				authUrl = `${proxyUrl}/oauth/authorize?callback=${encodeURIComponent(`${callbackBaseUrl}/callback`)}`;
 			}
 
-			console.log(`\n👉 Opening your browser to authorize with Linear...`);
-			console.log(`If the browser doesn't open, visit: ${authUrl}`);
+			logger.info("Opening browser to authorize with Linear", { authUrl });
 
 			// Timeout after 5 minutes
 			setTimeout(
@@ -352,7 +357,7 @@ export class SharedApplicationServer {
 				res.end("Not Found");
 			}
 		} catch (error) {
-			console.error("🔗 Request handling error:", error);
+			logger.error("Request handling error", error, { url: req.url });
 			res.writeHead(500, { "Content-Type": "text/plain" });
 			res.end("Internal Server Error");
 		}
@@ -366,10 +371,13 @@ export class SharedApplicationServer {
 		res: ServerResponse,
 	): Promise<void> {
 		try {
-			console.log(`🔗 Incoming webhook request: ${req.method} ${req.url}`);
+			logger.info("Incoming webhook request", {
+				method: req.method,
+				url: req.url,
+			});
 
 			if (req.method !== "POST") {
-				console.log(`🔗 Rejected non-POST request: ${req.method}`);
+				logger.warn("Rejected non-POST request", { method: req.method });
 				res.writeHead(405, { "Content-Type": "text/plain" });
 				res.end("Method Not Allowed");
 				return;
@@ -382,31 +390,30 @@ export class SharedApplicationServer {
 			if (isDirectWebhook && this.linearWebhookHandlers.size > 0) {
 				// For direct Linear webhooks, pass the raw request to the handler
 				// The LinearWebhookClient will handle its own signature verification
-				console.log(
-					`🔗 Direct Linear webhook received, trying ${this.linearWebhookHandlers.size} direct handlers`,
-				);
+				logger.info("Direct Linear webhook received", {
+					handlerCount: this.linearWebhookHandlers.size,
+				});
 
 				// Try each direct handler
 				for (const [token, handler] of this.linearWebhookHandlers) {
 					try {
 						// The handler will manage the response
 						await handler(req, res);
-						console.log(
-							`🔗 Direct webhook delivered to token ending in ...${token.slice(-4)}`,
-						);
+						logger.info("Direct webhook delivered", {
+							tokenSuffix: token.slice(-4),
+						});
 						return;
 					} catch (error) {
-						console.error(
-							`🔗 Error in direct webhook handler for token ...${token.slice(-4)}:`,
-							error,
-						);
+						logger.error("Error in direct webhook handler", error, {
+							tokenSuffix: token.slice(-4),
+						});
 					}
 				}
 
 				// No direct handler could process it
-				console.error(
-					`🔗 Direct webhook processing failed for all ${this.linearWebhookHandlers.size} handlers`,
-				);
+				logger.error("Direct webhook processing failed for all handlers", {
+					handlerCount: this.linearWebhookHandlers.size,
+				});
 				res.writeHead(401, { "Content-Type": "text/plain" });
 				res.end("Unauthorized");
 				return;
@@ -425,12 +432,13 @@ export class SharedApplicationServer {
 					const signature = req.headers["x-webhook-signature"] as string;
 					const timestamp = req.headers["x-webhook-timestamp"] as string;
 
-					console.log(
-						`🔗 Proxy webhook received with ${body.length} bytes, ${this.webhookHandlers.size} registered handlers`,
-					);
+					logger.info("Proxy webhook received", {
+						bodySize: body.length,
+						handlerCount: this.webhookHandlers.size,
+					});
 
 					if (!signature) {
-						console.log("🔗 Webhook rejected: Missing signature header");
+						logger.warn("Webhook rejected: Missing signature header");
 						res.writeHead(400, { "Content-Type": "text/plain" });
 						res.end("Missing signature");
 						return;
@@ -445,39 +453,43 @@ export class SharedApplicationServer {
 								// Handler verified signature and processed webhook
 								res.writeHead(200, { "Content-Type": "text/plain" });
 								res.end("OK");
-								console.log(
-									`🔗 Webhook delivered to token ending in ...${token.slice(-4)} (attempt ${handlerAttempts}/${this.webhookHandlers.size})`,
-								);
+								logger.info("Webhook delivered", {
+									tokenSuffix: token.slice(-4),
+									attempt: handlerAttempts,
+									totalHandlers: this.webhookHandlers.size,
+								});
 								return;
 							}
 						} catch (error) {
-							console.error(
-								`🔗 Error in webhook handler for token ...${token.slice(-4)}:`,
-								error,
-							);
+							logger.error("Error in webhook handler", error, {
+								tokenSuffix: token.slice(-4),
+							});
 						}
 					}
 
 					// No handler could verify the signature
-					console.error(
-						`🔗 Webhook signature verification failed for all ${this.webhookHandlers.size} registered handlers`,
+					logger.error(
+						"Webhook signature verification failed for all handlers",
+						{
+							handlerCount: this.webhookHandlers.size,
+						},
 					);
 					res.writeHead(401, { "Content-Type": "text/plain" });
 					res.end("Unauthorized");
 				} catch (error) {
-					console.error("🔗 Error processing webhook:", error);
+					logger.error("Error processing webhook", error);
 					res.writeHead(400, { "Content-Type": "text/plain" });
 					res.end("Bad Request");
 				}
 			});
 
 			req.on("error", (error) => {
-				console.error("🔗 Request error:", error);
+				logger.error("Request error", error);
 				res.writeHead(500, { "Content-Type": "text/plain" });
 				res.end("Internal Server Error");
 			});
 		} catch (error) {
-			console.error("🔗 Webhook request error:", error);
+			logger.error("Webhook request error", error);
 			res.writeHead(500, { "Content-Type": "text/plain" });
 			res.end("Internal Server Error");
 		}
@@ -534,7 +546,7 @@ export class SharedApplicationServer {
               <p>You can close this window and return to the terminal.</p>
               <p>Your Linear workspace <strong>${workspaceName}</strong> has been connected.</p>
               <p style="margin-top: 30px;">
-                <a href="${this.proxyUrl}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback" 
+                <a href="${this.proxyUrl}/oauth/authorize?callback=${process.env.CYRUS_BASE_URL || `http://${this.host}:${this.port}`}/callback"
                    style="padding: 10px 20px; background: #5E6AD2; color: white; text-decoration: none; border-radius: 5px;">
                   Connect Another Workspace
                 </a>
@@ -544,9 +556,10 @@ export class SharedApplicationServer {
           </html>
         `);
 
-				console.log(
-					`🔐 OAuth callback received for workspace: ${workspaceName}`,
-				);
+				logger.info("OAuth callback received", {
+					workspaceId,
+					workspaceName,
+				});
 
 				// Resolve any waiting promises
 				if (this.oauthCallbacks.size > 0) {
@@ -562,7 +575,7 @@ export class SharedApplicationServer {
 					try {
 						await this.oauthCallbackHandler(token, workspaceId, workspaceName);
 					} catch (error) {
-						console.error("🔐 Error in OAuth callback handler:", error);
+						logger.error("Error in OAuth callback handler", error);
 					}
 				}
 			} else {
@@ -576,7 +589,7 @@ export class SharedApplicationServer {
 				}
 			}
 		} catch (error) {
-			console.error("🔐 OAuth callback error:", error);
+			logger.error("OAuth callback error", error);
 			res.writeHead(500, { "Content-Type": "text/plain" });
 			res.end("Internal Server Error");
 		}
@@ -647,13 +660,15 @@ export class SharedApplicationServer {
 			authUrl.searchParams.set("actor", "app");
 			authUrl.searchParams.set("prompt", "consent");
 
-			console.log(`🔐 Redirecting to Linear OAuth: ${authUrl.toString()}`);
+			logger.info("Redirecting to Linear OAuth", {
+				authUrl: authUrl.toString(),
+			});
 
 			// Redirect to Linear OAuth
 			res.writeHead(302, { Location: authUrl.toString() });
 			res.end();
 		} catch (error) {
-			console.error("🔐 OAuth authorize error:", error);
+			logger.error("OAuth authorize error", error);
 			res.writeHead(500, { "Content-Type": "text/plain" });
 			res.end("Internal Server Error");
 		}
@@ -727,9 +742,10 @@ export class SharedApplicationServer {
         </html>
       `);
 
-			console.log(
-				`🔐 Direct OAuth callback received for workspace: ${workspaceInfo.organization.name}`,
-			);
+			logger.info("Direct OAuth callback received", {
+				workspaceId: workspaceInfo.organization.id,
+				workspaceName: workspaceInfo.organization.name,
+			});
 
 			// Resolve any waiting promises
 			if (this.oauthCallbacks.size > 0) {
@@ -749,11 +765,11 @@ export class SharedApplicationServer {
 						workspaceInfo.organization.name,
 					);
 				} catch (error) {
-					console.error("🔐 Error in OAuth callback handler:", error);
+					logger.error("Error in OAuth callback handler", error);
 				}
 			}
 		} catch (error) {
-			console.error("🔐 Direct Linear callback error:", error);
+			logger.error("Direct Linear callback error", error);
 			res.writeHead(500, { "Content-Type": "text/plain" });
 			res.end(`OAuth failed: ${(error as Error).message}`);
 
@@ -893,9 +909,7 @@ export class SharedApplicationServer {
 		// Generate approval URL
 		const url = `${this.getBaseUrl()}/approval?session=${encodeURIComponent(sessionId)}`;
 
-		console.log(
-			`🔐 Registered approval request for session ${sessionId}: ${url}`,
-		);
+		logger.info("Registered approval request", { sessionId, url });
 
 		return { promise, url };
 	}
@@ -1101,9 +1115,11 @@ export class SharedApplicationServer {
 			approval.resolve(approved, feedback || undefined);
 			this.pendingApprovals.delete(sessionId);
 
-			console.log(
-				`🔐 Approval ${approved ? "granted" : "rejected"} for session ${sessionId}${feedback ? ` with feedback: ${feedback}` : ""}`,
-			);
+			logger.info(`Approval ${approved ? "granted" : "rejected"}`, {
+				sessionId,
+				approved,
+				hasFeedback: !!feedback,
+			});
 
 			// Send success response
 			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -1124,7 +1140,7 @@ export class SharedApplicationServer {
         </html>
       `);
 		} catch (error) {
-			console.error("🔐 Approval request error:", error);
+			logger.error("Approval request error", error);
 			res.writeHead(500, { "Content-Type": "text/plain" });
 			res.end("Internal Server Error");
 		}

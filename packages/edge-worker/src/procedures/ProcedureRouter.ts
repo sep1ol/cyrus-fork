@@ -7,6 +7,7 @@
 
 import type { CyrusAgentSession } from "cyrus-core";
 import { SimpleClaudeRunner } from "cyrus-simple-agent-runner";
+import { Logger } from "../utils/Logger.js";
 import { getProcedureForClassification, PROCEDURES } from "./registry.js";
 import type {
 	ProcedureDefinition,
@@ -15,6 +16,8 @@ import type {
 	RoutingDecision,
 	SubroutineDefinition,
 } from "./types.js";
+
+const logger = new Logger({ name: "ProcedureRouter" });
 
 export interface ProcedureRouterConfig {
 	cyrusHome: string;
@@ -121,7 +124,7 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 			};
 		} catch (error) {
 			// Fallback to full-development on error
-			console.error("[ProcedureRouter] Error during routing decision:", error);
+			logger.error("Error during routing decision", error);
 			const fallbackProcedure = this.procedures.get("full-development");
 
 			if (!fallbackProcedure) {
@@ -153,9 +156,9 @@ IMPORTANT: Respond with ONLY the classification word, nothing else.`;
 		const procedure = this.procedures.get(procedureMetadata.procedureName);
 
 		if (!procedure) {
-			console.error(
-				`[ProcedureRouter] Procedure "${procedureMetadata.procedureName}" not found`,
-			);
+			logger.error("Procedure not found", {
+				procedureName: procedureMetadata.procedureName,
+			});
 			return null;
 		}
 

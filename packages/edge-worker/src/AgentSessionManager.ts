@@ -19,6 +19,7 @@ import type {
 } from "cyrus-core";
 import type { ProcedureRouter } from "./procedures/ProcedureRouter.js";
 import type { SharedApplicationServer } from "./SharedApplicationServer.js";
+import { Logger } from "./utils/Logger.js";
 
 /**
  * Manages Linear Agent Sessions integration with Claude Code SDK
@@ -28,12 +29,14 @@ import type { SharedApplicationServer } from "./SharedApplicationServer.js";
  * CURRENTLY BEING HANDLED 'per repository'
  */
 export class AgentSessionManager {
+	private logger = new Logger({ name: "AgentSessionManager" });
 	private linearClient: LinearClient;
 	private sessions: Map<string, CyrusAgentSession> = new Map();
 	private entries: Map<string, CyrusAgentSessionEntry[]> = new Map(); // Stores a list of session entries per each session by its linearAgentActivitySessionId
 	private activeTasksBySession: Map<string, string> = new Map(); // Maps session ID to active Task tool use ID
 	private toolCallsByToolUseId: Map<string, { name: string; input: any }> =
 		new Map(); // Track tool calls by their tool_use_id
+	private localOnlySessionsLogged: Set<string> = new Set(); // Track which local-only sessions have been logged
 	private procedureRouter?: ProcedureRouter;
 	private sharedApplicationServer?: SharedApplicationServer;
 	private getParentSessionId?: (childSessionId: string) => string | undefined;
@@ -77,10 +80,14 @@ export class AgentSessionManager {
 		issueId: string,
 		issueMinimal: IssueMinimal,
 		workspace: Workspace,
+		shouldSyncToLinear: boolean = true, // Default to true for backward compatibility
 	): CyrusAgentSession {
-		console.log(
-			`[AgentSessionManager] Tracking Linear session ${linearAgentActivitySessionId} for issue ${issueId}`,
-		);
+		this.logger.info("Tracking Linear session", {
+			sessionId: linearAgentActivitySessionId,
+			issueId,
+			shouldSyncToLinear,
+			syncMode: shouldSyncToLinear ? "linear-sync" : "local-only",
+		});
 
 		const agentSession: CyrusAgentSession = {
 			linearAgentActivitySessionId,
@@ -92,6 +99,10 @@ export class AgentSessionManager {
 			issueId,
 			issue: issueMinimal,
 			workspace: workspace,
+			metadata: {
+				...({} as any),
+				shouldSyncToLinear, // Add flag to control Linear sync
+			},
 		};
 
 		// Store locally
@@ -110,9 +121,10 @@ export class AgentSessionManager {
 	): void {
 		const linearSession = this.sessions.get(linearAgentActivitySessionId);
 		if (!linearSession) {
-			console.warn(
-				`[AgentSessionManager] No Linear session found for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
-			);
+			this.logger.warn("No Linear session found for update", {
+				sessionId: linearAgentActivitySessionId,
+				operation: "updateClaudeSessionId",
+			});
 			return;
 		}
 		linearSession.claudeSessionId = claudeSystemMessage.session_id;
@@ -203,12 +215,33 @@ export class AgentSessionManager {
 
 			return formatted;
 		} catch (error) {
-			console.error(
-				"[AgentSessionManager] Failed to format TodoWrite parameter:",
-				error,
-			);
+			this.logger.error("Failed to format TodoWrite parameter", error, {
+				operation: "formatTodoWriteParameter",
+			});
 			return jsonContent;
 		}
+	}
+
+	/**
+	 * Get entries for a session
+	 */
+	getEntriesForSession(
+		linearAgentActivitySessionId: string,
+	): CyrusAgentSessionEntry[] {
+		return this.entries.get(linearAgentActivitySessionId) || [];
+	}
+
+	/**
+	 * Get all active sessions for a specific issue
+	 */
+	getSessionsForIssue(issueId: string): CyrusAgentSession[] {
+		const sessions: CyrusAgentSession[] = [];
+		for (const session of this.sessions.values()) {
+			if (session.issueId === issueId) {
+				sessions.push(session);
+			}
+		}
+		return sessions;
 	}
 
 	/**
@@ -220,9 +253,10 @@ export class AgentSessionManager {
 	): Promise<void> {
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		if (!session) {
-			console.error(
-				`[AgentSessionManager] No session found for linearAgentActivitySessionId: ${linearAgentActivitySessionId}`,
-			);
+			this.logger.error("No session found for completion", undefined, {
+				sessionId: linearAgentActivitySessionId,
+				operation: "completeSession",
+			});
 			return;
 		}
 
@@ -268,17 +302,20 @@ export class AgentSessionManager {
 
 		// Check if error occurred
 		if (resultMessage.subtype !== "success") {
-			console.log(
-				`[AgentSessionManager] Subroutine completed with error, not triggering next subroutine`,
-			);
+			this.logger.info("Subroutine completed with error", {
+				sessionId: linearAgentActivitySessionId,
+				resultSubtype: resultMessage.subtype,
+				skipNextSubroutine: true,
+			});
 			return;
 		}
 
 		const claudeSessionId = session.claudeSessionId;
 		if (!claudeSessionId) {
-			console.error(
-				`[AgentSessionManager] No Claude session ID found for procedure session`,
-			);
+			this.logger.error("No Claude session ID for procedure", undefined, {
+				sessionId: linearAgentActivitySessionId,
+				operation: "handleProcedureCompletion",
+			});
 			return;
 		}
 
@@ -291,14 +328,21 @@ export class AgentSessionManager {
 				this.procedureRouter.getCurrentSubroutine(session);
 
 			if (currentSubroutine?.requiresApproval) {
-				console.log(
-					`[AgentSessionManager] Current subroutine "${currentSubroutine.name}" requires approval before proceeding`,
-				);
+				this.logger.info("Subroutine requires approval", {
+					sessionId: linearAgentActivitySessionId,
+					subroutineName: currentSubroutine.name,
+					awaitingApproval: true,
+				});
 
 				// Check if SharedApplicationServer is available
 				if (!this.sharedApplicationServer) {
-					console.error(
-						`[AgentSessionManager] SharedApplicationServer not available for approval workflow`,
+					this.logger.error(
+						"SharedApplicationServer not available",
+						undefined,
+						{
+							sessionId: linearAgentActivitySessionId,
+							operation: "approvalWorkflow",
+						},
 					);
 					await this.createErrorActivity(
 						linearAgentActivitySessionId,
@@ -329,9 +373,10 @@ export class AgentSessionManager {
 						approvalRequest.url,
 					);
 
-					console.log(
-						`[AgentSessionManager] Waiting for approval at URL: ${approvalRequest.url}`,
-					);
+					this.logger.info("Waiting for approval", {
+						sessionId: linearAgentActivitySessionId,
+						approvalUrl: approvalRequest.url,
+					});
 
 					// Wait for approval with timeout (30 minutes)
 					const approvalTimeout = 30 * 60 * 1000;
@@ -348,9 +393,10 @@ export class AgentSessionManager {
 					]);
 
 					if (!approved) {
-						console.log(
-							`[AgentSessionManager] Approval rejected for session ${linearAgentActivitySessionId}`,
-						);
+						this.logger.info("Approval rejected", {
+							sessionId: linearAgentActivitySessionId,
+							hasFeedback: !!feedback,
+						});
 						await this.createErrorActivity(
 							linearAgentActivitySessionId,
 							`Workflow stopped: User rejected approval.${feedback ? `\n\nFeedback: ${feedback}` : ""}`,
@@ -358,9 +404,10 @@ export class AgentSessionManager {
 						return; // Stop workflow
 					}
 
-					console.log(
-						`[AgentSessionManager] Approval granted, continuing to next subroutine`,
-					);
+					this.logger.info("Approval granted", {
+						sessionId: linearAgentActivitySessionId,
+						hasFeedback: !!feedback,
+					});
 
 					// Optionally post feedback as a thought
 					if (feedback) {
@@ -374,18 +421,18 @@ export class AgentSessionManager {
 				} catch (error) {
 					const errorMessage = (error as Error).message;
 					if (errorMessage === "Approval timeout") {
-						console.log(
-							`[AgentSessionManager] Approval timed out for session ${linearAgentActivitySessionId}`,
-						);
+						this.logger.warn("Approval timed out", {
+							sessionId: linearAgentActivitySessionId,
+							timeoutMs: 30 * 60 * 1000,
+						});
 						await this.createErrorActivity(
 							linearAgentActivitySessionId,
 							"Workflow stopped: Approval request timed out after 30 minutes.",
 						);
 					} else {
-						console.error(
-							`[AgentSessionManager] Approval request failed:`,
-							error,
-						);
+						this.logger.error("Approval request failed", error, {
+							sessionId: linearAgentActivitySessionId,
+						});
 						await this.createErrorActivity(
 							linearAgentActivitySessionId,
 							`Workflow stopped: Approval request failed - ${errorMessage}`,
@@ -396,9 +443,10 @@ export class AgentSessionManager {
 			}
 
 			// Advance procedure state
-			console.log(
-				`[AgentSessionManager] Subroutine completed, advancing to next: ${nextSubroutine.name}`,
-			);
+			this.logger.info("Advancing to next subroutine", {
+				sessionId: linearAgentActivitySessionId,
+				nextSubroutineName: nextSubroutine.name,
+			});
 			this.procedureRouter.advanceToNextSubroutine(session, claudeSessionId);
 
 			// Trigger next subroutine
@@ -406,17 +454,18 @@ export class AgentSessionManager {
 				try {
 					await this.resumeNextSubroutine(linearAgentActivitySessionId);
 				} catch (error) {
-					console.error(
-						`[AgentSessionManager] Failed to trigger next subroutine:`,
-						error,
-					);
+					this.logger.error("Failed to trigger next subroutine", error, {
+						sessionId: linearAgentActivitySessionId,
+						nextSubroutineName: nextSubroutine.name,
+					});
 				}
 			}
 		} else {
 			// Procedure complete - post final result
-			console.log(
-				`[AgentSessionManager] All subroutines completed, posting final result to Linear`,
-			);
+			this.logger.info("All subroutines completed", {
+				sessionId: linearAgentActivitySessionId,
+				postingFinalResult: true,
+			});
 			await this.addResultEntry(linearAgentActivitySessionId, resultMessage);
 
 			// Handle child session completion
@@ -448,15 +497,17 @@ export class AgentSessionManager {
 		);
 
 		if (!parentAgentSessionId) {
-			console.error(
-				`[AgentSessionManager] No parent session ID found for child ${linearAgentActivitySessionId}`,
-			);
+			this.logger.error("No parent session ID found for child", undefined, {
+				childSessionId: linearAgentActivitySessionId,
+				operation: "handleChildSessionCompletion",
+			});
 			return;
 		}
 
-		console.log(
-			`[AgentSessionManager] Child session ${linearAgentActivitySessionId} completed, resuming parent ${parentAgentSessionId}`,
-		);
+		this.logger.info("Child session completed, resuming parent", {
+			childSessionId: linearAgentActivitySessionId,
+			parentSessionId: parentAgentSessionId,
+		});
 
 		try {
 			const childResult =
@@ -471,14 +522,15 @@ export class AgentSessionManager {
 				linearAgentActivitySessionId,
 			);
 
-			console.log(
-				`[AgentSessionManager] Successfully resumed parent session ${parentAgentSessionId}`,
-			);
+			this.logger.info("Successfully resumed parent session", {
+				parentSessionId: parentAgentSessionId,
+				childSessionId: linearAgentActivitySessionId,
+			});
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Failed to resume parent session:`,
-				error,
-			);
+			this.logger.error("Failed to resume parent session", error, {
+				parentSessionId: parentAgentSessionId,
+				childSessionId: linearAgentActivitySessionId,
+			});
 		}
 	}
 
@@ -538,12 +590,16 @@ export class AgentSessionManager {
 					break;
 
 				default:
-					console.warn(
-						`[AgentSessionManager] Unknown message type: ${(message as any).type}`,
-					);
+					this.logger.warn("Unknown message type", {
+						sessionId: linearAgentActivitySessionId,
+						messageType: (message as any).type,
+					});
 			}
 		} catch (error) {
-			console.error(`[AgentSessionManager] Error handling message:`, error);
+			this.logger.error("Error handling message", error, {
+				sessionId: linearAgentActivitySessionId,
+				messageType: message.type,
+			});
 			// Mark session as error state
 			await this.updateSessionStatus(
 				linearAgentActivitySessionId,
@@ -613,7 +669,7 @@ export class AgentSessionManager {
 
 		if (Array.isArray(message.content)) {
 			return message.content
-				.map((block) => {
+				.map((block: any) => {
 					if (block.type === "text") {
 						return block.text;
 					} else if (block.type === "tool_use") {
@@ -655,7 +711,7 @@ export class AgentSessionManager {
 
 		if (Array.isArray(message.content)) {
 			const toolUse = message.content.find(
-				(block) => block.type === "tool_use",
+				(block: any) => block.type === "tool_use",
 			);
 			if (
 				toolUse &&
@@ -683,7 +739,7 @@ export class AgentSessionManager {
 
 		if (Array.isArray(message.content)) {
 			const toolResult = message.content.find(
-				(block) => block.type === "tool_result",
+				(block: any) => block.type === "tool_result",
 			);
 			if (toolResult && "tool_use_id" in toolResult) {
 				return {
@@ -720,9 +776,10 @@ export class AgentSessionManager {
 		try {
 			const session = this.sessions.get(linearAgentActivitySessionId);
 			if (!session) {
-				console.warn(
-					`[AgentSessionManager] No Linear session for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
-				);
+				this.logger.warn("No Linear session for entry sync", {
+					sessionId: linearAgentActivitySessionId,
+					operation: "syncEntryToLinear",
+				});
 				return;
 			}
 
@@ -730,6 +787,19 @@ export class AgentSessionManager {
 			const entries = this.entries.get(linearAgentActivitySessionId) || [];
 			entries.push(entry);
 			this.entries.set(linearAgentActivitySessionId, entries);
+
+			// Skip Linear sync for sessions marked as local-only (e.g., from data change webhooks)
+			if (session.metadata?.shouldSyncToLinear === false) {
+				// Only log this once per session to avoid spam
+				if (!this.localOnlySessionsLogged.has(linearAgentActivitySessionId)) {
+					this.logger.debug("Skipping Linear sync for local-only session", {
+						sessionId: linearAgentActivitySessionId,
+						entryType: entry.type,
+					});
+					this.localOnlySessionsLogged.add(linearAgentActivitySessionId);
+				}
+				return;
+			}
 
 			// Build activity content based on entry type
 			let content: any;
@@ -918,9 +988,11 @@ export class AgentSessionManager {
 			if (currentSubroutine?.suppressThoughtPosting) {
 				// Only suppress thoughts and actions, not responses or results
 				if (content.type === "thought" || content.type === "action") {
-					console.log(
-						`[AgentSessionManager] Suppressing ${content.type} posting for subroutine "${currentSubroutine.name}"`,
-					);
+					this.logger.debug("Suppressing activity posting", {
+						sessionId: linearAgentActivitySessionId,
+						contentType: content.type,
+						subroutineName: currentSubroutine.name,
+					});
 					return; // Don't post to Linear
 				}
 			}
@@ -936,20 +1008,24 @@ export class AgentSessionManager {
 			if (result.success && result.agentActivity) {
 				const agentActivity = await result.agentActivity;
 				entry.linearAgentActivityId = agentActivity.id;
-				console.log(
-					`[AgentSessionManager] Created ${content.type} activity ${entry.linearAgentActivityId}`,
-				);
+				this.logger.debug("Created Linear activity", {
+					sessionId: linearAgentActivitySessionId,
+					activityId: entry.linearAgentActivityId,
+					activityType: content.type,
+					ephemeral,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create Linear activity:`,
+				this.logger.error("Failed to create Linear activity", undefined, {
+					sessionId: linearAgentActivitySessionId,
+					activityType: content.type,
 					result,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Failed to sync entry to Linear:`,
-				error,
-			);
+			this.logger.error("Failed to sync entry to Linear", error, {
+				sessionId: linearAgentActivitySessionId,
+				entryType: entry.type,
+			});
 		}
 	}
 
@@ -989,17 +1065,18 @@ export class AgentSessionManager {
 	): void {
 		const session = this.sessions.get(linearAgentActivitySessionId);
 		if (!session) {
-			console.warn(
-				`[AgentSessionManager] No session found for linearAgentActivitySessionId ${linearAgentActivitySessionId}`,
-			);
+			this.logger.warn("No session found for ClaudeRunner", {
+				sessionId: linearAgentActivitySessionId,
+				operation: "addClaudeRunner",
+			});
 			return;
 		}
 
 		session.claudeRunner = claudeRunner;
 		session.updatedAt = Date.now();
-		console.log(
-			`[AgentSessionManager] Added ClaudeRunner to session ${linearAgentActivitySessionId}`,
-		);
+		this.logger.debug("Added ClaudeRunner to session", {
+			sessionId: linearAgentActivitySessionId,
+		});
 	}
 
 	/**
@@ -1072,9 +1149,10 @@ export class AgentSessionManager {
 	async createThoughtActivity(sessionId: string, body: string): Promise<void> {
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+			this.logger.warn("No Linear session ID for thought activity", {
+				sessionId,
+				operation: "createThoughtActivity",
+			});
 			return;
 		}
 
@@ -1088,20 +1166,19 @@ export class AgentSessionManager {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created thought activity for session ${sessionId}`,
-				);
+				this.logger.debug("Created thought activity", {
+					sessionId,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create thought activity:`,
+				this.logger.error("Failed to create thought activity", undefined, {
+					sessionId,
 					result,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating thought activity:`,
-				error,
-			);
+			this.logger.error("Error creating thought activity", error, {
+				sessionId,
+			});
 		}
 	}
 
@@ -1116,9 +1193,10 @@ export class AgentSessionManager {
 	): Promise<void> {
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+			this.logger.warn("No Linear session ID for action activity", {
+				sessionId,
+				operation: "createActionActivity",
+			});
 			return;
 		}
 
@@ -1139,20 +1217,23 @@ export class AgentSessionManager {
 			});
 
 			if (response.success) {
-				console.log(
-					`[AgentSessionManager] Created action activity for session ${sessionId}`,
-				);
+				this.logger.debug("Created action activity", {
+					sessionId,
+					action,
+					hasResult: result !== undefined,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create action activity:`,
+				this.logger.error("Failed to create action activity", undefined, {
+					sessionId,
+					action,
 					response,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating action activity:`,
-				error,
-			);
+			this.logger.error("Error creating action activity", error, {
+				sessionId,
+				action,
+			});
 		}
 	}
 
@@ -1162,9 +1243,10 @@ export class AgentSessionManager {
 	async createResponseActivity(sessionId: string, body: string): Promise<void> {
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+			this.logger.warn("No Linear session ID for response activity", {
+				sessionId,
+				operation: "createResponseActivity",
+			});
 			return;
 		}
 
@@ -1178,20 +1260,19 @@ export class AgentSessionManager {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created response activity for session ${sessionId}`,
-				);
+				this.logger.debug("Created response activity", {
+					sessionId,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create response activity:`,
+				this.logger.error("Failed to create response activity", undefined, {
+					sessionId,
 					result,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating response activity:`,
-				error,
-			);
+			this.logger.error("Error creating response activity", error, {
+				sessionId,
+			});
 		}
 	}
 
@@ -1201,9 +1282,10 @@ export class AgentSessionManager {
 	async createErrorActivity(sessionId: string, body: string): Promise<void> {
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+			this.logger.warn("No Linear session ID for error activity", {
+				sessionId,
+				operation: "createErrorActivity",
+			});
 			return;
 		}
 
@@ -1217,20 +1299,19 @@ export class AgentSessionManager {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created error activity for session ${sessionId}`,
-				);
+				this.logger.debug("Created error activity", {
+					sessionId,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create error activity:`,
+				this.logger.error("Failed to create error activity", undefined, {
+					sessionId,
 					result,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating error activity:`,
-				error,
-			);
+			this.logger.error("Error creating error activity", error, {
+				sessionId,
+			});
 		}
 	}
 
@@ -1243,9 +1324,10 @@ export class AgentSessionManager {
 	): Promise<void> {
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+			this.logger.warn("No Linear session ID for elicitation activity", {
+				sessionId,
+				operation: "createElicitationActivity",
+			});
 			return;
 		}
 
@@ -1259,20 +1341,19 @@ export class AgentSessionManager {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created elicitation activity for session ${sessionId}`,
-				);
+				this.logger.debug("Created elicitation activity", {
+					sessionId,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create elicitation activity:`,
+				this.logger.error("Failed to create elicitation activity", undefined, {
+					sessionId,
 					result,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating elicitation activity:`,
-				error,
-			);
+			this.logger.error("Error creating elicitation activity", error, {
+				sessionId,
+			});
 		}
 	}
 
@@ -1286,9 +1367,10 @@ export class AgentSessionManager {
 	): Promise<void> {
 		const session = this.sessions.get(sessionId);
 		if (!session || !session.linearAgentActivitySessionId) {
-			console.warn(
-				`[AgentSessionManager] No Linear session ID for session ${sessionId}`,
-			);
+			this.logger.warn("No Linear session ID for approval elicitation", {
+				sessionId,
+				operation: "createApprovalElicitation",
+			});
 			return;
 		}
 
@@ -1306,20 +1388,22 @@ export class AgentSessionManager {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Created approval elicitation for session ${sessionId} with URL: ${approvalUrl}`,
-				);
+				this.logger.info("Created approval elicitation", {
+					sessionId,
+					approvalUrl,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to create approval elicitation:`,
+				this.logger.error("Failed to create approval elicitation", undefined, {
+					sessionId,
+					approvalUrl,
 					result,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error creating approval elicitation:`,
-				error,
-			);
+			this.logger.error("Error creating approval elicitation", error, {
+				sessionId,
+				approvalUrl,
+			});
 		}
 	}
 
@@ -1328,6 +1412,7 @@ export class AgentSessionManager {
 	 */
 	cleanup(olderThanMs: number = 24 * 60 * 60 * 1000): void {
 		const cutoff = Date.now() - olderThanMs;
+		let cleanedCount = 0;
 
 		for (const [sessionId, session] of this.sessions.entries()) {
 			if (
@@ -1336,8 +1421,16 @@ export class AgentSessionManager {
 			) {
 				this.sessions.delete(sessionId);
 				this.entries.delete(sessionId);
-				console.log(`[AgentSessionManager] Cleaned up session ${sessionId}`);
+				cleanedCount++;
 			}
+		}
+
+		if (cleanedCount > 0) {
+			this.logger.info("Session cleanup completed", {
+				cleanedCount,
+				olderThanMs,
+				cutoffTimestamp: cutoff,
+			});
 		}
 	}
 
@@ -1397,9 +1490,10 @@ export class AgentSessionManager {
 			this.entries.set(sessionId, sessionEntries);
 		}
 
-		console.log(
-			`[AgentSessionManager] Restored ${this.sessions.size} sessions, ${Object.keys(serializedEntries).length} entry collections`,
-		);
+		this.logger.info("Restored session state", {
+			sessionCount: this.sessions.size,
+			entryCollectionCount: Object.keys(serializedEntries).length,
+		});
 	}
 
 	/**
@@ -1409,6 +1503,16 @@ export class AgentSessionManager {
 		linearAgentActivitySessionId: string,
 		model: string,
 	): Promise<void> {
+		// Skip Linear sync for local-only sessions
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (session?.metadata?.shouldSyncToLinear === false) {
+			this.logger.debug("Skipping model notification for local-only session", {
+				sessionId: linearAgentActivitySessionId,
+				model,
+			});
+			return;
+		}
+
 		try {
 			const result = await this.linearClient.createAgentActivity({
 				agentSessionId: linearAgentActivitySessionId,
@@ -1419,20 +1523,22 @@ export class AgentSessionManager {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Posted model notification for session ${linearAgentActivitySessionId} (model: ${model})`,
-				);
+				this.logger.debug("Posted model notification", {
+					sessionId: linearAgentActivitySessionId,
+					model,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post model notification:`,
+				this.logger.error("Failed to post model notification", undefined, {
+					sessionId: linearAgentActivitySessionId,
+					model,
 					result,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error posting model notification:`,
-				error,
-			);
+			this.logger.error("Error posting model notification", error, {
+				sessionId: linearAgentActivitySessionId,
+				model,
+			});
 		}
 	}
 
@@ -1442,6 +1548,15 @@ export class AgentSessionManager {
 	async postRoutingThought(
 		linearAgentActivitySessionId: string,
 	): Promise<string | null> {
+		// Skip Linear sync for local-only sessions
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (session?.metadata?.shouldSyncToLinear === false) {
+			this.logger.debug("Skipping routing thought for local-only session", {
+				sessionId: linearAgentActivitySessionId,
+			});
+			return null;
+		}
+
 		try {
 			const result = await this.linearClient.createAgentActivity({
 				agentSessionId: linearAgentActivitySessionId,
@@ -1454,22 +1569,22 @@ export class AgentSessionManager {
 
 			if (result.success && result.agentActivity) {
 				const activity = await result.agentActivity;
-				console.log(
-					`[AgentSessionManager] Posted routing thought for session ${linearAgentActivitySessionId}`,
-				);
+				this.logger.debug("Posted routing thought", {
+					sessionId: linearAgentActivitySessionId,
+					activityId: activity.id,
+				});
 				return activity.id;
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post routing thought:`,
+				this.logger.error("Failed to post routing thought", undefined, {
+					sessionId: linearAgentActivitySessionId,
 					result,
-				);
+				});
 				return null;
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error posting routing thought:`,
-				error,
-			);
+			this.logger.error("Error posting routing thought", error, {
+				sessionId: linearAgentActivitySessionId,
+			});
 			return null;
 		}
 	}
@@ -1482,6 +1597,17 @@ export class AgentSessionManager {
 		procedureName: string,
 		classification: string,
 	): Promise<void> {
+		// Skip Linear sync for local-only sessions
+		const session = this.sessions.get(linearAgentActivitySessionId);
+		if (session?.metadata?.shouldSyncToLinear === false) {
+			this.logger.debug("Skipping procedure selection for local-only session", {
+				sessionId: linearAgentActivitySessionId,
+				procedureName,
+				classification,
+			});
+			return;
+		}
+
 		try {
 			const result = await this.linearClient.createAgentActivity({
 				agentSessionId: linearAgentActivitySessionId,
@@ -1493,20 +1619,25 @@ export class AgentSessionManager {
 			});
 
 			if (result.success) {
-				console.log(
-					`[AgentSessionManager] Posted procedure selection for session ${linearAgentActivitySessionId}: ${procedureName}`,
-				);
+				this.logger.info("Posted procedure selection", {
+					sessionId: linearAgentActivitySessionId,
+					procedureName,
+					classification,
+				});
 			} else {
-				console.error(
-					`[AgentSessionManager] Failed to post procedure selection:`,
+				this.logger.error("Failed to post procedure selection", undefined, {
+					sessionId: linearAgentActivitySessionId,
+					procedureName,
+					classification,
 					result,
-				);
+				});
 			}
 		} catch (error) {
-			console.error(
-				`[AgentSessionManager] Error posting procedure selection:`,
-				error,
-			);
+			this.logger.error("Error posting procedure selection", error, {
+				sessionId: linearAgentActivitySessionId,
+				procedureName,
+				classification,
+			});
 		}
 	}
 }

@@ -1727,7 +1727,15 @@ async function refreshTokenCommand() {
 			const s = http.createServer((req: any, res: any) => {
 				if (req.url?.startsWith("/callback")) {
 					const url = new URL(req.url, `http://localhost:${serverPort}`);
+					console.log(`\n🔍 DEBUG: Callback URL received: ${req.url}`);
+					console.log(
+						`🔍 DEBUG: Query params:`,
+						Object.fromEntries(url.searchParams),
+					);
 					tokenReceived = url.searchParams.get("token");
+					console.log(
+						`🔍 DEBUG: Token extracted: ${tokenReceived?.substring(0, 20)}...`,
+					);
 
 					res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
 					res.end(`
@@ -1763,12 +1771,23 @@ async function refreshTokenCommand() {
 
 		server.close();
 
-		const newToken = tokenReceived;
+		console.log(`\n🔍 DEBUG: Token validation check`);
+		console.log(`   Token exists: ${!!tokenReceived}`);
+		console.log(`   Token type: ${typeof tokenReceived}`);
+		if (tokenReceived) {
+			console.log(`   Token length: ${(tokenReceived as string).length}`);
+			console.log(
+				`   Token preview: ${(tokenReceived as string).substring(0, 10)}...`,
+			);
+		}
 
-		if (!newToken || !(newToken as string).startsWith("lin_oauth_")) {
-			console.error("Invalid token received from OAuth flow");
+		if (!tokenReceived || (tokenReceived as string).trim().length === 0) {
+			console.error("❌ No token received from OAuth flow");
+			console.error(`   Received value: ${JSON.stringify(tokenReceived)}`);
 			continue;
 		}
+
+		const newToken: string = tokenReceived as string;
 
 		// Verify the new token
 		const verifyResult = await checkLinearToken(newToken);

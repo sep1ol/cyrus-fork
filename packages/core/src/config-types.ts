@@ -92,6 +92,11 @@ export interface EdgeWorkerConfig {
 	defaultModel?: string; // Default Claude model to use across all repositories (e.g., "opus", "sonnet", "haiku")
 	defaultFallbackModel?: string; // Default fallback model if primary model is unavailable
 
+	// Control mode configuration
+	controlMode?: {
+		enabled: boolean; // Enable controlled mode (requires explicit commands and approval)
+	};
+
 	// Global defaults for prompt types
 	promptDefaults?: {
 		debugger?: {
